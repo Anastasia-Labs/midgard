@@ -491,7 +491,7 @@ describe("fault-proof ABI", () => {
     ).toEqual({ Continue: [step02Args] });
 
     // The witness-set family is where E2 limit 3 used to bite, so the lifted
-    // refusal (#606) is asserted at the family rather than only in the shared
+    // refusal is asserted at the family rather than only in the shared
     // module's tests: a tier-3 opening of field 7 is emitted, not thrown.
     expect(
       SDK.fieldOpeningForField({

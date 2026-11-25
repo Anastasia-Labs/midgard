@@ -1,5 +1,5 @@
 /**
- * The emulator adapter for the pooled DA bond journey (ticket #692): a
+ * The emulator adapter for the pooled DA bond journey: a
  * `DaBondPoolJourneyPort` over the availability emulator harness, so the
  * journey driver runs its whole six-step chronology as a fast dry run.
  *

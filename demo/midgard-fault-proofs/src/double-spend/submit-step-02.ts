@@ -98,7 +98,7 @@ export type Step02Build = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  /** Which route the membership opening took to L1 (issue #545). */
+  /** Which route the membership opening took to L1. */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
@@ -162,7 +162,7 @@ export const buildStep02 = async ({
   /**
    * Chunks published by `publishProofChunksV1`, in proof order. When present
    * the second transaction's membership proof reaches L1 through them and
-   * never enters this transaction (issue #545).
+   * never enters this transaction.
    */
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-02 reference script. */

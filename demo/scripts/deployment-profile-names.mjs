@@ -34,7 +34,7 @@ export const productionProfileNames = [
   "preprod-public",
   "preprod-rehearsal",
 ];
-// The Preprod P1 profiles that bootstrap participants from retained DA inputs.
+// The Preprod profiles that bootstrap participants from retained DA inputs.
 export const retainedDaProfileNames = ["preprod-public", "preprod-rehearsal"];
 // Test deployments, plus the public rehearsal: the bounded economics schedule.
 export const boundedEconomicsProfileNames = [

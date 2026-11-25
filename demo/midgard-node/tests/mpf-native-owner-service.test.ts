@@ -42,7 +42,7 @@ import {
 } from "./helpers/native-owner-ledger.js";
 
 // The service spawns the native owner binary; see the helper for the
-// build/skip contract (#642).
+// build/skip contract.
 const binaryPath = nativeOwnerBinaryPath;
 const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent) {

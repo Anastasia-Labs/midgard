@@ -57,8 +57,8 @@ export const NativeTxInclusionArgs = asDataType<NativeTxInclusionArgs>(
 );
 
 /**
- * Published-chunk carriage of a step's transactions-root membership opening
- * (issue #545). Positional slots mirror the aiken
+ * Published-chunk carriage of a step's transactions-root membership opening.
+ * Positional slots mirror the aiken
  * `PublishedChunkInclusionArgs` record: identical to `NativeTxInclusionArgs`
  * up to the proof, which is replaced by the order of the publication UTxOs as
  * indices into `tx.reference_inputs`.
@@ -100,7 +100,7 @@ export const NativeTxInclusionCarriage = asDataType<NativeTxInclusionCarriage>(
   NativeTxInclusionCarriageSchema,
 );
 
-/** Published-chunk carriage of a non-membership opening (issue #545). */
+/** Published-chunk carriage of a non-membership opening. */
 export const PublishedProofCarriageSchema = Data.Object({
   ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
 });
@@ -179,7 +179,7 @@ export const ProofTerminal = asDataType<ProofTerminal>(ProofTerminalSchema);
  *
  * The walk lives in that one shared validator rather than in every step's own
  * script, so adding the chunked route does not enlarge the redeemer-carried
- * route it exists to remediate (issue #545).
+ * route it exists to remediate.
  */
 export const ChunkedProofClaimSchema = Data.Object({
   mode: ProofTerminalSchema,

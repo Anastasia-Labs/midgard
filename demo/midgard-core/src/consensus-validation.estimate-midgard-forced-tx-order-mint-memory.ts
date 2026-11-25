@@ -74,7 +74,7 @@ const RULES_ON_A_MINIMAL_ORDER = 603_349 - 338_205;
  *     Combined maximum rows measure 79,564 per policy and 44,012 per further
  *     asset, below the corresponding combined charges.
  *
- * These are the P1 forced-transaction capacity limits: an order whose estimate
+ * These are the forced-transaction capacity limits: an order whose estimate
  * exceeds the basis is one the mint is not expected to fit. They are an
  * estimate from controlled shapes, including the admitted signed integer
  * widths. They are not a proof of full transaction fit:

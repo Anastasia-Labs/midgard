@@ -65,8 +65,8 @@ export type InputSetUniquenessContracts = {
   readonly stateQueuePolicyId: string;
   /**
    * Policy id the step-02 chain was parameterized with for §8.6 field-preimage
-   * certificates. In the emulator harness this is the always-succeeds stand-in
-   * (#579 ruling A); in production it is the real certificate policy. The
+   * certificates. In the emulator harness this is the always-succeeds stand-in;
+   * in production it is the real certificate policy. The
    * family's openings are tiny (§5.3 fixed-stride out-ref lists), so tier-1
    * inline carriage is always used and the certificate door stays closed.
    */

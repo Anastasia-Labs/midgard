@@ -169,7 +169,8 @@ export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
  * The follower's admission tables (`l1_event_keys`,
  * `node_l1_forced_order_fields`) are missing from the node database, so the
  * own-journal disposition cannot tell whether a journal's event left the
- * chain: the rebase is held until the schema is installed (`migrate`).
+ * chain: the rebase is held until the database is recreated, which creates
+ * the schema.
  */
 export const LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING =
   "landed_block_follower_schema_missing";

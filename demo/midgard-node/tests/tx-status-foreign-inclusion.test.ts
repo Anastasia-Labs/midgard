@@ -24,7 +24,7 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 /**
  * A tx this node accepted that another operator's block carried: the node
  * the user submitted to answers its status from the landed block, through
- * the real handlers over a migrated database.
+ * the real handlers over a created database.
  */
 
 const transfer = Buffer.alloc(32, 0xa1);

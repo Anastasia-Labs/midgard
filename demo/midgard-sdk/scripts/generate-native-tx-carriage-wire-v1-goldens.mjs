@@ -7,7 +7,7 @@
  * the `FieldPreimageCertificateMintRedeemerV1` an off-chain minter emits.
  *
  * **Why this channel lives in the SDK and not in midgard-core.** The other two
- * channels (#568, #569) pin *byte-level derivations* — preimages, commitments,
+ * channels pin *byte-level derivations* — preimages, commitments,
  * chunk splits — and their producer is the CML-free codec twin in
  * midgard-core. What this channel pins is Plutus **Data** encoding, and the
  * off-chain producer of that is `Data.to` against the schemas in

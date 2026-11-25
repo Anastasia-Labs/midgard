@@ -65,7 +65,7 @@ describe("mint-aware value accounting", () => {
     ).toBe(true);
   });
 
-  // C49 (#540). Mirrors the two negative legs of the Aiken
+  // Mirrors the two negative legs of the Aiken
   // `parameterized_ada_and_multi_asset_conservation_matches_typescript`
   // selector, over the SAME mint vector as the positive case above (inputs
   // {lovelace 5, asset 2}, fee 1, mint +3, outputs {lovelace 4, asset 5}):

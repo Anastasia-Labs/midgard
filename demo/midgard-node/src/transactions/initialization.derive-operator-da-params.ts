@@ -30,7 +30,7 @@ import { TxExpiredError } from "./utils.tx-expiry.js";
 /**
  * Builds the `DaParamsDatum` this node writes at protocol initialization.
  *
- * Q63 (F04 §4) gave the governor threshold floors — `da_threshold >=
+ * The governor floors both thresholds — `da_threshold >=
  * ceil(2*committee_len/3)` and `update_threshold >= ceil(2*owner_len/3)`. Every
  * bound below is evaluated by the SDK twins (`SDK.governedThresholdFloor`,
  * `SDK.daParamsFloorViolations`) so the arithmetic lives in exactly one place
@@ -42,9 +42,8 @@ import { TxExpiredError } from "./utils.tx-expiry.js";
  *
  * ## A fully single-key deployment warns
  *
- * F04 §4, as amended by the 2026-08-11 owner ruling (committee floor) and the
- * 2026-08-13 owner ruling (owner-set minimum, recorded on #602), admits both a
- * 1-of-1 committee and a lone owner, so this function warns about each.
+ * The governed floors admit both a 1-of-1 committee and a lone owner, so this
+ * function warns about each.
  *
  * A node holding nothing but its own key therefore bootstraps end to end. It
  * emits a one-member committee and a one-member owner set, both of which the
@@ -85,27 +84,24 @@ export const deriveOperatorDaParams = (nodeConfig: {
     const committee = yield* resolveDaCommittee(nodeConfig, signers);
     const committeeLength = committee.length / VERIFICATION_KEY_HEX_LENGTH;
     if (committeeLength < MIN_RECOMMENDED_DA_COMMITTEE_SIZE) {
-      // The explanatory warning the 2026-08-11 owner ruling asks for, at the one place a
-      // deployment's committee size is decided. Warn, do not refuse: the
-      // governor admits this datum, and refusing it here would reinstate the
-      // prohibition the ruling lifted.
+      // Warned at the one place a deployment's committee size is decided.
+      // Warn, do not refuse: the governor admits this datum.
       yield* Effect.logWarning(
         `Single-key DA configuration: this deployment initialises a ${committeeLength.toString()}-member DA committee, ` +
           `so every block's data availability is attested by one key with no independent corroboration and no liveness redundancy. ` +
-          `F04 §4 (amended 2026-08-11) permits it — the governed floor is ceil(2*${committeeLength.toString()}/3) = ` +
+          `The governor permits it — the governed floor is ceil(2*${committeeLength.toString()}/3) = ` +
           `${SDKDa.governedThresholdFloor(committeeLength).toString()} — but two-key committees are the standing configuration. ` +
           `Set DA_COMMITTEE_HEX to the packed peer committee, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
       );
     }
     const owners = yield* resolveDaOwners(nodeConfig, signers);
     if (owners.length < MIN_RECOMMENDED_DA_OWNER_COUNT) {
-      // The 2026-08-13 owner ruling's explanatory warning, symmetric with the
-      // committee one above and emitted at the one place a deployment's owner
-      // set is decided. Warn, do not refuse: the governor admits this datum.
+      // Symmetric with the committee warning above, at the one place a
+      // deployment's owner set is decided. Warn, do not refuse: the governor admits this datum.
       yield* Effect.logWarning(
         `Single-key DA governance: this deployment initialises a ${owners.length.toString()}-member DA owner set, ` +
           `so one key can rotate the DA committee and both governed thresholds with no second approval. ` +
-          `F04 §4 (amended 2026-08-13) permits it — the governed floor is ceil(2*${owners.length.toString()}/3) = ` +
+          `The governor permits it — the governed floor is ceil(2*${owners.length.toString()}/3) = ` +
           `${SDKDa.governedThresholdFloor(owners.length).toString()} — but multi-owner governance is the standing configuration. ` +
           `Set DA_OWNERS_HEX to the packed owner key hashes, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
       );

@@ -7,7 +7,7 @@
  *
  * The node's own earlier attempt never reopens a job completed this way.
  *
- * The settlement worker's tick runs against a migrated node database with
+ * The settlement worker's tick runs against a created node database with
  * a real follower store over it, fed a simulated chain whose settlement
  * transactions are built raw.
  */

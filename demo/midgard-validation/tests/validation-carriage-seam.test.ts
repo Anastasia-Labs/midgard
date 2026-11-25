@@ -28,7 +28,7 @@ import {
  *    tier-1 `Inline` that §8.4 does not admit for that length.
  * 2. Encoding whatever a **caller-supplied** resolver returns. The submitter
  *    owns the resolver but not the tier: §8.4 is a partition over the preimage's
- *    length, so the seam checks the returned tier against it (#597 Ruling 1).
+ *    length, so the seam checks the returned tier against it.
  *
  * Every arm that carries a carriage is exercised, because the invariant is only
  * structural if it holds at all of them.
@@ -117,7 +117,7 @@ describe("§8 carriage seam refusals V1", () => {
 
   it("commits the tier §8.4 admits when no resolver is supplied and the preimage fits tier 1", () => {
     // The default resolver is not a refusal machine — inside the cap it is the
-    // ordinary path, and the block-build caller depends on that (#600).
+    // ordinary path, and the block-build caller depends on that.
     for (const { kind, auxiliary } of carriageAuxiliaries(
       BELOW_CAP_PREIMAGE_BYTES,
     )) {

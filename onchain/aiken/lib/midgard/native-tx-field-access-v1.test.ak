@@ -856,7 +856,7 @@ fn straddle_chunks() -> List<ByteArray> {
 
 /// An honest §8.6 manifest for `preimage` carried as `chunks`: it states the
 /// real byte length, the real per-chunk digests, and the mint-welded
-/// commitment of the bytes themselves (#606). Only the §5.1 header inside the
+/// commitment of the bytes themselves. Only the §5.1 header inside the
 /// bytes ever lies in the vectors below, which is what makes them tests of the
 /// door's structural checks rather than of its hash checks.
 fn certificate_for(
@@ -1005,7 +1005,7 @@ test tier_three_certificate_for_another_field_is_refused() fail {
 }
 
 /// Nor a certificate for a different transaction: same-name tokens are
-/// disambiguated by datum (#606), and the door's `certificate.tx_id == tx_id`
+/// disambiguated by datum, and the door's `certificate.tx_id == tx_id`
 /// is the check that a manifest minted for another transaction fails.
 test tier_three_certificate_for_another_tx_is_refused() fail {
   let chunks = straddle_chunks()
@@ -1037,7 +1037,7 @@ test tier_three_certificate_for_another_tx_is_refused() fail {
   ) >= 0
 }
 
-/// The load-bearing E2 equality at the door (#606): a manifest whose welded
+/// The load-bearing equality at the door: a manifest whose welded
 /// `field_hash` is not the commitment derived from the authenticated
 /// structures is refused before any chunk is touched — everything else about
 /// this certificate is honest, so this expect is the only one that can refuse

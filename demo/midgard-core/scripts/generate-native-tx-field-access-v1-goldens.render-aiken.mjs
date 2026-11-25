@@ -222,7 +222,7 @@ const renderAiken = (golden) => {
     "}",
     "",
     ...section(
-      "§8.6 certificate asset name — one constant for every certificate (#606)",
+      "§8.6 certificate asset name — one constant for every certificate",
     ),
     "// The retired blake2b_256(field_index ‖ tx_id) derivation's vector class is",
     "// replaced by this constant plus the welded datum-shape vector below and the",
@@ -237,7 +237,7 @@ const renderAiken = (golden) => {
     "",
     "/// The tier-3 manifest a TypeScript publisher derives for a preimage of",
     `/// ${golden.tier3Certificate.totalLength} bytes: chunk lengths ${golden.tier3Certificate.chunkLengths.join(" + ")}, one`,
-    "/// digest per chunk, and the mint-welded datum commitment (#606). The",
+    "/// digest per chunk, and the mint-welded datum commitment. The",
     "/// `field_hash` equality is the datum-shape identity pin: the Aiken side",
     "/// recomputes §4's commitment over the rebuilt payload and it must equal the",
     "/// value the TypeScript producer welded into the datum.",

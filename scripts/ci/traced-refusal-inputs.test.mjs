@@ -175,7 +175,7 @@ test("the fault-proofs runtime workspace dependencies are inputs", () => {
   }
 });
 
-// Kept for one release after the hand list was replaced (#901), then
+// Kept for one release after the hand list was replaced, then
 // deleted: the inputs this file listed by hand, each of which the derived set
 // must still cover at the same prefix granularity.
 const REPLACED_HAND_LIST = [

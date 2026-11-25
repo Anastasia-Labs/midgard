@@ -1,6 +1,6 @@
 /**
- * Intent-journal refusal holds in the node database (`intent_refusal_holds`,
- * migration 0010). A refusal is raised by whichever process refused the
+ * Intent-journal refusal holds in the node database (`intent_refusal_holds`).
+ * A refusal is raised by whichever process refused the
  * record: the main process, or the commit and settlement worker threads,
  * which each run their own journal. The row is what crosses that boundary:
  * the main process reads the table into its journal's holds, so `/readyz`

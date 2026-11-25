@@ -102,11 +102,12 @@ const seed = Effect.gen(function* () {
       (event_id, raw_event_info, settlement_event_info, inclusion_time,
         withdrawal_l1_tx_hash, withdrawal_l1_output_index, asset_name, l2_outref,
         l2_owner, l2_value, l1_address, l1_datum, refund_address, refund_datum,
-        validity, projected_header_hash, status)
+        validity, projected_header_hash, status, l2_ledger_outref_state)
       VALUES (${tx(label)}, ${bytes}, ${status === "awaiting" ? null : bytes},
         ${ago(sql, 60)}, ${Buffer.concat([tx(label), Buffer.alloc(4)])}, 0, ${bytes}, ${bytes},
         ${Buffer.alloc(28, 4)}, ${bytes}, ${bytes}, ${bytes}, ${bytes}, ${bytes},
-        ${validity}, ${status === "awaiting" ? null : header("events-header")}, ${status})`;
+        ${validity}, ${status === "awaiting" ? null : header("events-header")}, ${status},
+        'undecodable')`;
   }
   for (const kind of ["deposit", "withdrawal"] as const)
     for (const completion of ["unsettled", "complete"] as const)

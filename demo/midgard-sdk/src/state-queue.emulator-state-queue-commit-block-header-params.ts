@@ -107,14 +107,13 @@ type AlreadySlashedRemoveParams = {
 };
 
 /**
- * The fraud-prover reward a bond-consuming removal must route (F04 §2.3;
- * 2026-08-11 owner ruling).
+ * The fraud-prover reward a bond-consuming removal must route (decision 0002 §2.3).
  *
  * `proverEnterpriseAddress` is the enterprise address of the `fraud_prover`
  * key hash carried by the fraud-proof token's datum — never a submitter,
  * change, or stake-delegated address, which the on-chain guard refuses.
  * `lovelace` must equal the compiled `env.fraud_prover_reward`; there is no
- * default here because this SDK is not an economics authority (F04 §2.5), and
+ * default here because this SDK is not an economics authority (decision 0002 §2.5), and
  * omitting the plan altogether is correct only while that compiled value is
  * zero.
  */

@@ -143,7 +143,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
           // any time after the mint, so the min-Ada authority a tier-3
           // certificate records has to be a key the creator can sign with. The
           // event witness script hash stood here while no plan was publishable
-          // (#589); it never was the right authority.
+          //; it never was the right authority.
           owner: creatorPaymentKeyHash,
         });
         const plan = planTxOrderMaterialCarriage({

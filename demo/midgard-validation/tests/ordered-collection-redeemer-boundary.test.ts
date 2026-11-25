@@ -469,7 +469,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     // (and for the two `validators/fraud-proofs/da-hash-preimage` steps' compact
     // forms). Publishing the vector after the assertions above is what lets
     // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
-    // constants instead of a human retyping them (#588).
+    // constants instead of a human retyping them.
     publishAikenVector("spend-redeemer-boundary-v1", {
       redeemerCount: redeemerField.itemCount,
       // §5.1 bytes of field 8 completed before the terminal item begins — the

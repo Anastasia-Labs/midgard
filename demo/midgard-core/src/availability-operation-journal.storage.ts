@@ -212,8 +212,7 @@ export const availabilityJournalStorage = (db: DatabaseSync) => {
       "SELECT record FROM availability_operation_intents WHERE actor = ? AND state = 'expired'",
       actor,
     )) {
-      // Starting at the first authenticated post-expiry boundary is conservative
-      // and also migrates journals that did not record retention heights.
+      // Starting at the first authenticated post-expiry boundary is conservative.
       const retained = stamp(record, blockNo);
       if (blockNo - retained.retentionBlockNo! <= recoveryDepth) continue;
       const child = db

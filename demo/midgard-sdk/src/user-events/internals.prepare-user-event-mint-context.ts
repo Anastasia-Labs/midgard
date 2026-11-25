@@ -164,7 +164,7 @@ export type BuildCompletedUserEventMintTxParams = {
    * Every user-event policy but one takes `user_events.MintRedeemer` unchanged,
    * which is the default. The tx-order policy takes it inside its own
    * `MintRedeemer` beside the §8 carriage vector for the order's material
-   * (#594), and that vector's reference-input indices are positional in the
+   *, and that vector's reference-input indices are positional in the
    * *final* transaction — so the hook is handed the resolved redeemer context
    * rather than being allowed to guess them from the order the builder collected
    * reference inputs in.

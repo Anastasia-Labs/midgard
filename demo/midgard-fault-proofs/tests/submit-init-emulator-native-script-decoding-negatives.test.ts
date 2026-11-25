@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` abort, refusal and resume coverage (#635, #633).
+ * `native-script-decoding` abort, refusal and resume coverage.
  *
  * What this file pins:
  *

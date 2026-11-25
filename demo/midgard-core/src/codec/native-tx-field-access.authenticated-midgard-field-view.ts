@@ -91,7 +91,7 @@ export const authenticatedMidgardFieldView = ({
         )
       ) {
         return failField(
-          "certificate token is not the §8.6 constant name (#606)",
+          "certificate token is not the §8.6 constant name",
           `expected=${MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("hex")}`,
         );
       }

@@ -737,7 +737,7 @@ export const createPublishedWatcherBlockActor = async ({
             daParamsDatum,
             target: initTarget,
             referenceScripts,
-            // The attestation carries no bond (spec #685): only its min-UTxO,
+            // The attestation carries no bond: only its min-UTxO,
             // which Apply refunds to the rescue beneficiary.
             attestationOutputLovelace: await Effect.runPromise(
               daAttestationInitOutputLovelace(lucid, {

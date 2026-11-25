@@ -476,7 +476,7 @@ test certification_rejects_a_tampered_chunk_digest() fail {
   )
 }
 
-/// The E2 weld (#606, owner ruling 2026-08-16): `field_hash` is mint-verified
+/// The weld: `field_hash` is mint-verified
 /// against the same commitment the chunk concatenation is reconstructed
 /// against, so a datum stating any other hash is refused even when the chunks,
 /// digests and length are all honest. The door's load-bearing
@@ -823,7 +823,7 @@ test republished_carriage_is_byte_identical_and_certifies() {
   and {
     original.chunk_digests == healed.chunk_digests,
     original.total_length == healed.total_length,
-    // Same content, so the same datum modulo `owner` (#606): a healed
+    // Same content, so the same datum modulo `owner`: a healed
     // certificate is discoverable exactly where the yanked one was — the one
     // certificate address, filtered by datum — and interchangeable at
     // consumption because the mint-welded commitment is byte-equal.

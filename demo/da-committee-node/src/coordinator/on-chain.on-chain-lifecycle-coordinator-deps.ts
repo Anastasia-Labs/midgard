@@ -129,7 +129,7 @@ export const DEFAULT_SINGLE_KEY_NOTICE_INTERVAL_MS = 600_000;
 export const SINGLE_KEY_ATTEST_NOTICE =
   "Single-key DA attest loop: da_threshold is 1, so this committee attests every block's data availability with one key — " +
   "no independent corroboration, and no liveness redundancy if that key is lost. " +
-  "F04 §4 (amended 2026-08-11) permits it; two-key committees are the standing configuration. " +
+  "The governor permits it; two-key committees are the standing configuration. " +
   "This notice is rate-limited.";
 
 export const requireCandidate = (

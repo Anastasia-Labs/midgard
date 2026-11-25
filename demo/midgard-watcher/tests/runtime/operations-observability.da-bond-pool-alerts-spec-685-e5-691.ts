@@ -11,7 +11,7 @@ import {
 } from "../../src/runtime/operations-observability.js";
 import { supervisor } from "./operations-observability.supervisor.js";
 
-describe("DA bond pool alerts (spec #685, #691)", () => {
+describe("DA bond pool alerts", () => {
   const SUBJECT = "11".repeat(32);
   const POLICY = "12".repeat(28);
   const healthy = () => {

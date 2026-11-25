@@ -1,5 +1,5 @@
 /**
- * The reads of this node's block journals' derived status (#753; the status
+ * The reads of this node's block journals' derived status (the status
  * itself is `pendingBlockFinalizations.status-sql.ts`).
  *
  * An unlanded journal is dead when its block can no longer land

@@ -89,7 +89,7 @@ evidence checks. Its execution receipt alone does not certify payout/drill or
 program acceptance; follow the existing acceptance skill's completion gates.
 
 Diagnostics accepts a local read-only HTTP endpoint or a saved JSON snapshot.
-It never opens a journal, migrates a schema or acquires a protocol lease. [script: scripts/contrib/diagnostics.mjs]
+It never opens a journal, creates a schema or acquires a protocol lease. [script: scripts/contrib/diagnostics.mjs]
 Credentials, transaction material and URL credentials/query parameters are
 redacted by default. Progress classification requires a `progress` observation
 with `observedAtMs`, `eligibleWork`, `lastSuccessfulTransitionMs` and

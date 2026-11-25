@@ -7,7 +7,7 @@
  * any landed depth (an operator slashed while its node is offline for more
  * than k must still read removed when the node returns).
  *
- * It is `operator_membership_observations` (migration 0003), keyed by
+ * It is `operator_membership_observations`, keyed by
  * (hub_oracle_policy_id, operator_key). The record counts while the follower's facts
  * do not show its block orphaned (`pointStatusIn`): on the stored chain, or
  * below the retained window. Two places drop a record whose block a fork

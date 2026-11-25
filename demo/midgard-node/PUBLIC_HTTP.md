@@ -284,11 +284,7 @@ profiles refuse `HTTP_RATE_LIMIT_ENABLED=false`.
 Advisory evaluation never enters the production worker queue, and pools with fewer
 than two workers refuse it. HTTP reads use a separate four-connection database
 pool with fail-fast request quotas, three permits for public reads and one for
-readiness and admin reads, preserving production SQL pools. Pending
-withdrawals whose derived canonical references are unknown hold UTXO reads with
-`E_PUBLIC_READ_MIGRATING`; a bounded follower-owned backfill preserves the original
-rows. An oversized stored reference holds ingestion for operator inspection;
-archived corruption has no eventual-completion guarantee.
+readiness and admin reads, preserving production SQL pools.
 
 ## Full-stack composition
 

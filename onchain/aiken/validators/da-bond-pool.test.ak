@@ -1,4 +1,4 @@
-//// Executable handler coverage for `validators/da-bond-pool.ak` (#687).
+//// Executable handler coverage for `validators/da-bond-pool.ak`.
 ////
 //// Every test drives the real `da_bond_pool.da_bond_pool.mint` / `.spend` /
 //// `.else` handlers. Fixture convention follows

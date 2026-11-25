@@ -430,7 +430,7 @@ fn value_and_mint_output_descriptor(
     ),
   } {
     let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-    // OutputBelowMinAda (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
+    // OutputBelowMinAda (R8 of decision 0005; decision 0003).
     // The parameterized minimum-Ada floor, bound to a machine rejection code
     // at the first step that sees the whole output. Both operands are facts
     // of the descriptor the membership conjunct above just authenticated

@@ -150,7 +150,7 @@ fn observe_item(
       expect Some(prepared) = input_state
       expect TransactionFieldItemWitness { carriage } = auxiliary
       // The one place the §8.8 door runs for the complete-item path — and,
-      // since Option B (#620) narrowed the prepare-time commitment to the
+      // since Option B narrowed the prepare-time commitment to the
       // transition alone, the sole content gate on this path: the retired
       // evidence-hash equality here re-checked a commitment that froze the
       // delivery wrapper three transactions early, while the door binds the

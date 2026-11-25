@@ -9,8 +9,7 @@
 //// first against the compact structure's own field hash. Since #567 those nine
 //// hashes are §4's flat `blake2b_256` over the field's whole §5.1 preimage, so a
 //// per-item Merkle root and a flat preimage hash could only agree by collision:
-//// the predicate was unsatisfiable at fifteen sites in eight phases (#592,
-//// sizing on #593). The same class `fraud_proofs/native_tx/transaction.ak`
+//// the predicate was unsatisfiable at fifteen sites in eight phases. The same class `fraud_proofs/native_tx/transaction.ak`
 //// documents on `verify_midgard_transaction_field_chunk_v1` and the same class
 //// #587 retired for the tx-order receipt chain.
 ////
@@ -26,8 +25,8 @@
 ////
 //// A `FieldCarriageV1` and two integers — which field, which item. That is the
 //// whole per-item wire surface. The carriage tier is the prover's choice among
-//// §8's three and the door verifies whichever is named; owner ruling on #593
-//// (Ruling 1, option c) admits all three to machine-step evidence, which is why
+//// §8's three and the door verifies whichever is named; all three are admitted to
+//// machine-step evidence, which is why
 //// `MachineFieldDoorV1` carries both of the door's context arguments:
 //// `reference_inputs` for tiers 2–3 and the §8.6 certificate minting policy id
 //// for tier 3. The policy id is a **parameter of the validation-trace
@@ -157,7 +156,7 @@ use midgard/native_tx_field_access_v1.{
 /// One record rather than two threaded parameters, because it is threaded
 /// through eight phases and thirty-odd entry points and the pair always travels
 /// together. Every validation-trace validator has `tx` in hand for the first and
-/// takes the second as a validator parameter (#593 Ruling 1).
+/// takes the second as a validator parameter.
 pub type MachineFieldDoorV1 {
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,

@@ -28,7 +28,7 @@ afterEach(closeServers);
  * The fault's DA attestation as the stack successor reads it from L1: when
  * it was applied after the fault's block time, and whether the watcher's
  * removal landed before it, which decides observable 1 when our node only
- * ever reported the fault awaiting its DA (#925).
+ * ever reported the fault awaiting its DA.
  */
 describe("stack successor and the fault's DA attestation", () => {
   it("records how long after the fault's block time its DA attestation was applied", async () => {

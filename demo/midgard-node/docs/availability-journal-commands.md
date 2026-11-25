@@ -13,7 +13,7 @@ SQLite read-only and holds one ordinary read transaction across all JSON-lines
 pages. This includes committed live WAL contents at capture. A concurrent writer
 may continue while the captured inventory stays unchanged. SQLite may need access
 to WAL sidecars; read-only access failure is refused without a writable fallback.
-The command does not create directories, migrate schema, acquire/release actor
+The command does not create directories or schema, acquire/release actor
 leases or change stored rows. Preserve the journal and its WAL together.
 
 Schema 3 inspection includes metadata presence, every lease and retained intent
@@ -27,9 +27,8 @@ intent diagnostics are omitted. Signed CBOR is never emitted.
 
 Only a footer with `complete:true` and exit 0 means the stored-row inventory
 completed. Holds do not cause failure. `complete:false` and exit 1 mean refused,
-interrupted or budget-limited inspection; earlier pages are partial. Schemas 1,
-2, unknown schemas and incomplete/malformed layouts are refused. Historical
-schemas cannot prove full liability coverage from current migration fixtures.
+interrupted or budget-limited inspection; earlier pages are partial. A schema other
+than 3 and incomplete/malformed layouts are refused.
 A new invocation captures a new snapshot; do not combine its pages with an old
 partial inventory and call the result complete.
 

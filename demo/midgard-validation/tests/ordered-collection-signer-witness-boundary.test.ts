@@ -212,7 +212,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     // signer-field terminal fixture in `validation-machine-tests/`). Publishing
     // the vector here — after every assertion above has already checked it — is
     // what lets `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind
-    // those constants instead of a human retyping them (#588).
+    // those constants instead of a human retyping them.
     publishAikenVector("coupled-signer-witness-boundary-v1", {
       vkeyWitnessCount: boundary.accepted.requestedItemCount,
       acceptedSignedCardanoBytes: boundary.accepted.signedBytes,

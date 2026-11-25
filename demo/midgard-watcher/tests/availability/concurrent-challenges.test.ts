@@ -40,7 +40,7 @@ import {
   workflowRows,
 } from "./concurrent-challenges.fixture.js";
 
-describe("concurrent availability challenges on one wallet (spec #685, P9)", () => {
+describe("concurrent availability challenges on one wallet", () => {
   it("prepares and Opens a second withheld header while the first header's challenge is live", async () => {
     const first = liveChallenge("44");
     const second = withheld("45");
@@ -671,7 +671,7 @@ describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
   });
 });
 
-describe("the DA bond pool is read every reconciliation and never blocks (spec #685, #691)", () => {
+describe("the DA bond pool is read every reconciliation and never blocks", () => {
   const backed =
     PARAMETERS.da_bond_pool_floor_lovelace + PARAMETERS.da_bond_lovelace;
   const withdrawing: SDK.DaBondPoolDatum = {

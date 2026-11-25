@@ -15,7 +15,7 @@ import {
  * Interchangeable means: same tier, same field, same transaction, same total
  * length, same commitment, byte-identical publications in the same order, and
  * — under tier 3 — the same digest vector and the same mint-welded
- * `fieldHash` (#606: the token name is one constant, so the datum is where
+ * `fieldHash` (the token name is one constant, so the datum is where
  * certificate identity lives). It deliberately does **not** compare
  * `certificate.owner`: the owner is the min-Ada reclaim authority, it differs
  * by construction when a second identity heals, and no consuming step reads

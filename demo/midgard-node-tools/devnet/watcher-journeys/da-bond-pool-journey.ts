@@ -1,5 +1,5 @@
 /**
- * The pooled DA bond journey (spec #685, ticket #692): one driver that walks
+ * The pooled DA bond journey: one driver that walks
  * the six journey steps through an injected port, so the emulator adapter (a
  * fast dry run) and the live devnet adapter run exactly the same chronology,
  * assertions and report.

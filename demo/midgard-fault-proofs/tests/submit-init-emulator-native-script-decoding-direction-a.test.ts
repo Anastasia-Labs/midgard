@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` direction-A emulator lifecycle (#635, #633).
+ * `native-script-decoding` direction-A emulator lifecycle.
  *
  * Direction A is wrongful ACCEPTANCE: the operator committed a transaction
  * that resolves a reference-script item the canonical decoder refuses. The

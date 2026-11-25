@@ -112,7 +112,7 @@ describe("the off-chain door", () => {
     // the honest commitment of the two-item preimage this block opens with;
     // `bigChunks` carry a 600-item preimage. Nothing may come back — not a
     // short read, not a count. The honest manifest wears its own (foreign)
-    // commitment and fails the welded-hash equality (#606) — the same check
+    // commitment and fails the welded-hash equality — the same check
     // the on-chain door runs.
     expect(() =>
       authenticatedMidgardFieldView({

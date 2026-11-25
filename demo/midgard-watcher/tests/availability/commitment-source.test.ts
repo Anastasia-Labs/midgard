@@ -148,7 +148,7 @@ const refusal = async (promise: Promise<unknown>) => {
   return (caught as SDKDa.DaAvailabilityTransactionError).reason;
 };
 
-describe("watcher Attested commitment recovery (spec #685)", () => {
+describe("watcher Attested commitment recovery", () => {
   it("recovers the attested commitment from the node's canonical Apply", async () => {
     const s = scenario();
     const recovered = await recover(s, commitmentHash);

@@ -1,4 +1,4 @@
-//// R5 item 1 (#617): validator-level vectors for the ValueAndMint
+//// Validator-level vectors for the ValueAndMint
 //// decomposition.
 ////
 //// Index 12 of the validation-dispute machine used to be one aggregate
@@ -338,7 +338,7 @@ fn descriptor_min_ada_floor() -> Int {
 /// A ledger output descriptor with `lovelace` lovelace and `asset_count`
 /// (zero or one) copies of the asset `(h_28_a, "beef", 7)`.
 ///
-/// RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1). `lovelace` became a parameter
+/// RE-AUTHORED, NOT SUPPRESSED. `lovelace` became a parameter
 /// when the ValueAndMint output-descriptor step began convicting an
 /// under-funded output with `E_MIN_ADA`: the stage-three output fold now has
 /// to fund the floor, while the stage-two RESOLVED-INPUT replay fixtures keep
@@ -789,7 +789,7 @@ fn exact_rejection_post(
   }
 }
 
-/// E_MIN_ADA at the validator boundary (#618 ruling 1; R8 of decision 0005).
+/// E_MIN_ADA at the validator boundary (R8 of decision 0005).
 /// The same pre-state, the same authenticated descriptor and the same
 /// `ValueOutputDescriptorWitness` as `output_descriptor_fixture`, one lovelace
 /// short of the floor -- so the only successor the machine admits is the exact

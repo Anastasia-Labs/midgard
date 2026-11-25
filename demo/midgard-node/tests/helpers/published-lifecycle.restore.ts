@@ -219,8 +219,8 @@ const deployPublishedPrefix = async (
 
 /** Every lifecycle of one file restores the same deployment, so rows an
  * earlier lifecycle wrote would otherwise be found by the next one.
- * Returning every application table to its freshly migrated contents gives a
- * restored lifecycle a fresh node's starting state. The migrations' seed rows (the
+ * Returning every application table to its freshly created contents gives a
+ * restored lifecycle a fresh node's starting state. The schema's seed rows (the
  * `commit_build_calibration` singleton) are restored with it: a bare TRUNCATE
  * would leave them missing for every later file on this worker's database. */
 const clearRestoredDeploymentRows = () =>

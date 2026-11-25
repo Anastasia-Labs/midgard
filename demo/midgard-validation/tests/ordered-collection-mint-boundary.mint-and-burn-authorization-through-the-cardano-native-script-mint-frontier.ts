@@ -9,7 +9,7 @@ import {
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
 } from "./helpers/ordered-collection-boundary.js";
 
-// C49 (#540). Mirrors the Aiken
+// Mirrors the Aiken
 // `mint_and_burn_authorization_rejects_unbacked_policy` selector's frontier
 // membership check at the Cardano layer this package actually submits
 // through: a mint step may only move value for a policy a native script in

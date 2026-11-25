@@ -310,7 +310,7 @@ test("real preflight step produces reusable evidence only from completed unchang
     );
     assert.equal(drift.sdkSuite, undefined);
     // A suite that passes while a source changes under it fails as a stale
-    // run, and says so, not as an exit code it never had (#816).
+    // run, and says so, not as an exit code it never had.
     const edited = await spawnStep(
       root,
       step,

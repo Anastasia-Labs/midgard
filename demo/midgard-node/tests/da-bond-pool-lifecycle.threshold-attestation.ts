@@ -14,7 +14,7 @@ import {
 
 /**
  * Pooled DA bond lifecycle on the real pool, DA attestation and state-queue
- * validators (#689 acceptance criteria 1 and 2, pool half). Every negative is
+ * validators. Every negative is
  * paired with its honest control, is refused by the named script under the
  * named purpose and redeemer index, and its SDK pre-build refusal is asserted
  * separately; the test-only skip flags reach the on-chain check.

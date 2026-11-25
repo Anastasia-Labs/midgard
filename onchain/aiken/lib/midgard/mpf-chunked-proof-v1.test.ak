@@ -273,7 +273,7 @@ test mpf_chunked_proof_v1_verifies_a_chunked_non_membership_proof() {
   }
 }
 
-// ## Size and depth arithmetic (issue #541 envelope defeat)
+// ## Size and depth arithmetic
 
 test mpf_chunked_proof_v1_pins_the_chunk_and_depth_arithmetic() {
   let widest_chunk = ProofChunkDatum {
@@ -565,7 +565,7 @@ test mpf_chunked_proof_v1_rejects_membership_against_an_empty_trie() {
   }
 }
 
-// ## Empty-trie sentinel translation (#625)
+// ## Empty-trie sentinel translation
 //
 // The three selectors `validators/pexcludes.ak` carries for the direct route,
 // re-run through this terminal — `verify_published_proof`'s `NonMembership`

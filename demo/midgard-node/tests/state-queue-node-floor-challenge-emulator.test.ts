@@ -36,7 +36,7 @@ import {
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 /**
- * Ruling P3 (spec #685, owed here by #693): a state-queue node holds at least
+ * A state-queue node holds at least
  * the node floor from its commit until it leaves the queue, and the DA status
  * transitions carry its value exactly. So a node committed at exactly the
  * floor must stay openable: Apply (Attested), Open (Challenged, the largest

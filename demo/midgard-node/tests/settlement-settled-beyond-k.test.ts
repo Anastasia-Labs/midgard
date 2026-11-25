@@ -1,7 +1,7 @@
 /**
  * A node down for more than k blocks comes back to settlements another
  * operator landed meanwhile: the follower has pruned the settling facts
- * (#869). The job reads the event as retired more than k deep and
+ *. The job reads the event as retired more than k deep and
  * completes, instead of building again for an event that is gone and
  * retrying forever. Pruning never completes a job whose event is still
  * open, or one the follower never admitted.

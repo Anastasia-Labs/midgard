@@ -246,7 +246,7 @@ export const RejectionReason = asDataType<RejectionReason>(
 );
 
 /**
- * Twin of `midgard/rejection_reason_v1.OperatorVerdict` (#640): the
+ * Twin of `midgard/rejection_reason_v1.OperatorVerdict`: the
  * operator's recorded verdict on a forced-inclusion transaction, as the
  * forced leaf (`ForcedInclusionTxV1.verdict`) carries it. The sum's collapse
  * deliberately makes "valid with a reason" and "invalid without one"

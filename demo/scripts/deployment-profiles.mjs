@@ -119,8 +119,8 @@ const validateAllowLists = (allowLists, name) => {
   }
 };
 
-// Fraud-proof catalogue categories the deployment leaves out (P1: the
-// families the deployment does not install). The atomic init builds the
+// Fraud-proof catalogue categories the deployment leaves out: the
+// families it does not install. The atomic init builds the
 // catalogue MPF without them, so Computation-Thread Init has no membership
 // proof for them. midgard-core checks each name against the catalogue.
 const catalogueCategoryName = /^[a-z][A-Za-z0-9]*$/u;

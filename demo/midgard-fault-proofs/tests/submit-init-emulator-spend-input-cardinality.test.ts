@@ -2,7 +2,7 @@
  * The second adversarial axis of family output 5
  * (`docs/spec/protocol-decisions.md#family-outputs`): spend-input
  * preimage cardinality, measured end to end for the double-spend and no-input
- * families (issue #549).
+ * families.
  *
  * ## What this axis is
  *

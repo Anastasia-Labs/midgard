@@ -179,7 +179,7 @@ export const createWatcherAvailabilityObservation = (input: {
     /**
      * The full commitment behind an `Attested{commitment_hash}` node, recovered
      * from the node's canonical Apply transaction at the finalized point and
-     * verified against that hash (spec #685).
+     * verified against that hash.
      */
     async attestedCommitment(
       observation: WatcherAuthenticatedStateQueueObservation,

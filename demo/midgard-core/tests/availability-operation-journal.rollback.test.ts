@@ -279,7 +279,7 @@ describe("a rewound Open or terminal step restores its header's workflow", () =>
     ["terminal Remove", "remove"],
     ["Open", "open"],
   ] as const)(
-    "brings the workflow back for a rewound %s whose row an older release deleted",
+    "brings the workflow back for a rewound %s",
     (_label, rewound) => {
       const database = path();
       const journal = openAvailabilityOperationJournal(database);
@@ -297,13 +297,7 @@ describe("a rewound Open or terminal step restores its header's workflow", () =>
         );
         journal.transition(lease, "open", "confirmed", "10:aa", null, 3);
         journal.transition(lease, "remove", "confirmed", "20:bb", null, 4);
-        // Schema 2 deleted the row at the terminal's confirmation.
-        const legacy = new DatabaseSync(database);
-        legacy.exec("DELETE FROM availability_operation_workflows");
-        legacy.close();
-        expect(() =>
-          journal.assertWorkflow(lease, "other-deployment", "h", "prepare", 5),
-        ).not.toThrow();
+        expect(journal.workflows("actor")).toEqual([]);
         journal.rewind(lease, rewound, "rolled back", 6);
         expect(journal.workflows("actor")).toMatchObject([
           { headerHash: "header" },

@@ -178,7 +178,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // certificate over the same chunks. Only the `owner` differs, and no
     // consuming step reads it.
     //
-    // **Healing is pinned on the datum, not the token (#606).** Under the
+    // **Healing is pinned on the datum, not the token.** Under the
     // retired derivation the token name was `blake2b_256(field_index ‖ tx_id)`
     // and "same name" was the healing property. Since the owner ruling of
     // 2026-08-16 `deriveFieldPreimageCertification` returns a module-level

@@ -135,7 +135,7 @@ export const FieldPreimageCertificateSchema = Data.Object({
   owner: VerificationKeyHashSchema,
   tx_id: H32Schema,
   field_index: Data.Integer(),
-  // The mint-welded §4 field commitment (#606, owner ruling 2026-08-16): the
+  // The mint-welded §4 field commitment: the
   // policy checks `hash(concat(chunks))` against exactly this value, and the
   // door refuses a certificate whose welded hash is not the anchored
   // commitment.
@@ -243,7 +243,7 @@ export const EMPTY_FIELD_COMMITMENT_HEX: string =
   MIDGARD_EMPTY_FIELD_COMMITMENT.toString("hex");
 
 /**
- * §8.6's constant certificate asset name (#606, owner ruling 2026-08-16), as
+ * §8.6's constant certificate asset name, as
  * the hex string an `Assets` key needs. One constant for every certificate of
  * the policy — the retired `blake2b_256(field_index ‖ tx_id)` derivation's
  * information lives in the datum, and discovery is by enumerating the single

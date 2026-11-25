@@ -319,7 +319,7 @@ export const TEST_DA_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 /**
  * Dev/emulator DA cosigner seed.
  *
- * The emulator's DA params carry a 2-of-2 committee (the F04 §4 floor for two
+ * The emulator's DA params carry a 2-of-2 committee (the governed floor for two
  * members), so an attestation needs two genuine signatures. There is
  * no committee peer in the emulator, so the harness holds the second key itself
  * and passes it as `DA_COSIGNER_SEED_PHRASE`; the node then signs once per

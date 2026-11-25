@@ -650,7 +650,8 @@ first hold by priority is the reason, the rest are in its detail):
   retries it): restore the node database from a backup that holds the block's
   journal (plan §7.5, R5). Report it with the detail.
 - `landed_block_follower_schema_missing`: the follower's admission tables
-  are missing from the node database; no timer retries it. Run `migrate`.
+  are missing from the node database; no timer retries it. Recreate the
+  database empty; the node creates the schema when it starts.
 - `landed_block_event_unknown`: a foreign block names an event the follower
   does not know at the view, and the follower's facts do not cover the
   range the block's events could be admitted in (the prune passed the

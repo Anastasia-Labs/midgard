@@ -32,7 +32,7 @@ export type PhasMembershipBlueprint = {
     /**
      * The blueprint's declared parameter list, carried so the loader can
      * refuse to deploy `compiledCode` bare the moment the validator grows a
-     * parameter (#610). Absent means the validator declares none.
+     * parameter. Absent means the validator declares none.
      */
     readonly parameters?: readonly unknown[];
   }[];

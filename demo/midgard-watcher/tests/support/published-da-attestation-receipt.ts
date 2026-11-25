@@ -13,7 +13,7 @@ export const verifyPublishedDaAttestationReceipt = async (input: {
   stateQueueAddress: string;
   stateQueueUnit: string;
   headerHash: string;
-  /** The `commitment_hash` the attested node must carry (spec #685). */
+  /** The `commitment_hash` the attested node must carry. */
   commitmentHash: string;
 }): Promise<void> => {
   if (input.readConfirmedTransaction === undefined) {

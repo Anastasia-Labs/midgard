@@ -1,6 +1,6 @@
 /**
  * The one place that knows where the native architecture-G owner binary
- * lives and how its absence is reported (#642). The plain `test` run builds
+ * lives and how its absence is reported. The plain `test` run builds
  * it in tests/global-setup.ts; it can still be absent when cargo is
  * unavailable (or MIDGARD_SKIP_NATIVE_BUILD=1). Consumers skip LOUDLY via
  * `warnNativeOwnerBinaryAbsent` rather than fail on a missing optional

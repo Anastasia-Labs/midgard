@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "../src/index.js";
 
 /**
- * The P1 forced-transaction capacity limits: the SDK refuses, before signing,
+ * The forced-transaction capacity limits: the SDK refuses, before signing,
  * an admissible forced transaction whose order the tx-order mint's execution
  * budget is not expected to fit, by the measured per-shape rates. Each case
  * pins the largest count of one shape it admits beside a minimal order.

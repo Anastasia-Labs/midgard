@@ -836,8 +836,8 @@ CREATE TABLE public.withdrawal_utxos (
     l1_event_key bytea,
     l1_origin_outref bytea,
     l2_ledger_outref bytea,
-    l2_ledger_outref_state text DEFAULT 'unknown'::text NOT NULL,
-    CONSTRAINT withdrawal_ledger_outref_state CHECK ((((l2_ledger_outref_state = 'decoded'::text) AND (l2_ledger_outref IS NOT NULL)) OR ((l2_ledger_outref_state = ANY (ARRAY['unknown'::text, 'undecodable'::text])) AND (l2_ledger_outref IS NULL)))),
+    l2_ledger_outref_state text NOT NULL,
+    CONSTRAINT withdrawal_ledger_outref_state CHECK ((((l2_ledger_outref_state = 'decoded'::text) AND (l2_ledger_outref IS NOT NULL)) OR ((l2_ledger_outref_state = 'undecodable'::text) AND (l2_ledger_outref IS NULL)))),
     CONSTRAINT withdrawal_utxos_asset_name_check CHECK (((octet_length(asset_name) >= 1) AND (octet_length(asset_name) <= 32))),
     CONSTRAINT withdrawal_utxos_check CHECK (((status = 'awaiting'::text) OR (settlement_event_info IS NOT NULL))),
     CONSTRAINT withdrawal_utxos_check1 CHECK (((status = 'awaiting'::text) OR (validity IS NOT NULL))),
@@ -1100,10 +1100,6 @@ CREATE INDEX idx_tx_rejections_created_at ON public.tx_rejections USING btree (c
 CREATE INDEX idx_tx_rejections_tx_id ON public.tx_rejections USING btree (tx_id);
 
 CREATE INDEX idx_withdrawal_ledger_outref_pending ON public.withdrawal_utxos USING btree (l2_ledger_outref) WHERE ((l2_ledger_outref_state = 'decoded'::text) AND (status = ANY (ARRAY['awaiting'::text, 'projected'::text])) AND ((validity IS NULL) OR (validity = 'WithdrawalIsValid'::text)));
-
-CREATE INDEX idx_withdrawal_ledger_outref_unknown ON public.withdrawal_utxos USING btree (event_id) WHERE (l2_ledger_outref_state = 'unknown'::text);
-
-CREATE INDEX idx_withdrawal_ledger_outref_unknown_pending ON public.withdrawal_utxos USING btree (event_id) WHERE ((l2_ledger_outref_state = 'unknown'::text) AND (status = ANY (ARRAY['awaiting'::text, 'projected'::text])) AND ((validity IS NULL) OR (validity = 'WithdrawalIsValid'::text)));
 
 CREATE INDEX idx_withdrawal_utxos_l1_admission ON public.withdrawal_utxos USING btree (l1_event_key);
 

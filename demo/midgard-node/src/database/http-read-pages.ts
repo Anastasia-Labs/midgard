@@ -6,7 +6,6 @@ import { Database } from "../services/database.js";
 import { HTTP_PUBLIC_READ_DATA_MAX_BYTES } from "../services/http-resource-limits.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
-import { publicWithdrawalReadAuthorityReady } from "./withdrawal-ledger-outref.backfill.js";
 
 export const addressHistoryPage = (address: string, page: ReadPage) =>
   Effect.gen(function* () {
@@ -40,8 +39,7 @@ export type PublicUtxoPageRow = Omit<
   "output"
 > & { readonly output: Buffer | null };
 
-/** OFFSET 0 keeps each exclusion correlated; the planner must not scan all withdrawals.
- * Candidate exclusion, byte barrier and unknown check share one read-only MVCC snapshot. */
+/** OFFSET 0 keeps each exclusion correlated; the planner must not scan all withdrawals. */
 export const spendableUtxoPage = (
   address: string,
   page: ReadPage,
@@ -52,14 +50,6 @@ export const spendableUtxoPage = (
       Effect.gen(function* () {
         yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
         yield* sql`SET LOCAL statement_timeout = '2s'`;
-        if (!(yield* publicWithdrawalReadAuthorityReady))
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: "withdrawal_utxos",
-              message: "E_PUBLIC_READ_MIGRATING",
-              cause: "pending withdrawal read authority is not populated",
-            }),
-          );
         return yield* sql<PublicUtxoPageRow>`/* midgard-public-utxo-page */ WITH candidates AS MATERIALIZED (
       SELECT mempool_ledger.outref, octet_length(mempool_ledger.output) AS payload_bytes FROM mempool_ledger
       LEFT JOIN deposits_utxos ON deposits_utxos.event_id = mempool_ledger.source_event_id

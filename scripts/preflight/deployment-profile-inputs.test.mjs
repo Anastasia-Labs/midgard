@@ -74,7 +74,7 @@ test(
   },
 );
 
-// --- superset of the replaced hand lists (#901) -------------------------------
+// --- superset of the replaced hand lists -------------------------------
 //
 // Kept for one release after the hand lists were replaced, then deleted: each
 // list below is what a file named the deployment-profile modules by before

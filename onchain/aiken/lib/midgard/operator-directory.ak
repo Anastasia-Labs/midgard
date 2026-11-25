@@ -154,7 +154,7 @@ pub fn transferred_operator_bond_tranche_is_exact_v1(
 }
 
 /// The fee of a slash that consumes an operator node holding `node_lovelace`
-/// (F04 §2.3). A node is created holding exactly `env.required_bond`, or that
+/// (decision 0002 §2.3). A node is created holding exactly `env.required_bond`, or that
 /// less `env.inactivity_slashing_penalty` after a forced retirement, and keeps
 /// any lovelace later added to it, so any node holding at least the smaller
 /// tranche is slashable. Every profile sets `env.required_bond` to
@@ -185,7 +185,7 @@ pub fn fraudulent_operator_slash_economics_are_exact_v1(
 }
 
 /// The address a bounty for `claimant` is paid to: the enterprise address
-/// whose payment credential is the claimant key (F04 §2.3). This is the only
+/// whose payment credential is the claimant key (decision 0002 §2.3). This is the only
 /// place the bounty address rule is stated.
 pub fn bounty_address_v1(claimant: VerificationKeyHash) -> Address {
   from_verification_key(claimant)

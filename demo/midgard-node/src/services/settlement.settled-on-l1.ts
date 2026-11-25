@@ -10,7 +10,7 @@
  *   any more; the conclusion is the spend of the last output that held it.
  *
  * Once the settling transaction is more than k deep the follower prunes its
- * facts (#869): the event's rows go once its retirement is, and a payout
+ * facts: the event's rows go once its retirement is, and a payout
  * output once its spend is. A node that was down that long reads such an
  * event as `pruned` (`eventOrderOrPrunedByIdIn`), and it is settled for
  * good: `"pruned"`, never `null`, so the job completes instead of building

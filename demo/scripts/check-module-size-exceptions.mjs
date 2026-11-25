@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 // so a reason carrying a `(+N)`/`(-N)` change note is refused.
 //
 // `file` is relative to demo/. Demo TS/JS entries also get an ESLint
-// max-lines cap (eslint.config.mjs); the rest (native sources, SQL migrations
+// max-lines cap (eslint.config.mjs); the rest (native sources, SQL schemas
 // and agent tooling outside demo, spelled `../<path>`) are held to their
 // count here only.
 

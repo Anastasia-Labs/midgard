@@ -137,7 +137,7 @@ test double_spend_step_02_forwards_both_verified_transaction_ids() {
   run_step_02(tx2_block, tx1_block.tx_id)
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 
 const adversarial_branch_levels: Int = 22
 

@@ -1,5 +1,5 @@
 /**
- * The live devnet adapter for the pooled DA bond journey (ticket #692): a
+ * The live devnet adapter for the pooled DA bond journey: a
  * `DaBondPoolJourneyPort` over a journey run directory's process devnet, so
  * the driver in `da-bond-pool-journey.ts` walks its six steps against real
  * blocks, real Kupo and Ogmios, and the deployed validators.
@@ -13,7 +13,7 @@
  *   as a refusal carrying that reason; every other failure throws;
  * - Open, responses, settlements, Close, Timeout and the follow-up removal:
  *   the availability command flow of `midgard-node availability-challenge`
- *   (#690), composed in process from its exported steps: the canonical
+ *, composed in process from its exported steps: the canonical
  *   source on the node's L1 access (its follower store and local node), the
  *   durable operation journal, reconciliation before
  *   every action, a snapshot bracketed by two equal canonical points, the
@@ -25,7 +25,7 @@
  *   processes bracketed by `da-bond status` processes
  *   (`da-bond-pool-cli-process.ts`); each chain is the step's `cli` evidence,
  *   and its transaction is confirmed by the adapter's own pool read. The
- *   `da-bond` CLI admits the devnet's `Custom` network (#691) with the
+ *   `da-bond` CLI admits the devnet's `Custom` network with the
  *   slot mapping from the local node's ledger, and reads through the node's
  *   L1 access (the local node and the node database);
  * - the pool snapshot: `da-bond status` over a `DaBondContext` built as

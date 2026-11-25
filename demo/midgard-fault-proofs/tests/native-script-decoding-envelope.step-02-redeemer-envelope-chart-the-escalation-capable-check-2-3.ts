@@ -167,7 +167,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
     // by shrinking the fixture or the overhead allowance.
     expect(
       deepBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "ESCALATE(#635 → wave branch): worst-case step-02 redeemer no longer fits the L1 fault-proof envelope",
+      "ESCALATE: worst-case step-02 redeemer no longer fits the L1 fault-proof envelope",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
     // "Fits" alone is not the design's claim — §2.3 expects real margin, so a
     // creeping regression surfaces before it becomes an escalation.
@@ -209,7 +209,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
     expect(perLevelBytes).toBeLessThanOrEqual(450);
     expect(
       exhaustionDepth,
-      "ESCALATE(#635 → wave branch): a work-feasible (2^128) membership depth no longer fits the step-02 redeemer, and step 02 has no alternative carriage",
+      "ESCALATE: a work-feasible (2^128) membership depth no longer fits the step-02 redeemer, and step 02 has no alternative carriage",
     ).toBeGreaterThan(
       membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
     );

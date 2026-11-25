@@ -4,9 +4,9 @@
  *
  * A channel is one generator, one Aiken module recomputed by the Aiken
  * producers under the fork runner, and for some a JSON fixture of the vectors.
- * Three of them exist today — the shared field-access surface (#568), the
- * per-field item fan-out (#569) and the §8.6/§8.8 carriage wire surface (#574,
- * which lives in `@al-ft/midgard-sdk` because its producer is `Data.to` against
+ * Three of them exist today — the shared field-access surface, the
+ * per-field item fan-out and the §8.6/§8.8 carriage wire surface (which
+ * lives in `@al-ft/midgard-sdk` because its producer is `Data.to` against
  * the SDK schemas) — and they differ only in what they compute.
  * Everything around that computation is identical: the same `--check` contract,
  * the same "regenerate, never hand-edit" emission, the same trip through
@@ -82,7 +82,9 @@ export const formatAikenSource = ({
   const directory = mkdtempSync(join(tmpdir(), tmpPrefix));
   const target = join(directory, fileName);
   try {
-    const { aikenBinary } = require(resolve(repositoryRoot, "scripts/lib/aiken.mjs"));
+    const { aikenBinary } = require(
+      resolve(repositoryRoot, "scripts/lib/aiken.mjs"),
+    );
     writeFileSync(target, source, "utf8");
     const result = spawnSync(aikenBinary(), ["fmt", target], {
       cwd: join(repositoryRoot, "onchain/aiken"),
@@ -159,7 +161,9 @@ export const rebindAikenConstants = ({ source, constants }) => {
     }
     const literal =
       typeof value === "number" ? String(value) : aikenBytes(hex(value));
-    const visibility = new RegExp(String.raw`^pub const ${name} =`, "mu").test(rebound)
+    const visibility = new RegExp(String.raw`^pub const ${name} =`, "mu").test(
+      rebound,
+    )
       ? "pub "
       : "";
     const declaration = `${visibility}const ${name} =`;

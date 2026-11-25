@@ -184,7 +184,7 @@ try {
       "tests/ordered-collection-mint-boundary.test.ts": 2,
       "tests/ordered-collection-redeemer-boundary.test.ts": 1,
       "tests/blob-chunk-boundary.test.ts": 1,
-      // C22 closure: the boundary case plus the complete-Value carriage-fit
+      // The boundary case plus the complete-Value carriage-fit
       // case that must be measured before any incremental Value fallback.
       "tests/nested-value-boundary.test.ts": 2,
       "tests/nested-data-boundary.test.ts": 1,

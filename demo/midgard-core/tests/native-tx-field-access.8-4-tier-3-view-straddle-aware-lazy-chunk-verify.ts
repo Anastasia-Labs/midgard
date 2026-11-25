@@ -78,7 +78,7 @@ describe("§8 carriage ladder", () => {
     ).toBe(MIDGARD_MAX_TIER3_CHUNK_COUNT);
   });
 
-  it("pins the §8.6 constant certificate asset name (#606)", () => {
+  it("pins the §8.6 constant certificate asset name", () => {
     // One constant for every certificate of the policy; identity lives in the
     // datum. Pinned as bytes so the on-chain constant and this producer
     // cannot drift apart (the .ak golden channel pins the same value).
@@ -88,7 +88,7 @@ describe("§8 carriage ladder", () => {
     expect(MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.length).toBe(27);
   });
 
-  it("welds the §4 commitment into the certificate datum (#606)", () => {
+  it("welds the §4 commitment into the certificate datum", () => {
     const preimage = filler(MIDGARD_CHUNK_BYTES_K + 1, 7);
     const certificate = deriveMidgardFieldPreimageCertificate({
       owner: filler(28, 1),
@@ -167,7 +167,7 @@ describe("§8.4 tier-3 view — straddle-aware, lazy chunk verify", () => {
     expect(midgardFieldTotalLength(view)).toBe(preimage.length);
   });
 
-  it("refuses a manifest whose welded field_hash is not the anchored commitment (#606)", () => {
+  it("refuses a manifest whose welded field_hash is not the anchored commitment", () => {
     // The certificate is honest about *these* bytes — its welded `fieldHash`
     // is their commitment — but the caller's anchored commitment names
     // different ones, which is exactly the forged-certificate shape the

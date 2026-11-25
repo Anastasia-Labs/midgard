@@ -4,7 +4,7 @@
  *
  * The family is reached by **direct module import**: the `fabricatedWithdrawal`
  * catalogue category and its CLI wiring are parent-owned integration surfaces
- * that land with catalogue registration (#617), so nothing here goes through
+ * that land with catalogue registration, so nothing here goes through
  * `src/index.js`, `fraud-proof/catalogue.ts` or `bin.ts`.
  *
  * Every committed-leaf, commitment, nonce and handoff constant below is the

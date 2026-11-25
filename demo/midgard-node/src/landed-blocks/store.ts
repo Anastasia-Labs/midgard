@@ -3,9 +3,8 @@
  * state-queue block the node processed, with its net ledger delta against
  * its parent's ledger and the events it included, and the confirmed-ledger
  * frontier (the landed header whose post-state `confirmed_ledger` holds).
- * Migration 0009 holds the tables. What the working ledger is rebuilt on is
- * not stored: it is the rows' `applied` flags and the ledger-store root
- * stamp.
+ * What the working ledger is rebuilt on is not stored: it is the rows'
+ * `applied` flags and the ledger-store root stamp.
  */
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";

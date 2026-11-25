@@ -80,7 +80,7 @@ export const buildStep04 = async ({
    * Force §8 tier 2 for tx2's field-0 preimage; see `buildStep03`'s
    * same-named option. Programmatic only — the retired CLI route never
    * sets it, and below the tier-1 bound the ladder would otherwise carry
-   * the preimage inline in this step's redeemer (#612).
+   * the preimage inline in this step's redeemer.
    */
   readonly publishCarriage?: boolean;
   /** Pre-observed tier-2/3 publications for workflow use. */

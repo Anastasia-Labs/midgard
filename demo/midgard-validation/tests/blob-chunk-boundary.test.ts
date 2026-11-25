@@ -252,7 +252,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     // `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-inline-datum.test.ak`.
     // Publishing the vector *after* the assertions above is what lets
     // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
-    // constants instead of a human retyping them out of a terminal (#588) — which
+    // constants instead of a human retyping them out of a terminal — which
     // is how that module came to still pin retired counted field commitments
     // after this suite's own expectations had already moved.
     publishAikenVector("blob-chunk-boundary-v1", {

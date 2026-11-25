@@ -27,7 +27,7 @@ pub type ActionV1 {
 pub type SpendRedeemer =
   ct.StepRedeemer<ActionV1>
 
-/// Option B (#620): the canonical-decode preparation commits to the transition
+/// The canonical-decode preparation commits to the transition
 /// alone — `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, computed
 /// on-chain. The delivery wrapper is no longer part of the committed preimage,
 /// so the carriage tier stays free until the observe stage dereferences it and

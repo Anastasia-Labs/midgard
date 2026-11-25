@@ -22,7 +22,7 @@ import {
  * certificate output at the validator's own address carrying the manifest as an
  * inline datum, and the plan's chunks as reference inputs.
  *
- * **The token is not content-addressed (#606, owner ruling 2026-08-16).** It
+ * **The token is not content-addressed.** It
  * used to be — its name was `blake2b_256(field_index ‖ tx_id)` — and the
  * derivation is retired: every certificate of the policy now wears the same
  * fixed name, which carries no content and no security weight. What is

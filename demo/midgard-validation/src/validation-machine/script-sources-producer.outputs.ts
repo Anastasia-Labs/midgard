@@ -98,7 +98,7 @@ const produceOutputCommitments = (
       // output size only under tiers 2-3, where the preimage rides reference
       // inputs. The step carries the *plan input* (field and bytes); the tier is
       // resolved at evidence commitment, where a transaction exists to index
-      // reference inputs into (#600): above §8.3's 14,336-byte tier-1 cap it is
+      // reference inputs into: above §8.3's 14,336-byte tier-1 cap it is
       // tier 2 or 3 and O(1), below it tier-1 `Inline`. The producer never
       // refuses and never names a tier.
       push("scriptSources", witness(), {

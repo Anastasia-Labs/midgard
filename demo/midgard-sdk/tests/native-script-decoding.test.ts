@@ -1,6 +1,6 @@
 /**
- * Aiken/TypeScript byte twins for the `native-script-decoding` family (#635,
- * #633 `ResolvedReferenceScript*` corner).
+ * Aiken/TypeScript byte twins for the `native-script-decoding` family,
+ * including its `ResolvedReferenceScript*` corner.
  *
  * Every expectation below is an **absolute** hex constant measured out of the
  * Aiken family modules

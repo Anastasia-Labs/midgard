@@ -284,7 +284,7 @@ test canonical_decode_refuses_a_field_chunk_auxiliary() {
   }
 }
 
-// V-9 (#532). This was `test ... fail` over a single call to
+// This was `test ... fail` over a single call to
 // `verify_canonical_decode_one_step_v1`, so it went green as soon as any guard
 // anywhere under that call was false and the name could not establish that the
 // claimed successor is what fired. The vector differs from the passing sibling

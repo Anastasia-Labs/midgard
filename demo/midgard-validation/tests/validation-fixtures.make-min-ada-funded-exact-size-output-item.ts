@@ -101,7 +101,7 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
  * The lovelace every fixture output that a fixture transaction PRODUCES is
  * funded with.
  *
- * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). These
+ * RE-AUTHORED, NOT SUPPRESSED (R8 of decision 0005). These
  * fixtures used to produce 10-lovelace outputs, which was admissible while the
  * minimum-Ada floor was unwired arithmetic. The ValueAndMint output-descriptor
  * scan now convicts an under-funded output with `E_MIN_ADA`, so a 10-lovelace
@@ -205,7 +205,7 @@ export const canonicalDatumOfExactLength = (datumBytes: number): Buffer => {
  * Builds a canonical output item whose exact encoded length equals
  * `targetItemBytes`, funded at exactly its own minimum-Ada floor.
  *
- * RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1; R8 of decision 0005). The four
+ * RE-AUTHORED, NOT SUPPRESSED (R8 of decision 0005). The four
  * carriage suites each carried their own copy of this builder, each producing
  * 10-lovelace items, which the ValueAndMint output-descriptor scan now
  * convicts with `E_MIN_ADA` -- and it would convict every one of them, since

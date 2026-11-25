@@ -12,7 +12,7 @@
  * `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`, where
  * the Aiken producers recompute it under the fork runner, so a divergence
  * between the two encoders fails on the Aiken side. Nothing here is per-field;
- * the per-field item encodings of §5.3 are the sibling channel (issue #569).
+ * the per-field item encodings of §5.3 are the sibling channel.
  *
  * Vectors are regenerated, never hand-edited. Run with `--check` to assert the
  * checked-in artifacts are exactly what the twin produces today. That contract

@@ -1,5 +1,5 @@
 /**
- * Published-chunk carriage of an MPF proof (issue #545).
+ * Published-chunk carriage of an MPF proof.
  *
  * A fault-proof step that carries its membership proof in the step
  * transaction's redeemers pays ~276 complete-signed-transaction bytes per

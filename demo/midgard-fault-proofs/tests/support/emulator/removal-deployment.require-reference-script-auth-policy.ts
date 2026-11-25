@@ -9,7 +9,7 @@ export type RemovalDeploymentReference = {
 
 /**
  * Manifest entry pinning the `native-script-decoding` step-01 script hash for
- * removal (#635). The name is caller-chosen because the family predates its
+ * removal. The name is caller-chosen because the family predates its
  * catalogue registration: `submitRemoveFraudulentBlock` checks the explicit
  * category record's step-01 hash against whatever entry the record names, and
  * this is the name the emulator manifests use.

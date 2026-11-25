@@ -51,7 +51,7 @@ export const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 /**
  * Dev/emulator DA cosigner seed.
  *
- * The emulator bootstrap uses a two-key committee and owner set, whose F04 §4
+ * The emulator bootstrap uses a two-key committee and owner set, whose governed
  * floors are two. The emulator has no committee peers, so the harness holds
  * the second key itself and
  * passes it as `DA_COSIGNER_SEED_PHRASE`. It only ever signs attestation

@@ -82,7 +82,7 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
  * `tests/fixtures/native-tx-vector-v1.vectors.mjs` and driven from here through
  * `src/` while `scripts/generate-native-tx-vector-v1-goldens.mjs` drives the same
  * definition through `dist/`. That is what lets the Aiken `n0x` constants be
- * generated rather than hand-mirrored (#588).
+ * generated rather than hand-mirrored.
  */
 const makeGoldenCanonical = (): MidgardNativeTxCanonical =>
   nativeTxVectorCanonicalV1(codec);

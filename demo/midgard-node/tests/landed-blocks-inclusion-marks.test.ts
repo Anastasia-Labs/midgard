@@ -1,5 +1,5 @@
 /**
- * Inclusion marks on the pending tables (migration 0013), on
+ * Inclusion marks on the pending tables, on
  * the node database through the production writes and the production
  * working-ledger rebase (the follower-change driver's `rebaseIfDue`, with
  * the modelled native MPF owner of `landed-blocks-rebase.fixture.ts`):

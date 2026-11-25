@@ -1,4 +1,4 @@
-//// ## Chunked MPF proof challenge thread (issue #541)
+//// ## Chunked MPF proof challenge thread
 ////
 //// A single validator serving as both the challenge thread's minting policy
 //// and the challenge UTxO's spending script.

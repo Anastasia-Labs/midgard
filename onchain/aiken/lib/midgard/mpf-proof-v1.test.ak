@@ -676,7 +676,7 @@ test mpf_proof_v1_paired_fold_inserts_from_the_midgard_empty_sentinel() {
   }
 }
 
-// ## Empty-trie sentinel translation (#625)
+// ## Empty-trie sentinel translation
 //
 // `does_not_have` translates `env.empty_merkle_tree_root` — the root Midgard
 // commits for an empty MPF — to the library's own empty root before comparing

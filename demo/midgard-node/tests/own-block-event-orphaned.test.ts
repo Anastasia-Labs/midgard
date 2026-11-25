@@ -226,12 +226,12 @@ const arrangeWithdrawal = async () => {
             withdrawal_l1_tx_hash, withdrawal_l1_output_index, asset_name,
             l2_outref, l2_owner, l2_value, l1_address, l1_datum,
             refund_address, refund_datum, validity, projected_header_hash,
-            status, l1_event_key, l1_origin_outref)
+            status, l1_event_key, l1_origin_outref, l2_ledger_outref_state)
           VALUES (${id}, ${bytes}, ${bytes}, ${new Date(1_000)}, ${id}, 0,
             ${bytes}, ${bytes}, ${Buffer.alloc(28, 4)}, ${bytes}, ${bytes},
             ${bytes}, ${bytes}, ${bytes}, 'WithdrawalIsValid',
             ${Buffer.from(BLOCK, "hex")}, 'finalized', ${Buffer.alloc(32, 0x58)},
-            ${Buffer.concat([Buffer.alloc(32, 0x59), Buffer.alloc(2)])})`;
+            ${Buffer.concat([Buffer.alloc(32, 0x59), Buffer.alloc(2)])}, 'undecodable')`;
       }),
     ),
   );

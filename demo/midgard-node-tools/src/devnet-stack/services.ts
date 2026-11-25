@@ -107,7 +107,7 @@ export const serviceSpecs = (
       env: publicRetainedDaEnvironment({ layout, run, identities }),
       healthUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/healthz`,
       readyUrl: `http://127.0.0.1:${ports.publicRetainedDaHealth}/readyz`,
-      // Its tables exist once member 0 has migrated its store.
+      // Its tables exist once member 0 has created its store.
       prestart: () => grantPublicReader(layout, run, identities),
     },
     {

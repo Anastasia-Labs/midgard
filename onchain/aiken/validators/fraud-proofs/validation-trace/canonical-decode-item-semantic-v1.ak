@@ -60,7 +60,7 @@ validator main(
   }
 }
 
-/// Option B (#620): the commitment this stage re-checks is transition-only —
+/// The commitment this stage re-checks is transition-only —
 /// `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — so no carriage
 /// reaches this stage in any form and it is item-size-independent on every
 /// route. Content is proven later, once, at the observe stage's §8.8 field

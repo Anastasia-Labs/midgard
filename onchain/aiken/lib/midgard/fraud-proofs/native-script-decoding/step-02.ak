@@ -1,7 +1,7 @@
 //// Datum and redeemer wire shapes for the decoding-fault thread's second
 //// step: the header rides the redeemer and is bound to the thread NFT's
 //// asset name; the committed-claim openings authenticate the pre-state
-//// ledger root and (for forced threads) the verdict leaf (#635, #633).
+//// ledger root and (for forced threads) the verdict leaf.
 
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_script_decoding/engine.{BindStateV1}

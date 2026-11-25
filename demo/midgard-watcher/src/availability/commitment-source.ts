@@ -92,7 +92,7 @@ const producersWithout = (
 
 /**
  * Sources the full attested commitment of an `Attested{commitment_hash}` node
- * (spec #685). The only on-chain copy after Apply is the DAAT datum Apply
+ *. The only on-chain copy after Apply is the DAAT datum Apply
  * spent, so this finds the unique valid Apply transaction in the node's
  * canonical unit history (the one that burns the header's DAAT token) and
  * lets the SDK read the spent DAAT output from its producing transaction.

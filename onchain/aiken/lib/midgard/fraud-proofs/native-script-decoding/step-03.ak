@@ -1,5 +1,5 @@
 //// Datum and redeemer wire shapes for the decoding-fault thread's split
-//// third step (#635, #633): open the accused subject, bind its resolved
+//// third step: open the accused subject, bind its resolved
 //// descriptor, then advance or close the frozen scan machine.
 
 use aiken/merkle_patricia_forestry as mpf

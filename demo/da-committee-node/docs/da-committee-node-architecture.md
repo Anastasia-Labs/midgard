@@ -174,7 +174,7 @@ verified at startup to have `SELECT` and no DML privilege on
 on any other table: the committee's private tables and the L1 follower's
 tables in the same database are out of its reach. Each lookup is in an
 explicit PostgreSQL `READ ONLY` transaction; the public process never creates
-or migrates schema.
+schema.
 
 The profile is deliberately not the committee node's connection gater or
 service stack. It has its own non-signer identity, TCP transport, Noise

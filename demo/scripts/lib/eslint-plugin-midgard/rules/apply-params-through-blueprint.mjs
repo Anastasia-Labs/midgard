@@ -3,7 +3,7 @@
 // Parameter application applies whatever list it is handed. Too few terms
 // leave `validator main(...)` parameters as lambdas, and the ledger's single
 // script-context application then reduces to a lambda value: evaluation ends
-// without error, so the deployed script always succeeds (#605/#609). Too many
+// without error, so the deployed script always succeeds. Too many
 // terms give a well-formed script with the wrong hash.
 // `applyBlueprintParams` in midgard-sdk/src/fraud-proof/contracts/blueprint.ts
 // refuses a list whose arity or shape does not match the blueprint, and it is
@@ -42,7 +42,7 @@ export default defineRule({
     schema: [],
     messages: {
       rawApplication:
-        "Raw parameter application skips the arity and shape guard: too few parameters deploy an always-succeeds script (#609), too many a script with the wrong hash. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts, the only production module allowed to apply parameters. A test that needs an independent oracle imports it from its package's tests/**/expected-parameter-application.ts.",
+        "Raw parameter application skips the arity and shape guard: too few parameters deploy an always-succeeds script, too many a script with the wrong hash. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts, the only production module allowed to apply parameters. A test that needs an independent oracle imports it from its package's tests/**/expected-parameter-application.ts.",
       aliased:
         "Renaming a raw parameter-application function hides every later call from this rule. Fix: build the script with `applyBlueprintParams(blueprint, title, params)` from midgard-sdk/src/fraud-proof/contracts/blueprint.ts instead of importing the raw function.",
     },

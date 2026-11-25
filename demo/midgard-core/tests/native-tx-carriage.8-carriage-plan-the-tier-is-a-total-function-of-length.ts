@@ -139,7 +139,7 @@ describe("§8 carriage plan — the tier is a total function of length", () => {
     expect(corner.certificateAssetName).toEqual(
       MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
     );
-    // The welded datum commitment (#606): the certificate's `fieldHash` is
+    // The welded datum commitment: the certificate's `fieldHash` is
     // the plan's own §4 commitment.
     expect(corner.certificate?.fieldHash).toEqual(corner.commitment);
   });

@@ -210,9 +210,8 @@ pub fn field_preimage_certificate_v1(
   let total_length = bytearray.length(preimage)
   expect total_length > chunk_bytes_k
   expect bytearray.length(owner) == 28
-  // The retired asset-name derivation used to force these two bounds as a
-  // side effect (#606 made the name a constant); they are what §8.6 requires
-  // of the datum, so they are enforced here directly. The upper bound reads
+  // These two bounds are what §8.6 requires of the datum, so they are
+  // enforced here directly. The upper bound reads
   // §2.5's field count from its single definition
   // (`native_tx_field_access_v1.field_count`) rather than restating the
   // literal, so a producer and the door cannot drift apart about how many
@@ -347,7 +346,7 @@ pub fn verify_field_preimage_certificate_v1(
     witness_set_compact_cbor,
   )
   let expected_hash = field_commitment_at(body, witness_set, field_index)
-  // The E2 weld (#606, owner ruling 2026-08-16): the datum's `field_hash` is
+  // The weld: the datum's `field_hash` is
   // the same commitment the chunk concatenation is checked against below, so
   // `field_hash ↔ chunk_digests` is welded inside the mint-verified datum.
   // Where the hash "came from" is irrelevant; that the chunks were verified

@@ -185,7 +185,7 @@ describe("Midgard output codec", () => {
     ).toThrow(/Unsupported Midgard versioned script tag/u);
   });
 
-  it("rejects structurally invalid tag-0 native reference-script bytes (#633 probe)", () => {
+  it("rejects structurally invalid tag-0 native reference-script bytes", () => {
     // The #633 probe: language_tag 0 with payload de ad ff, which is not
     // Midgard native-script CBOR. The staged on-chain machine and this codec
     // reject it; the one-shot `ledger_output_v1.parse_script_ref` accepts it

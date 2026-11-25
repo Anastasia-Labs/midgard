@@ -221,7 +221,7 @@ test input_set_uniqueness_step_01_rejects_a_forged_transactions_root() fail {
   )
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 
 const adversarial_branch_levels: Int = 22
 

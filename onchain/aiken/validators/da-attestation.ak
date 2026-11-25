@@ -1550,7 +1550,7 @@ test da_attestation_apply_rejects_old_committee_quorum() fail {
 }
 
 // ---------------------------------------------------------------------------
-// ## Bondless apply against the pooled committee bond (#688, register C3)
+// ## Bondless apply against the pooled committee bond
 //
 // Every negative below is one mutation of `test_honest_apply_tx()`, the
 // transaction `da_attestation_apply_control_exact_pool_backing_and_exact_refund`

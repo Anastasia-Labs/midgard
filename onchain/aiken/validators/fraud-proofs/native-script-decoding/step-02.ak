@@ -1,4 +1,4 @@
-//// ## Native-Script Decoding Fault Proof — Step 02 (#635, #633)
+//// ## Native-Script Decoding Fault Proof — Step 02
 ////
 //// Binds the thread to the committed claim: the disputed header rides the
 //// redeemer and must hash to the thread NFT's asset-name tail; the event's
@@ -185,7 +185,7 @@ validator main(
                 // verbatim from the leaf (2026-08-25 ruling) — the chosen_*
                 // redeemer fields are ignored. Deliberately unguarded: a pair
                 // naming a subject outside the transaction's domain is
-                // step-03's `BindOutOfDomain` close (#633 §7.2), so nothing
+                // step-03's `BindOutOfDomain` close, so nothing
                 // may filter it here.
                 let accusation = engine.scan_accusation_of_v1(reason)
                 engine.pre_bind_scan_state_v1(

@@ -46,7 +46,7 @@ export const dropReleasedHeaders = async (
 
 /**
  * A due Open (or the preparation of its challenger coin) the wallet could not
- * fund this reconciliation. Reported, never blocking (spec #685): the
+ * fund this reconciliation. Reported, never blocking: the
  * watcher still takes every other admitted step, such as a live challenge's
  * settle, close or Timeout. Amounts are decimal lovelace strings, since the
  * status is served as JSON.
@@ -66,7 +66,7 @@ export type WatcherAvailabilityOpenRefusal = Readonly<{
  * be read at the source tip, or no authentic pool was found there. The
  * Timeout never falls back to the finalized snapshot's pool; it is retried on
  * the next reconciliation. Reported, never blocking: the watcher still takes
- * the next admitted step (spec #685, P9).
+ * the next admitted step.
  */
 export type WatcherAvailabilityTimeoutDeferral = Readonly<{
   headerHash: string;
@@ -157,13 +157,13 @@ export type WatcherAvailabilityStatus = Readonly<{
   /**
    * The pooled DA bond from the last successful pool read, taken on every
    * reconciliation whether or not a header is pending, and kept when a later
-   * reconciliation fails. It never changes `phase` (spec #685).
+   * reconciliation fails. It never changes `phase`.
    */
   pool?: WatcherDaBondPoolObservation;
   /**
    * Why the last reconciliation's pool read failed, absent once a read
    * succeeds. Reported only: a failed pool read never changes `phase` or
-   * blocks an action (spec #685).
+   * blocks an action.
    */
   poolReadFailure?: string;
   /** Withheld Attested headers whose Open deadline passed unchallenged. */

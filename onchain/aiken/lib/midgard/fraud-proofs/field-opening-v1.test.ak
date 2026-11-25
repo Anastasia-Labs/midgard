@@ -486,7 +486,7 @@ test tier_three_forgery_vector_is_admissible_carriage() {
 /// hence the datum's `tx_id`, is the committed transaction's — followed by the
 /// `witness_set_hash` of a witness set of its own construction. Everything the
 /// minter checks is satisfied: nothing at the mint can know which witness set
-/// the thread anchored. What the mint *does* pin is the weld (#606): the
+/// the thread anchored. What the mint *does* pin is the weld: the
 /// certificate that comes out wears the **fabricated** commitment in its
 /// `field_hash`, a value different from the committed transaction's own slot-7
 /// commitment — which is exactly what the door's anchored equality refuses in
@@ -547,7 +547,7 @@ test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() fail {
   )
 }
 
-/// **The guard, field 7 — the forged-certificate rejection (#606).** Honest
+/// **The guard, field 7 — the forged-certificate rejection.** Honest
 /// compact structure, honest witness set, honest `WitnessAnchor` — every §2.5
 /// check above passes — and the door still refuses, because the fabricated
 /// certificate's mint-welded `field_hash` is the fabrication's commitment and
@@ -620,7 +620,7 @@ test opened_field_walk_refuses_certified_carriage_on_a_witness_field() fail {
   field_item_count(view) == forged_witness_count
 }
 
-// ## The welded-hash positives (#606)
+// ## The welded-hash positives
 //
 // The four `fail` rows above must fail for the one reason the weld supplies,
 // not because tier 3 stopped working. These rows open the identical carriage,
@@ -810,7 +810,7 @@ fn anchored_view_with_references(
 /// carriage of the committed items — so the handle is demonstrably live — and the
 /// very next opening of that same live handle is refused when it carries the
 /// tier-3 fabrication, because the fabricated certificate's welded `field_hash`
-/// fails the door's equality against the handle's anchored commitment (#606).
+/// fails the door's equality against the handle's anchored commitment.
 ///
 /// Remove the `certificate.field_hash == expected_hash` expect in
 /// `native_tx_field_access_v1.certified_chunks` and this test passes with

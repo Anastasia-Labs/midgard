@@ -121,7 +121,7 @@ describe("native-tx field-access V1 cross-language goldens", () => {
     );
     expect(certificate.totalLength).toBeGreaterThan(MIDGARD_CHUNK_BYTES_K);
     // The datum-shape identity that replaced the retired asset-name class
-    // (#606): the welded `field_hash` is §4's commitment over the rebuilt
+    //: the welded `field_hash` is §4's commitment over the rebuilt
     // payload.
     expect(certificate.fieldHashHex).toBe(
       hex(

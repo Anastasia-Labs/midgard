@@ -531,7 +531,7 @@ test mk_cons_rejects_an_incongruent_element_type() {
   )
 }
 
-// V-9 (#532). This was `test ... fail` over a single call to
+// This was `test ... fail` over a single call to
 // `verify_builtin_type_failure_v1`, a three-conjunct production `and {}`, so it
 // went green as soon as ANY conjunct was false and the name could not establish
 // which guard fired. Single-conjunct mutation controls (each conjunct
@@ -2372,7 +2372,7 @@ test equals_data_separates_minus_two_to_the_64_from_its_predecessor() {
   }
 }
 
-// SH-2: the BLS builtins carry Cardano's flat tags (Plutus `Builtins.hs`):
+// The BLS builtins carry Cardano's flat tags (Plutus `Builtins.hs`):
 // 58/65 compress, 59/66 uncompress, 60/67 hashToGroup. The hashToGroup
 // points are RFC 9380 hash_to_curve of "midgard" under the BLS signature
 // suites' DSTs, computed independently of this module.

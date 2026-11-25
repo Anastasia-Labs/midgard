@@ -108,8 +108,8 @@ export const requireUtxoWithUnit = async (
 };
 
 /**
- * Registers the reward account of the merkelized published-chunk verifier
- * (issue #545). A step on the chunked route withdraws zero from it, which is
+ * Registers the reward account of the merkelized published-chunk verifier.
+ * A step on the chunked route withdraws zero from it, which is
  * how the verifier is invoked, so the account must exist first — exactly as the
  *  membership account must for the redeemer-carried route.
  */

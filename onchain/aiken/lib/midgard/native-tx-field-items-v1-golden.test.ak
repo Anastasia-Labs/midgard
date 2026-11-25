@@ -10,8 +10,8 @@
 // (`demo/midgard-core/src/codec/native-tx-field-items.ts`) and is recomputed
 // here by the Aiken producers, so the two encoders cannot silently diverge. The
 // shared surface all nine fields agree on is pinned by the sibling module
-// `native-tx-field-access-v1-golden.test.ak` (#568); this one is the per-field
-// fan-out (#569).
+// `native-tx-field-access-v1-golden.test.ak`; this one is the per-field
+// fan-out.
 
 use aiken/builtin
 use aiken/collection/list

@@ -10,21 +10,8 @@ import { describe, expect } from "vitest";
 
 import { spendableUtxoPage } from "../../src/database/http-read-pages.js";
 import { MempoolLedgerDB, WithdrawalsDB } from "../../src/database/index.js";
-import {
-  backfillWithdrawalLedgerOutRefs,
-  publicWithdrawalReadAuthorityReady,
-  WITHDRAWAL_OUTREF_BACKFILL_BATCH,
-  WITHDRAWAL_OUTREF_DECODE_BUDGET_MS,
-  WITHDRAWAL_OUTREF_MAX_BYTES,
-} from "../../src/database/withdrawal-ledger-outref.backfill.js";
 import { decodeWithdrawalLedgerOutRef } from "../../src/database/withdrawal-ledger-outref.decode.js";
-import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 import { insertWithdrawals } from "../helpers/event-rows.js";
-import {
-  modelSlotTime,
-  reconcileOverDead,
-  writeFollowerView,
-} from "../helpers/follower-view.js";
 import {
   databaseFixtureBytes,
   databaseOutputReferenceId,
@@ -68,138 +55,26 @@ const withdrawal = (
 
 export const registerWalletViewTests = () => {
   describe("wallet view of an address", () => {
-    it.effect(
-      "decodes supported extrema and the largest permitted noncanonical legacy reference within its synchronous budget",
-      () =>
-        Effect.sync(() => {
-          const txId = Buffer.alloc(32, 0x11);
-          for (const outputIndex of [0, 23, 24, 255, 256, 65535]) {
-            const raw = Buffer.from(
-              LucidData.to(
-                {
-                  transactionId: txId.toString("hex"),
-                  outputIndex: BigInt(outputIndex),
-                },
-                SDK.OutputReference,
-              ),
-              "hex",
-            );
-            expect(raw.length).toBeLessThan(WITHDRAWAL_OUTREF_MAX_BYTES);
-            expect(decodeWithdrawalLedgerOutRef(raw)).toEqual(
-              encodeMidgardSpendInputItem({ txId, outputIndex }),
-            );
-          }
-          // Empty chunks and a padded uint64 preserve the logical Data value; this is
-          // accepted by the actual SDK decoder, with the most chunk headers the bound permits.
-          const prefix = "d8799f5f";
-          const suffix = `5820${txId.toString("hex")}ff1b000000000000ffffff`;
+    it.effect("decodes supported output index extrema", () =>
+      Effect.sync(() => {
+        const txId = Buffer.alloc(32, 0x11);
+        for (const outputIndex of [0, 23, 24, 255, 256, 65535]) {
           const raw = Buffer.from(
-            prefix +
-              "40".repeat(
-                WITHDRAWAL_OUTREF_MAX_BYTES -
-                  (prefix.length + suffix.length) / 2,
-              ) +
-              suffix,
+            LucidData.to(
+              {
+                transactionId: txId.toString("hex"),
+                outputIndex: BigInt(outputIndex),
+              },
+              SDK.OutputReference,
+            ),
             "hex",
           );
-          expect(raw.length).toBe(WITHDRAWAL_OUTREF_MAX_BYTES);
-          const started = performance.now();
           expect(decodeWithdrawalLedgerOutRef(raw)).toEqual(
-            encodeMidgardSpendInputItem({ txId, outputIndex: 65535 }),
+            encodeMidgardSpendInputItem({ txId, outputIndex }),
           );
-          const elapsedMs = performance.now() - started;
-          expect(elapsedMs).toBeLessThan(WITHDRAWAL_OUTREF_DECODE_BUDGET_MS);
-          console.info("legacy outref decode", {
-            bytes: raw.length,
-            elapsedMs,
-          });
-        }),
+        }
+      }),
     );
-
-    for (const heldStatus of [
-      WithdrawalsDB.Status.Awaiting,
-      WithdrawalsDB.Status.Finalized,
-    ])
-      it.effect(
-        `holds an oversized ${heldStatus} unknown before decoding and rolls back real follower ingestion without changing raw rows or its point`,
-        () =>
-          isolatedDb(
-            Effect.gen(function* () {
-              const valid = withdrawal(
-                "oversize-valid",
-                WithdrawalsDB.Status.Awaiting,
-                null,
-              );
-              const prefix = "d8799f5f";
-              const suffix = `5820${"11".repeat(32)}ff1b000000000000ffffff`;
-              const oversized = {
-                ...withdrawal(
-                  "oversize-held",
-                  heldStatus,
-                  heldStatus === WithdrawalsDB.Status.Finalized
-                    ? WithdrawalsDB.Validity.WithdrawalIsValid
-                    : null,
-                ),
-                l2_outref: Buffer.from(
-                  prefix +
-                    "40".repeat(
-                      WITHDRAWAL_OUTREF_MAX_BYTES +
-                        1 -
-                        (prefix.length + suffix.length) / 2,
-                    ) +
-                    suffix,
-                  "hex",
-                ),
-              };
-              // This over-limit encoding is semantically decodable, so a missing input
-              // bound cannot hide behind the legacy undecodable-row policy.
-              expect(decodeWithdrawalLedgerOutRef(oversized.l2_outref)).toEqual(
-                encodeMidgardSpendInputItem({
-                  txId: Buffer.alloc(32, 0x11),
-                  outputIndex: 65535,
-                }),
-              );
-              yield* insertWithdrawals([valid, oversized]);
-              const sql = yield* SqlClient.SqlClient;
-              yield* sql`UPDATE withdrawal_utxos SET l1_event_key = ${Buffer.alloc(32, 0x31)}, l1_origin_outref = ${Buffer.alloc(34, 0x32)}`;
-              const before =
-                yield* sql`SELECT * FROM withdrawal_utxos ORDER BY event_id`;
-              const settings =
-                yield* sql`SELECT current_setting('statement_timeout') AS statement_timeout, current_setting('lock_timeout') AS lock_timeout`;
-              const plan = yield* writeFollowerView(100, []);
-              const pointBefore =
-                yield* sql`SELECT * FROM follower_event_ingestion`;
-              const held = yield* Effect.either(
-                withFollowerWrite(
-                  reconcileOverDead(plan, {
-                    network: "Custom",
-                    slotToUnixTime: modelSlotTime,
-                    cutoffMs: modelSlotTime(100),
-                  }),
-                ),
-              );
-              expect(held._tag === "Left" && held.left.message).toBe(
-                "E_WITHDRAWAL_READ_BACKFILL_INPUT_LIMIT",
-              );
-              expect(
-                yield* sql`SELECT * FROM withdrawal_utxos ORDER BY event_id`,
-              ).toEqual(before);
-              expect(
-                yield* sql`SELECT * FROM follower_event_ingestion`,
-              ).toEqual(pointBefore);
-              expect(
-                yield* sql`SELECT current_setting('statement_timeout') AS statement_timeout, current_setting('lock_timeout') AS lock_timeout`,
-              ).toEqual(settings);
-              expect(yield* publicWithdrawalReadAuthorityReady).toBe(false);
-              const page = yield* Effect.either(
-                spendableUtxoPage(address1, { limit: 25, cursor: undefined }),
-              );
-              expect(page._tag).toBe("Left");
-              if (page._tag === "Left")
-                expect(page.left.message).toBe("E_PUBLIC_READ_MIGRATING");
-            }),
-          ),
-      );
 
     it.effect(
       "uses candidate indexes on the actual page query with more than ten thousand unrelated pending withdrawals",
@@ -213,7 +88,6 @@ export const registerWalletViewTests = () => {
               null,
             );
             yield* insertWithdrawals([seed]);
-            yield* backfillWithdrawalLedgerOutRefs;
             // Imported enum members can create reverse-name properties after bundling.
             // Copy the actual seeded row's SQL keys instead of enumerating that object.
             const copied = Object.keys(seed).filter(
@@ -343,17 +217,6 @@ export const registerWalletViewTests = () => {
               hex([ledgerEntry1, { ...ledgerEntry1, outref: named[2]! }]),
             );
             // Single-sourced: what the view hides is admission's own set.
-            const held = yield* Effect.either(
-              spendableUtxoPage(address1, { limit: 100, cursor: undefined }),
-            );
-            expect(held._tag).toBe("Left");
-            if (held._tag === "Left")
-              expect(held.left.message).toBe("E_PUBLIC_READ_MIGRATING");
-            const sql = yield* SqlClient.SqlClient;
-            const before =
-              yield* sql`SELECT event_id, raw_event_info, l2_outref, status, validity FROM withdrawal_utxos ORDER BY event_id`;
-            expect(yield* backfillWithdrawalLedgerOutRefs).toBe(3);
-            expect(yield* publicWithdrawalReadAuthorityReady).toBe(true);
             expect(
               hex(
                 yield* spendableUtxoPage(address1, {
@@ -362,17 +225,6 @@ export const registerWalletViewTests = () => {
                 }),
               ),
             ).toEqual(visible);
-            expect(
-              yield* sql`SELECT event_id, raw_event_info, l2_outref, status, validity FROM withdrawal_utxos ORDER BY event_id`,
-            ).toEqual(before);
-            // A restored unknown row in a later view must hold again, even after a ready read.
-            yield* sql`UPDATE withdrawal_utxos SET l2_ledger_outref = NULL, l2_ledger_outref_state = 'unknown' WHERE event_id = ${unclassified.event_id}`;
-            expect(yield* publicWithdrawalReadAuthorityReady).toBe(false);
-            const restored = yield* Effect.either(
-              spendableUtxoPage(address1, { limit: 100, cursor: undefined }),
-            );
-            expect(restored._tag).toBe("Left");
-            expect(yield* backfillWithdrawalLedgerOutRefs).toBe(1);
             const pending =
               yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
             expect([...pending].sort()).toEqual(
@@ -390,109 +242,23 @@ export const registerWalletViewTests = () => {
         ),
     );
 
-    it.effect(
-      "prioritizes active unknowns over larger finalized history and bounds each gated batch",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const active = {
-              ...withdrawal(
-                "priority-active",
-                WithdrawalsDB.Status.Awaiting,
-                null,
-              ),
-              // Every archived id sorts before this one: removing active priority must fail.
-              event_id: Buffer.from(
-                LucidData.to(
-                  { transactionId: "ff".repeat(32), outputIndex: 65535n },
-                  SDK.OutputReference,
-                ),
-                "hex",
-              ),
-            };
-            const archived = Array.from({ length: 300 }, (_, index) =>
-              withdrawal(
-                `priority-archive-${index}`,
-                WithdrawalsDB.Status.Finalized,
-                WithdrawalsDB.Validity.WithdrawalIsValid,
-              ),
-            );
-            yield* insertWithdrawals([...archived, active]);
-            const sql = yield* SqlClient.SqlClient;
-            const before =
-              yield* sql`SELECT event_id, raw_event_info, l2_outref, status, validity FROM withdrawal_utxos ORDER BY event_id`;
-            const started = performance.now();
-            const changed = yield* backfillWithdrawalLedgerOutRefs;
-            expect(changed).toBeGreaterThan(0);
-            expect(changed).toBeLessThanOrEqual(
-              WITHDRAWAL_OUTREF_BACKFILL_BATCH,
-            );
-            expect(performance.now() - started).toBeLessThan(2_000);
-            expect(yield* publicWithdrawalReadAuthorityReady).toBe(true);
-            const states = yield* sql<{
-              l2_ledger_outref_state: string;
-              count: number;
-            }>`SELECT l2_ledger_outref_state, COUNT(*)::int AS count FROM withdrawal_utxos GROUP BY l2_ledger_outref_state`;
-            expect(
-              states.find((row) => row.l2_ledger_outref_state === "unknown")
-                ?.count,
-            ).toBe(301 - changed);
-            expect(
-              yield* sql`SELECT event_id, raw_event_info, l2_outref, status, validity FROM withdrawal_utxos ORDER BY event_id`,
-            ).toEqual(before);
-          }),
-        ),
-    );
-    it.effect(
-      "rolls derived progress back with its outer follower transaction and ignores only proven undecodable rows",
-      () =>
-        isolatedDb(
-          Effect.gen(function* () {
-            const valid = withdrawal(
-              "rollback-valid",
-              WithdrawalsDB.Status.Awaiting,
-              null,
-            );
-            const undecodable = {
-              ...withdrawal(
-                "rollback-undecodable",
-                WithdrawalsDB.Status.Awaiting,
-                null,
-              ),
-              l2_outref: Buffer.from("ff", "hex"),
-            };
-            yield* insertWithdrawals([valid, undecodable]);
-            const sql = yield* SqlClient.SqlClient;
-            const before =
-              yield* sql`SELECT * FROM withdrawal_utxos ORDER BY event_id`;
-            const aborted = yield* Effect.either(
-              withFollowerWrite(
-                Effect.gen(function* () {
-                  expect(yield* backfillWithdrawalLedgerOutRefs).toBe(2);
-                  expect(yield* publicWithdrawalReadAuthorityReady).toBe(true);
-                  return yield* Effect.fail("causal-test-rollback");
-                }),
-              ),
-            );
-            expect(aborted._tag).toBe("Left");
-            if (aborted._tag === "Left")
-              expect(aborted.left).toBe("causal-test-rollback");
-            expect(
-              yield* sql`SELECT * FROM withdrawal_utxos ORDER BY event_id`,
-            ).toEqual(before);
-            expect(yield* publicWithdrawalReadAuthorityReady).toBe(false);
-            expect(yield* backfillWithdrawalLedgerOutRefs).toBe(2);
-            expect(
-              yield* sql`SELECT l2_ledger_outref, l2_ledger_outref_state FROM withdrawal_utxos WHERE event_id = ${undecodable.event_id}`,
-            ).toEqual([
-              { l2_ledger_outref: null, l2_ledger_outref_state: "undecodable" },
-            ]);
-            expect(yield* publicWithdrawalReadAuthorityReady).toBe(true);
-            const pending =
-              yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
-            expect(pending.size).toBe(1);
-          }),
-        ),
+    it.effect("leaves an undecodable withdrawal out of the pending set", () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const valid = withdrawal(
+            "undecodable-valid",
+            WithdrawalsDB.Status.Awaiting,
+            null,
+          );
+          const undecodable = {
+            ...withdrawal("undecodable", WithdrawalsDB.Status.Awaiting, null),
+            l2_outref: Buffer.from("ff", "hex"),
+          };
+          yield* insertWithdrawals([valid, undecodable]);
+          const pending = yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
+          expect(pending.size).toBe(1);
+        }),
+      ),
     );
   });
 };

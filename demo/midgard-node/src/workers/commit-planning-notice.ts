@@ -9,7 +9,7 @@ export type CommitPlanningSelection = Readonly<{
   observedAtMs: number;
   authority: Readonly<{
     view: GateView;
-    /** Canonical nonnegative PostgreSQL bigint counter (migration 0021),
+    /** Canonical nonnegative PostgreSQL bigint counter,
      * emitted by the follower driver as epoch::text; never a lease UUID. */
     epoch: string;
     baseHeaderHash: string;
@@ -56,7 +56,7 @@ const record = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const hex = (v: unknown, length: number): v is string =>
   typeof v === "string" && v.length === length && /^[a-f0-9]+$/u.test(v);
-/** Migration 0021 starts at 0 and the sole driver increments. Refuse negative,
+/** The counter starts at 0 and the sole driver increments. Refuse negative,
  * noncanonical or overflowing counters; bound the input before BigInt parse. */
 const historyEpoch = (v: unknown): v is string =>
   typeof v === "string" &&

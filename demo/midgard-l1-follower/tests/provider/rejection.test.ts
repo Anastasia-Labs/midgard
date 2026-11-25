@@ -34,7 +34,7 @@ const hash = (byte: number, length = 28): Cbor =>
 const describeHex = (hex: string): string =>
   describeLedgerRejection(Buffer.from(hex, "hex"));
 
-// Rejections cardano-node 11.1.0 returned on a phase-4 devnet (#816), as the
+// Rejections cardano-node 11.1.0 returned on a phase-4 devnet, as the
 // transport delivered them.
 describe("real devnet rejections", () => {
   it("names a validity lower bound ahead of the ledger slot", () => {

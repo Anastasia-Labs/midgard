@@ -112,7 +112,7 @@
   {
     "file": "midgard-core/src/availability-operation-journal.ts",
     "max": 518,
-    "reason": "One constructor closure owns the journal's leases, reservations, transitions and retention over a single SQLite connection; its methods share that connection. Opening and migrating the database live in availability-operation-journal.schema.ts and the shared SQL operations and transaction helper in availability-operation-journal.storage.ts, both loaded through the package's subpath imports so Node strip-types and bundled ESM/CJS consumers resolve them."
+    "reason": "One constructor closure owns the journal's leases, reservations, transitions and retention over a single SQLite connection; its methods share that connection. Opening the database and creating its schema live in availability-operation-journal.schema.ts and the shared SQL operations and transaction helper in availability-operation-journal.storage.ts, both loaded through the package's subpath imports so Node strip-types and bundled ESM/CJS consumers resolve them."
   },
   {
     "file": "midgard-core/src/cek-proof.verify-one-program-material.ts",

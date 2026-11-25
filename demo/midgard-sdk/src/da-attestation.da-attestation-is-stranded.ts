@@ -54,7 +54,7 @@ export const DaParamsDatum = asDataType<DaParamsDatum>(DaParamsDatumSchema);
  * a threshold that merely sits below its floor.
  *
  * Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
- * §4 (Q63, ACCEPTED; §4 amended 2026-08-11 and 2026-08-13).
+ * §4.
  */
 export const MIN_DA_OWNER_COUNT = 1;
 
@@ -74,7 +74,7 @@ export const MIN_DA_OWNER_COUNT = 1;
 export const MIN_DA_COMMITTEE_SIZE = 1;
 
 /**
- * F04 §4 governed threshold floor: `ceil(2*setLength/3)`, defined for
+ * The governed threshold floor: `ceil(2*setLength/3)`, defined for
  * `setLength >= 1`.
  *
  * TypeScript twin of `governed_threshold_floor` in

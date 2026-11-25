@@ -46,7 +46,7 @@ export type InvalidRangeStep01Build = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  /** Which route the membership opening took to L1 (issue #545). */
+  /** Which route the membership opening took to L1. */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };

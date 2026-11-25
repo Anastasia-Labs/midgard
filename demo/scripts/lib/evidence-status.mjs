@@ -5,7 +5,7 @@
 // `PASS (live-verified on preprod)`. Comparing a whole status cell against the
 // literal "PASS" therefore silently excludes exactly the rows whose decoration
 // records how the claim was established, so every status-keyed rule written
-// that way no-ops on them (issue #519).
+// that way no-ops on them.
 //
 // `statusRole` reduces a status to its leading role token and `isPassStatus` is
 // the base-role PASS test. Keep status parsing shared between the remaining

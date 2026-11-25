@@ -1,4 +1,4 @@
-//// R5 item 1 (#617): validator-level vectors for the cek decomposition.
+//// Validator-level vectors for the cek decomposition.
 ////
 //// Index 11 of the validation-dispute machine used to be one aggregate
 //// "direct" resolver. It is now `cek_v1` (a `prepare_selected` over a group

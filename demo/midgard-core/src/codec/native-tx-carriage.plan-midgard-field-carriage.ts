@@ -77,7 +77,7 @@ export type MidgardFieldCarriagePlan = {
   /** §8.6. Present under tier 3 only — the only tier that certifies. */
   readonly certificate: MidgardFieldPreimageCertificate | null;
   /**
-   * §8.6's constant token name (#606) — the same for every certificate of the
+   * §8.6's constant token name — the same for every certificate of the
    * policy; identity lives in the datum. Present under tier 3 only.
    */
   readonly certificateAssetName: Buffer | null;

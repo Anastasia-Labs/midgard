@@ -6,7 +6,7 @@
 // Their source is the genuine signed-Cardano field-2 inline-datum boundary found
 // by `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`, which is the
 // only implementation of that search; the producer runs the suite and rebinds
-// these constants from the vector it publishes (#588).
+// these constants from the vector it publishes.
 
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1

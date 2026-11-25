@@ -8,7 +8,7 @@
  * or an external one, never this.
  *
  * - The store is opened as a reader: it is never started, so it takes no
- *   writer lease and runs no migration. The follower in the main thread is
+ *   writer lease and creates no schema. The follower in the main thread is
  *   its only writer.
  * - It tracks the node's index (`nodeIndexSpec`) from the open: the
  *   protocol set the follower records and the own wallets. A read of

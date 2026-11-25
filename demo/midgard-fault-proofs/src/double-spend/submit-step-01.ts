@@ -94,7 +94,7 @@ export type Step01Build = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  /** Which route the membership opening took to L1 (issue #545). */
+  /** Which route the membership opening took to L1. */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
@@ -132,7 +132,7 @@ export const buildStep01 = async ({
   /**
    * Chunks published by `publishProofChunksV1`, in proof order. When present
    * the membership proof reaches L1 through them and never enters this
-   * transaction (issue #545).
+   * transaction.
    */
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
@@ -292,7 +292,7 @@ export const buildStep01 = async ({
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     // The prover chooses the carriage. Published chunks are the route for a
-    // proof the 16,384-byte envelope cannot carry (issue #545); the redeemer
+    // proof the 16,384-byte envelope cannot carry; the redeemer
     // route stays the cheaper one for every proof that fits.
     const resolvedChunkIndices = builtChunkReferenceIndices({
       ctx,

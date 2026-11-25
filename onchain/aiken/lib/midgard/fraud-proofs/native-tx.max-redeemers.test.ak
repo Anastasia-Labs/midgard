@@ -6,7 +6,7 @@
 // Their source is the genuine signed-Cardano field-8 boundary found by
 // `demo/midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts`,
 // which is the only implementation of that search; the producer runs the suite and
-// rebinds these constants from the vector it publishes (#588).
+// rebinds these constants from the vector it publishes.
 
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}

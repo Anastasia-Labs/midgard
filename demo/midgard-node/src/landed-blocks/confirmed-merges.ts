@@ -1,8 +1,7 @@
 /**
  * `confirmed_ledger` is temporal: every landed
  * block folded into it keeps a stored delta keyed by its header
- * (`node_confirmed_merges` and `node_confirmed_ledger_spent`, migration
- * 0014), so the fold of a merge a rollback undid is unfolded in O(delta),
+ * (`node_confirmed_merges` and `node_confirmed_ledger_spent`), so the fold of a merge a rollback undid is unfolded in O(delta),
  * and the frontier only ever moves along landed header identities.
  *
  * - A fold checks its base first: the frontier is the block's parent header

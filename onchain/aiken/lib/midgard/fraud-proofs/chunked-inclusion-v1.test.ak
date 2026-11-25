@@ -1,5 +1,5 @@
-//// Guards for the fault-proof step seam onto published-chunk carriage
-//// (issue #545). One attributed test per named invariant of
+//// Guards for the fault-proof step seam onto published-chunk carriage.
+//// One attributed test per named invariant of
 //// `midgard/fraud_proofs/chunked_inclusion_v1`.
 ////
 //// The library has no prover, so proofs are synthesised and the root they
@@ -244,7 +244,7 @@ test chunked_inclusion_v1_rejects_a_present_key_as_non_membership() {
   !non_membership(published, deep_root(steps), all_indices(published))
 }
 
-// ## Empty-trie sentinel translation (#625)
+// ## Empty-trie sentinel translation
 //
 // The three selectors `validators/pexcludes.ak` carries for the direct route,
 // re-run through this route's terminal. The sentinel positive is the

@@ -1366,7 +1366,7 @@ pub fn insert_root(
 /// library's partial `update` precondition true.
 /// `root` must be a non-empty trie root: membership of `key` cannot hold in
 /// an empty trie, so the `env.empty_merkle_tree_root` sentinel translation of
-/// `library_root` is deliberately not applied here (#625).
+/// `library_root` is deliberately not applied here.
 pub fn update_root(
   root: ByteArray,
   key: ByteArray,

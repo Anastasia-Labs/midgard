@@ -170,7 +170,7 @@ test zero_input_step_01_binds_native_v1_block_fixture() {
   )
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 //
 // The depth these selectors use is past the point at which the direct route
 // exhausts the 16,384-byte L1 envelope (branch level 23 for this family, at a

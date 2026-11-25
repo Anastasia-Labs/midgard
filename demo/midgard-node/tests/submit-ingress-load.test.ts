@@ -1,4 +1,4 @@
-// The submit-ingress load harness (#871): its corpus must be what it claims
+// The submit-ingress load harness: its corpus must be what it claims
 // (every valid tx admitted and accepted against the corpus genesis, every junk
 // kind refused where and why the manifest says), and its client must send what
 // the report then counts.

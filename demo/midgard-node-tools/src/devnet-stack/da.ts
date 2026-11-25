@@ -72,7 +72,7 @@ export const ensureCommitteeDatabases = async (layout: Layout, run: RunEnv) => {
 /**
  * The public retained-DA reader: a login role with SELECT on exactly the two
  * tables it serves, in member 0's database. The tables exist only once that
- * member has migrated its store, so this is retried until it succeeds.
+ * member has created its store, so this is retried until it succeeds.
  */
 export const grantPublicReader = async (
   layout: Layout,

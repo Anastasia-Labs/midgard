@@ -20,7 +20,7 @@ export type AcceptanceSettlementSnapshot = {
   attempts: readonly AcceptanceSettlementRow[];
 };
 
-/** Dedicated read-only connection. No normal service/migration/owner layer is instantiated. */
+/** Dedicated read-only connection. No normal service/schema/owner layer is instantiated. */
 export const readAcceptanceSettlements = async (
   run: RunEnv,
   scope: AcceptanceNativePayoutScope,

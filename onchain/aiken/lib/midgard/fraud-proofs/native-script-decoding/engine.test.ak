@@ -1,4 +1,4 @@
-//// Unit selectors for the decoding-fault engine (#635, #633): the budgeted
+//// Unit selectors for the decoding-fault engine: the budgeted
 //// fold over the frozen scan primitives, the machine bind, the authenticated
 //// chunk window, and the canonical thread-state encoder.
 ////

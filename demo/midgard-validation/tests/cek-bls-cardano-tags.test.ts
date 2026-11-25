@@ -20,7 +20,7 @@ import {
 import { builtin as named } from "./helpers/uplc-builtins.js";
 import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.js";
 
-// SH-2: scripts name the BLS builtins by Cardano's flat tags (Plutus
+// Scripts name the BLS builtins by Cardano's flat tags (Plutus
 // `Builtins.hs`: 58/65 compress, 59/66 uncompress, 60/67 hashToGroup). The
 // hashToGroup points are RFC 9380 hash_to_curve of "midgard" under the BLS
 // signature suites' DSTs, computed independently of the machine.

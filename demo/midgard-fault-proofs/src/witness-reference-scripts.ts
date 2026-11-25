@@ -30,7 +30,7 @@ export type FaultProofWitnessReferenceScripts = {
   readonly fraudProofMint?: UTxO;
   /** The `phas.membership.withdraw` membership verifier. */
   readonly phasMembershipWithdraw?: UTxO;
-  /** The chunked-proof membership verifier (#545 published-chunk carriage). */
+  /** The chunked-proof membership verifier. */
   readonly chunkedVerifyWithdraw?: UTxO;
   /** The `pexcludes.exclusion.withdraw` exclusion verifier. */
   readonly pexcludesWithdraw?: UTxO;

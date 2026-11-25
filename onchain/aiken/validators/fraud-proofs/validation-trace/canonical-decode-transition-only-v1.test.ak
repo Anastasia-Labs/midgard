@@ -1,4 +1,4 @@
-//// Option B (#620, spec #619): the canonical-decode complete-item path
+//// The canonical-decode complete-item path
 //// commits to the transition alone. These are the validator-level vectors for
 //// the adversarial-matrix rows this change owns — wrong-content door aborts
 //// through every carriage tier and the publication arm (row A), retired-shape

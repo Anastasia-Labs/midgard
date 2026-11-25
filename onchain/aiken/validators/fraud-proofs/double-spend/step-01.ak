@@ -151,7 +151,7 @@ test double_spend_step_01_binds_native_v1_block_fixture() {
   run_step_01(fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()))
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 //
 // Branch level 22 is the depth at which the direct route exhausts the
 // 16,384-byte L1 envelope for this family. Carried by published chunks, the

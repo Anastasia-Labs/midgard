@@ -1,5 +1,5 @@
 /**
- * The admission writer's batch admit (#882), on the real admission statement
+ * The admission writer's batch admit, on the real admission statement
  * and test Postgres: one registration answers each request on its own, from
  * memory, and writes the registered ones.
  */

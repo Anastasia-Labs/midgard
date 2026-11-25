@@ -63,7 +63,7 @@ export const readFaultAttestation = async (
 /**
  * Observable 1 without a `landed_block_invalid` report: our node reported
  * the fault only awaiting its DA, which it does while the fault is
- * unattested (#925). That is accepted only when L1 shows the fault's output
+ * unattested. That is accepted only when L1 shows the fault's output
  * spent by the watcher's own removal strictly before the fault's DA apply,
  * or no DA apply at all. A DA apply in the removal's slot is not before it.
  * Otherwise names what L1 does not show.

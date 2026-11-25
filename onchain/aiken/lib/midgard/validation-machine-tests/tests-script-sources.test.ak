@@ -837,7 +837,7 @@ test script_sources_rejects_a_forged_output_item_commitment() {
 }
 
 /// Was `script_sources_rejects_a_forged_output_item_length`, renamed for the
-/// quantity it now forges (#592).
+/// quantity it now forges.
 ///
 /// The old row forged `ItemProofV1.item_length`, whose only effect was on the
 /// `bounded_collection_v1.verify_item` membership leaf — the conjunct the flat
@@ -1104,7 +1104,7 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   )
 }
 
-/// The mint fold's three steps, under §8's field-access door (#592).
+/// The mint fold's three steps, under §8's field-access door.
 ///
 /// **This vector's begin step was a tripwire and is now a positive assertion.**
 /// Under the counted scheme `script_sources_begin_mint_policy` authenticated its

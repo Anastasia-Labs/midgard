@@ -58,7 +58,7 @@ export const runAikenCheck = ({ projectRoot, selectors }) => {
 //
 // `aiken check -m <selector>` exits 0 when the selector matches nothing — the
 // zero-collection shape that put 17 declared tests behind a `midgard/` prefix
-// that could never match (issue #519, finding V-1). It is rejected here first.
+// that could never match. It is rejected here first.
 export const deriveAikenOutcome = ({ label, report, status, declared }) => {
   const modules = Array.isArray(report.modules) ? report.modules : [];
   const collected = modules.flatMap((module) =>

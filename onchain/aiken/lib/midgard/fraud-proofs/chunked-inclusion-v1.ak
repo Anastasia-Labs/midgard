@@ -1,4 +1,4 @@
-//// Published-chunk carriage of a fault-proof step's MPF opening (issue #545).
+//// Published-chunk carriage of a fault-proof step's MPF opening.
 ////
 //// ## Why this exists
 ////
@@ -38,7 +38,7 @@
 //// authenticated root, so which one a prover takes is normally the prover's
 //// business and neither weakens the other.
 ////
-//// ## The gap that once broke that parity, and its repair (#606/#608/#625)
+//// ## The gap that once broke that parity, and its repair
 ////
 //// Stated here rather than left implied, because the parity claim above was
 //// for a while unqualified and untrue:

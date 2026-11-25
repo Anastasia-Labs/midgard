@@ -19,7 +19,7 @@ use midgard/mpf_proof_v1 as canonical_mpf
 /// An existing key or an invalid proof cannot satisfy this comparison.
 ///
 /// The root is translated through the Midgard empty-trie sentinel before it
-/// reaches the MPF library (#606, from #608's classification). Midgard commits
+/// reaches the MPF library. Midgard commits
 /// `env.empty_merkle_tree_root = blake2b_256("")` for every empty MPF —
 /// `state-queue.ak` forces a first block over a genesis confirmed state to
 /// carry exactly that value as `prev_utxos_root` — while the library
@@ -166,7 +166,7 @@ test exclusion_rejects_unproven_root() fail {
   run(redeemer_of(unproven_root, test_key, []))
 }
 
-// ## No-input fixture witnesses (#582)
+// ## No-input fixture witnesses
 //
 // The no-input step-03/step-04 selectors attach delegated `pexcludes` claims
 // but never execute this validator — the blind spot that let the original
@@ -228,7 +228,7 @@ test exclusion_accepts_the_no_input_step_03_populated_claim() {
   }
 }
 
-/// The retired fixture shape (#582): an empty proof against a non-empty root
+/// The retired fixture shape: an empty proof against a non-empty root
 /// is not a non-membership witness, and the step fixtures carried exactly
 /// this before the re-pin. It must stay rejected, so the suite catches a
 /// regression in either direction.

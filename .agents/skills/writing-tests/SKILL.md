@@ -60,7 +60,7 @@ composition itself.
 | 2. TypeScript unit test       | Codecs, digests, builders' pure parts, decision tables, parsers                      | vitest in `midgard-core`, `midgard-sdk`, `midgard-validation`, `lucid-midgard` |
 | 3. Golden-vector channel      | TypeScript and Aiken disagreeing on the same bytes                                   | a `fixtures:<name>:check` generator plus its vitest and generated `.ak` module |
 | 4. lucid-evolution emulator   | The deployed, parameterized validator accepting or refusing a real transaction       | `*-emulator.test.ts`, `submit-init-emulator*` suites                           |
-| 5. Postgres-backed node suite | Durable state: journals, migrations, claims, recovery across restarts                | `demo/midgard-node/tests`, each worker on its own database shard               |
+| 5. Postgres-backed node suite | Durable state: journals, schema, claims, recovery across restarts                    | `demo/midgard-node/tests`, each worker on its own database shard               |
 | 6. Devnet / live acceptance   | Runtime composition, transport, provider behavior, durable recovery on real services | [midgard-e2e-acceptance](../midgard-e2e-acceptance/SKILL.md)                   |
 
 Before running a level, read [references/test-levels.md](references/test-levels.md)

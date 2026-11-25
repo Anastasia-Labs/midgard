@@ -1,6 +1,5 @@
 /**
- * Shared emulator fixtures for the `native-script-decoding` family (#635,
- * #633).
+ * Shared emulator fixtures for the `native-script-decoding` family.
  *
  * Three things every decoding emulator scenario needs and none of the
  * existing helpers produce:

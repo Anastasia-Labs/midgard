@@ -18,7 +18,7 @@ export const timingConstants = {
   da_slash_grace_ms: "da_slash_grace_ms_v1",
   da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
 };
-// The pooled DA committee bond (#685). The availability ParametersV1 carries
+// The pooled DA committee bond. The availability ParametersV1 carries
 // these amounts on-chain; off-chain consumers must match the selected profile.
 export const daBondConstants = {
   da_bond_lovelace: "da_bond_lovelace_v1",
@@ -41,7 +41,7 @@ export const limitConstants = {
   max_dispute_move_fee_lovelace: "max_dispute_move_fee_lovelace",
   fraud_proof_output_lovelace: "fraud_proof_output_lovelace",
 };
-// The stage-0 operator allow-list (P1): null (every key admitted) or the
+// The stage-0 operator allow-list: null (every key admitted) or the
 // verification key hashes the deployment admits, fixed for its life. It
 // renders as an `Option<List<ByteArray>>` env constant checked by
 // `midgard/common/allow_list.admits`. Fault provers and DA challengers are

@@ -752,7 +752,6 @@
     "fixtures:validation-one-step-cross-language:check": "pnpm run build && pnpm --dir ../midgard-sdk run build && node scripts/generate-validation-one-step-aiken-fixture.mjs --check",
     "test": "node ../scripts/package-test.mjs",
     "bench": "vitest run --config vitest.bench.config.ts",
-    "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
     "prepack": "node ../../scripts/release/pack-files.mjs copy",
     "postpack": "node ../../scripts/release/pack-files.mjs remove"

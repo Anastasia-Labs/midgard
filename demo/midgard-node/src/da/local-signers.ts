@@ -50,8 +50,7 @@ const signerFromSeed = (
 /**
  * The DA governance keys this process itself holds, operator first.
  *
- * The governed floors (F04 §4, as amended by the 2026-08-11 and 2026-08-13
- * owner rulings) admit a 1-of-1 DA configuration, so a node holding only its
+ * The governed floors admit a 1-of-1 DA configuration, so a node holding only its
  * own key writes a governor-valid `DaParamsDatum`,
  * attests 1-of-1, and governs 1-of-1. `deriveOperatorDaParams` warns about each
  * of those topologies instead of refusing them.

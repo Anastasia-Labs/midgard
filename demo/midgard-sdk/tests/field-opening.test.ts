@@ -387,17 +387,14 @@ describe("the §2.5 pairing is derived, not chosen", () => {
   });
 });
 
-describe("#606 — tier 3 is admissible at every field (E2 limit 3 resolved)", () => {
+describe("tier 3 is admissible at every field", () => {
   const certified = {
     Certified: { cert_ref_input_index: 0n, chunk_ref_input_indices: [1n, 2n] },
   };
 
   /**
-   * The former builder-side refusal (the #604 hardening that duplicated
-   * `carriage_reaches_the_anchor`) lifted with #606's welded-hash repair, and
-   * door parity is the property that has to survive: this module emits
-   * exactly what the on-chain door accepts, which now includes tier-3
-   * carriage of a witness-set field.
+   * Door parity: this module emits exactly what the on-chain door accepts,
+   * which includes tier-3 carriage of a witness-set field.
    */
   it("emits a certified carriage on every witness-set field", () => {
     for (const fieldIndex of [6, 7, 8]) {
@@ -439,20 +436,17 @@ describe("#606 — tier 3 is admissible at every field (E2 limit 3 resolved)", (
   /**
    * Door parity's other half, asserted rather than only commented: what
    * actually stands between an adversary and a forged witness-set fault is
-   * the on-chain door's welded-hash equality (#606), and lifting the
-   * builder-side refusal is only sound while that equality is there. If this
-   * ever stops matching, the door has lost the E2 closure — which is the
-   * state E2's disposition says must not be reached silently.
+   * the on-chain door's welded-hash equality, and admitting tier 3 here is
+   * only sound while that equality is there.
    */
-  it("mirrors the on-chain welded-hash equality that closed E2", () => {
+  it("mirrors the on-chain welded-hash equality", () => {
     const accessModule = readRepositoryFile(
       "onchain/aiken/lib/midgard/native-tx-field-access-v1.ak",
     );
     expect(accessModule).toMatch(
       /expect certificate\.field_hash == expected_hash/u,
     );
-    expect(accessModule).toContain("#606");
-    // And the old refusal is gone rather than duplicated somewhere new.
+    // The builder carries no duplicate of the door's refusal.
     const opening = readRepositoryFile(AIKEN_MODULE);
     expect(opening).not.toMatch(
       /Certified \{ \.\. \} -> field_index < first_witness_set_field_index/u,

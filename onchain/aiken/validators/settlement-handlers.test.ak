@@ -1,10 +1,8 @@
-//// Executable handler coverage for `validators/settlement.ak` (#536).
+//// Executable handler coverage for `validators/settlement.ak`.
 ////
-//// Before this module the settlement `spend` and `mint` handlers were executed
-//// by zero tests: the only settlement tests were the redeemer-decoder unit
-//// tests in `settlement.ak` and the four `stdlib_token_shape_*` tests, which
-//// exercise the Aiken stdlib rather than any settlement code (see V-22 in
-//// #532). Those tests stay where they are; this module is the real coverage.
+//// The settlement `spend` and `mint` handlers run only here: the other
+//// settlement tests are the redeemer-decoder unit tests in `settlement.ak` and
+//// the four `stdlib_token_shape_*` tests, which exercise the Aiken stdlib.
 ////
 //// Fixture convention is copied from
 //// `lib/midgard/fraud-proofs/transition-trace/proof.test.ak` and

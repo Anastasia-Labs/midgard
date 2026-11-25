@@ -3838,7 +3838,7 @@ pub fn cek_witness_is_well_formed_v1(
 /// alone, so they stay total and disjoint. The language bitmap takes no part:
 /// a transaction whose executions are all native carries `language_bitmap
 /// == 0` and still has every one of those executions to select, one selection
-/// step each, exactly as the machine's trace emits them (#629).
+/// step each, exactly as the machine's trace emits them.
 fn cek_control_is_selecting_v1(cek: CekWitnessControlV1) -> Bool {
   and {
     cek.active_state_hash == #"",

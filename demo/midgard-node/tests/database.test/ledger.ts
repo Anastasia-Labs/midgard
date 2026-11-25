@@ -589,7 +589,7 @@ export const registerLedgerTests = () => {
               ]);
               // The delta statement runs first. Failing the second statement
               // must roll the delta back and retain both queued rows. Renaming
-              // the migration-built table away makes the statement fail; renaming
+              // the schema-built table away makes the statement fail; renaming
               // it back restores exactly that table.
               yield* sql`ALTER TABLE address_history RENAME TO address_history_withheld`;
               const failed = yield* Effect.either(writeBehind.flushNow);
@@ -670,7 +670,7 @@ export const registerLedgerTests = () => {
               const writeBehind = yield* makeWriteBehind;
               const first = databaseTxHash("write-behind.retry-overflow-1");
               const second = databaseTxHash("write-behind.retry-overflow-2");
-              // Withhold the migration-built table so the inline write fails;
+              // Withhold the schema-built table so the inline write fails;
               // renaming it back restores exactly that table.
               yield* sql`ALTER TABLE mempool_tx_deltas RENAME TO mempool_tx_deltas_withheld`;
               const enqueueFiber = yield* Effect.fork(

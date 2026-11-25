@@ -143,7 +143,7 @@ export const selectWatcherAvailabilityAction = (
 };
 
 /**
- * Every header's next step, independently (spec #685): a live challenge on
+ * Every header's next step, independently: a live challenge on
  * one withheld header never suppresses the Open of another, whose own
  * deadline could otherwise pass unchallenged.
  */

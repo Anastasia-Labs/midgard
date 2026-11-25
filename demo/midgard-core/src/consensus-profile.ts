@@ -95,7 +95,7 @@ export const MIDGARD_ENVELOPE_MEASUREMENTS = Object.freeze({
   // Re-pinned 2026-08-23 at the #617 wave sign-off point (owner rulings on
   // the #622 sign-off table, 2026-08-22: ruling (b) APPROVED; the
   // `referenceCompleteItem*` rows ride the same signature per the #624
-  // ruling). Option B (#620) made the canonical-decode item semantic
+  // ruling). Option B made the canonical-decode item semantic
   // transition-only, so the item preimage no longer rides the AUTHENTICATE
   // redeemer: prepare-selected and authenticate became item-size-independent
   // and the direct-route binder moved to the OBSERVE door. Measured
@@ -200,7 +200,7 @@ const MAX_OUTPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_ADDRESS_WITNESS_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_SIGNER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
-// C49/C70 (#618, #627). The target network's `coins_per_utxo_byte` protocol
+// The target network's `coins_per_utxo_byte` protocol
 // parameter, the only free parameter of the minimum-Ada floor
 // `coins_per_utxo_byte * (160 + serialized canonical output bytes)`
 // (`minAdaLovelaceV1`/`outputMeetsMinAdaV1` in
@@ -208,7 +208,7 @@ const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 // `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
 // onchain/aiken/lib/midgard/validation-machine/).
 //
-// Provenance: the C70 target-parameter snapshot, preprod epoch 303, pinned as
+// Provenance: the target-parameter snapshot, preprod epoch 303, pinned as
 // `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte === 4_310n`
 // (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts).
 // That helper is a test corpus; this is the production pin the validator half

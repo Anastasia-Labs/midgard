@@ -554,7 +554,7 @@ test settlement_mint_redeemer_parser_preserves_remove_field_order() {
   settlement_id == #"bb" && input_index == 4 && spend_redeemer_index == 5
 }
 
-// V-21 (#532). The three rejection tests below were written as
+// The three rejection tests below were written as
 // `expect _ = decode_mint_redeemer(...)`. `_` is irrefutable, so the `expect`
 // itself could never reject anything; the rejection has always come from inside
 // `decode_mint_redeemer` (the `_ -> fail` arm for an unknown tag, and the
@@ -604,15 +604,14 @@ test settlement_mint_redeemer_parser_rejects_remove_wrong_type() fail {
   )
 }
 
-// V-22 (#532). The four tests below were named `exact_settlement_policy_mint_*`
+// The four tests below were named `exact_settlement_policy_mint_*`
 // but execute no settlement code at all — they build a `Value` with
 // `assets.from_asset`/`assets.merge` and assert properties of the Aiken stdlib
 // `assets`/`dict` modules. The "exactly one settlement NFT" invariant they
 // appeared to cover lives inside the `mint` handler at the top of this file,
 // which no test in this repository invokes. They are renamed to state what they
 // actually pin (the stdlib token-shape restatement the handler relies on); the
-// settlement `mint`/`spend` handler coverage gap is reported separately and is
-// NOT closed by these tests.
+// handlers' own coverage is `settlement-handlers.test.ak`.
 test stdlib_token_shape_yields_only_the_settlement_nft() {
   let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
   expect [Pair(minted_settlement_id, 1)] = mint

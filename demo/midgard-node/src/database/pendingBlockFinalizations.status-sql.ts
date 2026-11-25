@@ -1,6 +1,6 @@
 /**
  * The status of this node's block journals, derived in one place from the
- * facts (#753); no journal stores a copy. Pure SQL
+ * facts; no journal stores a copy. Pure SQL
  * fragments with no service behind them: the forced-order derivation's
  * modules reach them (`l1-admission-identity.ts`), and a derivation reads no
  * clock, randomness or network. The reads over them are

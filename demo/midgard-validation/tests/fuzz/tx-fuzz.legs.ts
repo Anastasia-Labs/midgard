@@ -15,7 +15,7 @@ import {
   type PreparedCase,
   prepareExecution,
 } from "./cek-step-fuzz.harness.js";
-import { builtinTagsOf, type Reference } from "./tx-fuzz.reference.js";
+import type { Reference } from "./tx-fuzz.reference.js";
 import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
 
 /**
@@ -31,40 +31,18 @@ import type { TxFuzzScenario } from "./tx-fuzz.scenario.js";
  * - reference (opt-in): the external evaluator's verdict and, on accept, its
  *   spent budget equal Phase B's;
  * - steps: the proof run's steps, sampled for the Aiken step evaluator.
- *
- * Disagreements in a known class are counted under it, never as divergences.
  */
-
-/**
- * Disagreements with an owner elsewhere, counted rather than failed. Each
- * names its owner and the fix that removes it; the class goes when that fix
- * composes. The CI rows pin every one to its seed (`tx-fuzz.pins.ts`).
- */
-export type TxKnownClass =
-  /**
-   * A script naming a BLS builtin of flat tags 58–60 or 65–67, which the
-   * reference leg skips until the builtin tag numbering is fixed.
-   */
-  "blsTagNumbering";
-
-/** The known classes only the opt-in reference leg reports. */
-export const REFERENCE_LEG_CLASSES: ReadonlySet<TxKnownClass> = new Set([
-  "blsTagNumbering",
-]);
 
 export type TxCaseResult = {
   readonly label: string;
   readonly verdict: "accepted" | "rejected" | "indeterminate";
   readonly rejectionCode: string | null;
   readonly divergences: readonly string[];
-  readonly known: readonly TxKnownClass[];
   /** Whether the reference leg ran. */
   readonly referenced: boolean;
   /** The proof run's steps for the Aiken step evaluator, when the script ran. */
   readonly steps: PreparedCase | null;
 };
-
-const CARDANO_RENUMBERED_BLS_TAGS = [58, 59, 60, 65, 66, 67];
 
 const withoutCaptures = (
   input: ValidationMachineReplayInput,
@@ -111,13 +89,7 @@ const referenceLeg = (
   evaluation: LocalScriptEvaluation,
   reference: Reference,
   divergences: string[],
-  known: TxKnownClass[],
 ): void => {
-  const tags = builtinTagsOf(scenario.scriptTerm);
-  if (CARDANO_RENUMBERED_BLS_TAGS.some((tag) => tags.has(tag))) {
-    known.push("blsTagNumbering");
-    return;
-  }
   const run = reference.run(scenario.scriptFlat, evaluation.contextCbor);
   const midgard = scriptAccepted(evaluation);
   const inBudget =
@@ -167,7 +139,6 @@ export const runTxCase = async (
   reference: Reference | undefined,
 ): Promise<TxCaseResult> => {
   const divergences: string[] = [];
-  const known: TxKnownClass[] = [];
   const verdictLeg = await settle(
     replayValidationVerdictEvent({
       ...scenario.event,
@@ -181,7 +152,6 @@ export const runTxCase = async (
       verdict: "indeterminate",
       rejectionCode: null,
       divergences,
-      known,
       referenced: false,
       steps: null,
     };
@@ -258,14 +228,13 @@ export const runTxCase = async (
   const evaluation = verdict.scriptEvaluations[0];
   const referenced = reference !== undefined && evaluation !== undefined;
   if (referenced) {
-    referenceLeg(scenario, evaluation, reference, divergences, known);
+    referenceLeg(scenario, evaluation, reference, divergences);
   }
   return {
     label: scenario.label,
     verdict: verdict.verdict,
     rejectionCode,
     divergences,
-    known,
     referenced,
     steps,
   };

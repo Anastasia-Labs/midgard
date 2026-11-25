@@ -150,7 +150,7 @@ fn run_terminal_absence(
   )
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 //
 // On the chunked route the absence witness is verified here rather than
 // delegated, so these selectors use the shared real one: a canonical divergent

@@ -49,7 +49,7 @@ use midgard/validation_trace_v1
 ///   * **tier 3** names one certificate reference input and at most
 ///     `max_tier3_chunk_count` chunk reference inputs, so it is O(1) in the
 ///     field's size — which is what makes the measured 16,225-byte field-2
-///     maximum reachable by a machine step at all (#593 Ruling 1, option c).
+///     maximum reachable by a machine step at all.
 test maximum_general_field_item_instruction_evidence_is_bounded() {
   let Pair(_pre, base_evidence) = canonical_step_fixture()
   let maximum_tier1_preimage = zero_filler_bytes(

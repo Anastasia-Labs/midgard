@@ -112,7 +112,7 @@ const provisionShard = (shard: string) =>
  * mpf-native-owner-service files spawn. The dedicated scripts
  * (`test:mpf:differential`, `test:mpf-native-owner`) build it themselves, but
  * the plain `test` run never did, so a fresh worktree failed those files on a
- * missing artifact (#642). With a warm cargo target dir `--locked` rebuilds
+ * missing artifact. With a warm cargo target dir `--locked` rebuilds
  * are sub-second; a cold build pays once per worktree.
  *
  * Only a MISSING toolchain is non-fatal: without cargo (or with

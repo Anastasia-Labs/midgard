@@ -1,4 +1,4 @@
-//// ## Native-Script Decoding Fault Proof — Step 01 (#635, #633)
+//// ## Native-Script Decoding Fault Proof — Step 01
 ////
 //// Binds the thread's verdict subject:
 ////
@@ -231,7 +231,7 @@ test decoding_step_01_rejects_a_forged_transactions_root() fail {
   )
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 
 const adversarial_branch_levels: Int = 22
 

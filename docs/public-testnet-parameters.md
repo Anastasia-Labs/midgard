@@ -86,10 +86,10 @@ lovelace); the readable column converts them. "Set at" links the profile line.
 | `protocol_treasury_native_script.scripts[1].keyHash` | `9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9` | payment key hash  |             | [L98](../config/deployments/preprod-public.yaml#L98)   |
 | `protocol_treasury_native_script.scripts[2].type`    | `sig`                                                      | text              |             | [L99](../config/deployments/preprod-public.yaml#L99)   |
 | `protocol_treasury_native_script.scripts[2].keyHash` | `65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53` | payment key hash  |             | [L100](../config/deployments/preprod-public.yaml#L100) |
-| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L106](../config/deployments/preprod-public.yaml#L106) |
-| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L107](../config/deployments/preprod-public.yaml#L107) |
-| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L108](../config/deployments/preprod-public.yaml#L108) |
-| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L109](../config/deployments/preprod-public.yaml#L109) |
+| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L105](../config/deployments/preprod-public.yaml#L105) |
+| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L106](../config/deployments/preprod-public.yaml#L106) |
+| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L107](../config/deployments/preprod-public.yaml#L107) |
+| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L108](../config/deployments/preprod-public.yaml#L108) |
 
 <!-- END PUBLIC_TESTNET_PARAMETERS_GENERATED -->
 

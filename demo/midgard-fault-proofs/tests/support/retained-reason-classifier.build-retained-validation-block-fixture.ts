@@ -34,7 +34,7 @@ import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.bui
 
 /**
  * The validation-trace descriptor entry an operator commits for one event under
- * its exact claimed verdict: the P1 placeholder descriptor, derived from the
+ * its exact claimed verdict: the placeholder descriptor, derived from the
  * event key, the transaction's proof-source commitment and the verdict.
  */
 export const placeholderValidationTraceEntries = ({

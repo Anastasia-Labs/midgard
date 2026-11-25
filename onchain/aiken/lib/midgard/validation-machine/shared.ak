@@ -307,7 +307,7 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
   }
 }
 
-// C49 (#540). The canonical parameterized minimum-Ada floor for one ledger
+// The canonical parameterized minimum-Ada floor for one ledger
 // output, in lovelace, at the target-network protocol parameters. It is the
 // Cardano rule verbatim -- `coins_per_utxo_byte * (overhead + serialized output
 // bytes)` -- where `min_ada_output_overhead_bytes` is the fixed 160-byte UTxO
@@ -324,21 +324,21 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // `minimumLovelaceForValidationProofItemPublicationV1`
 // (demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts); that call
 // funds a _proof publication output_ on L1 and is not this consensus quantity
-// (decision 0003, Q27). Because both copies are written by hand, they are bound
+// (decision 0003). Because both copies are written by hand, they are bound
 // to each other on pinned absolute lovelace vectors -- including the
 // exactly-at-the-floor accept and the one-lovelace-below reject legs -- by
 // demo/midgard-validation/tests/min-ada-twin-cross-check.test.ts and by
 // `min_ada_absolute_vectors_match_the_typescript_twin` in the adjacent test
 // module. The TypeScript suite parses this declaration and the two functions
 // below out of this file as source text, so a slope, an intercept, a comparison or a
-// reshaped declaration on either side alone fails loudly (#618).
+// reshaped declaration on either side alone fails loudly.
 //
 // NO ARBITRARY SUB-CAP. The floor is exactly the target-network limit: it is
 // linear in the serialized size with slope `coins_per_utxo_byte` and carries no
 // additional Midgard margin, so an output the target network funds adequately
 // is never rejected here for carrying too little Ada.
 //
-// WIRED (#618 ruling 1; R8 of decision 0005). The counterpart duty -- binding
+// WIRED (R8 of decision 0005). The counterpart duty -- binding
 // this floor to a machine rejection code -- is discharged in
 // `value_and_mint_stage_three` below: the ValueAndMint output-descriptor step
 // evaluates `output_meets_min_ada_v1` over the descriptor it has just

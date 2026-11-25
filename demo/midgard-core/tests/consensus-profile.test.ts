@@ -90,11 +90,9 @@ describe("canonical V1 consensus profile", () => {
   //   13,282 - the single-transaction semantic-proof frontier, the same
   //            by-reference basis measured on a complete signed transaction.
   //
-  // Since the #617 reference-script wiring (#597 ruling a; commits dce643b0 +
-  // 0a074421, landing on the branch as cherry-picks) the deployed direct
-  // route also sources every validator by reference, and since Option B
-  // (#620) the item preimage rides the OBSERVE door rather than the
-  // authenticate redeemer. The frontier is still measured end-to-end through
+  // The deployed direct route also sources every validator by reference, and
+  // the item preimage rides the OBSERVE door rather than the authenticate
+  // redeemer. The frontier is still measured end-to-end through
   // the production submitter's five-stage lifecycle, whose dispute-thread
   // continuation, prepare-selected step, and protocol framing the two
   // single-transaction models above omit; the re-pinned reliable frontier
@@ -121,7 +119,7 @@ describe("canonical V1 consensus profile", () => {
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
     // Observation, not authentication, is the stage that governs the bound
-    // since Option B (#620) made the canonical-decode item semantic
+    // since Option B made the canonical-decode item semantic
     // transition-only: the item preimage left the authenticate redeemer, so
     // authenticate became item-size-independent (2,600 bytes at every
     // measured item) and the observe door became the stage that grows with

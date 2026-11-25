@@ -189,9 +189,9 @@ describe("bounded CEK observer context", () => {
     // preimage that §8.4 carries as tier 1, so the redeemer holds the whole
     // preimage once and the door hashes it against the flat §4 commitment. The
     // old 492 was one 28-byte item beside the opening that authenticated it —
-    // an opening §4 left nothing to check against (#592). The figure is still
+    // an opening §4 left nothing to check against. The figure is still
     // well inside the L1 envelope, and it is O(1) rather than O(field) the
-    // moment tiers 2–3 are emittable (#600).
+    // moment tiers 2–3 are emittable.
     expect(boundary.acceptedField.maxRevealBytes).toBe(6_946);
     expect(boundary.acceptedField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE,

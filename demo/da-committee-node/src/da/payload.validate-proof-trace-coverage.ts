@@ -104,7 +104,7 @@ export const decodeDaPayloadStrict = (
 const validateProofTraceCoverage = (payload: SDKDa.DaPayload): void => {
   validateTraceCoverage(payload);
   const body = payload.block_body;
-  // P1 retains no validation machine states: the section stays in the format
+  // No validation machine states are retained: the section stays in the format
   // and must be empty.
   if (body.validation_trace_witnesses.length !== 0) {
     throw new DaPayloadValidationError(

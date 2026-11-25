@@ -1740,7 +1740,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("rejected");
   }, 60_000);
 
-  // E_MIN_ADA / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005). The TypeScript
+  // E_MIN_ADA / MIN-ADA-TX (R8 of decision 0005). The TypeScript
   // twin of the ValueAndMint stage-three output-descriptor conviction. The
   // transaction below is otherwise impeccable -- it is signed, and it preserves
   // value exactly (10 lovelace in, 10 lovelace out, zero fee) -- so the ONLY

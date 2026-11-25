@@ -92,8 +92,6 @@ export const validateInventorySchema = (db: DatabaseSync): void => {
     FROM availability_journal_metadata WHERE key = 'schema'`,
     )
     .get()?.value;
-  if (schema === "1" || schema === "2")
-    inventoryRefuse("historical_schema_inventory_unsupported");
   if (schema !== "3") inventoryRefuse("inventory_schema_unsupported");
   for (const family of inventoryFamilies) {
     if (

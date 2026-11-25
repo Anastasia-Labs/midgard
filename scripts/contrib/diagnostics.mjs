@@ -67,8 +67,8 @@ export const classifyProgress = (status) => {
       };
 };
 
-// Deliberately reads a snapshot/export, never instantiates stores that migrate
-// or acquire ownership. HTTP capture is separate from classification so an
+// Deliberately reads a snapshot/export, never instantiates stores that create
+// schema or acquire ownership. HTTP capture is separate from classification so an
 // endpoint cannot accidentally be mistaken for a verified progress schema.
 export const diagnostics = (root, { snapshot, name = "midgard-node" }) => {
   const pkg = packageByName(root, name);

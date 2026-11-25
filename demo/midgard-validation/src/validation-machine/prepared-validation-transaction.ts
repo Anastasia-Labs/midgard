@@ -396,7 +396,7 @@ export const buildPreparedValidationTransaction = (
 
 /**
  * The §5.1 preimage every field-reading step names — the carriage plan
- * input, not a carriage (#600). One helper rather than thirteen call-site
+ * input, not a carriage. One helper rather than thirteen call-site
  * expressions, because "which bytes this step read" has to be answered the
  * same way at every site; the tier those bytes travel under is decided once,
  * later, where a transaction exists.

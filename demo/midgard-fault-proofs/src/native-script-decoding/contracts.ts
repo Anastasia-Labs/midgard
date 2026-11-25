@@ -82,8 +82,8 @@ export type NativeScriptDecodingContracts = {
   readonly stateQueuePolicyId: string;
   /**
    * Policy id OpenSubject was parameterized with for §8.6 field-preimage
-   * certificates. In the emulator harness this is the always-succeeds stand-in
-   * (#579 ruling A); in production it is the real certificate policy.
+   * certificates. In the emulator harness this is the always-succeeds stand-in;
+   * in production it is the real certificate policy.
    */
   readonly fieldPreimageCertificatePolicyId: string;
 };

@@ -9,7 +9,7 @@ export type JourneyL1Point = Readonly<{
  * Our node reported the fault only `landed_block_awaiting_da`, never
  * `landed_block_invalid`, and L1 shows the watcher's removal of the fault
  * strictly before any DA attestation of it was applied. While a block is
- * unattested our node reports an invalid block as awaiting its DA (#925), so
+ * unattested our node reports an invalid block as awaiting its DA, so
  * a fault removed before its attestation is never reported invalid.
  */
 export const HELD_AWAITING_DA_REMOVED_BEFORE_ATTESTATION =

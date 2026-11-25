@@ -1,5 +1,5 @@
 //// Execution-cost drivers for the decoding-fault engine's budgeted fold
-//// (#635, #633) — the tests whose ceilings
+//// — the tests whose ceilings
 //// `demo/midgard-core/src/script-budgets.json` holds.
 ////
 //// Each measured row folds a programmatically built worst-shape payload

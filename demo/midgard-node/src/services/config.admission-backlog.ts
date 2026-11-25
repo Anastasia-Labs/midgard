@@ -1,6 +1,6 @@
 /**
  * Default `MAX_DURABLE_ADMISSION_BACKLOG`: 60 s at the 5,000 TPS design rate
- * (design D5). Provisional until the M1 measurement (#877) sets it.
+ * (design D5). Provisional until the M1 measurement sets it.
  */
 export const DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG = 300_000;
 

@@ -37,12 +37,8 @@ const aikenMaxIndexedSignerCount = (): number => {
 
 const MAX_INDEXED_SIGNER_COUNT = aikenMaxIndexedSignerCount();
 
-// Q63.
-//
-// Every number here is the F04 governed floor from
-// `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md` §4,
-// as amended by the 2026-08-11 owner ruling (the floor's clamp) and the
-// 2026-08-13 owner ruling (the owner-set minimum):
+// Every number here is the governed floor from
+// `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md` §4:
 //
 //   da_threshold     >= ceil(2*committee_len/3)   (committee_len >= 1)
 //   update_threshold >= ceil(2*owner_len/3)       (owner_len >= 1)
@@ -69,7 +65,7 @@ const SHARED_FLOOR_VECTORS: ReadonlyArray<readonly [number, number]> = [
   [256, 171],
 ];
 
-describe("Q63 governed floor/drain invariants", () => {
+describe("governed floor/drain invariants", () => {
   it("invariant 1 — floors da_threshold at the F04 two-thirds ceiling", () => {
     const measured = SHARED_FLOOR_VECTORS.map(
       ([setLength]) => [setLength, governedThresholdFloor(setLength)] as const,
@@ -135,7 +131,7 @@ describe("Q63 governed floor/drain invariants", () => {
   });
 });
 
-describe("Q63 valid-boundary controls", () => {
+describe("valid-boundary controls", () => {
   it("control 1 — accepts da_threshold exactly on the floor", () => {
     expect(
       daParamsFloorViolations({
@@ -159,7 +155,7 @@ describe("Q63 valid-boundary controls", () => {
   });
 });
 
-describe("Q63 below-floor and drain rejection classes", () => {
+describe("below-floor and drain rejection classes", () => {
   it("rejection 1 — a bare committee majority is below the two-thirds floor", () => {
     expect(
       daParamsFloorViolations({
@@ -279,7 +275,7 @@ describe("Q63 below-floor and drain rejection classes", () => {
 // one is one, so a single-key attest loop is a representable — warned-about,
 // not refused — deployment shape. This block is the only place that is
 // measured end-to-end off-chain.
-describe("Q63 single-member-committee consequence", () => {
+describe("single-member-committee consequence", () => {
   it("consequence 1 — a one-member committee admits exactly one representable da_threshold", () => {
     const representable: number[] = [];
 
@@ -337,7 +333,7 @@ describe("Q63 single-member-committee consequence", () => {
 // decision, so it is pinned positively here rather than inferred from a missing
 // rejection; the Aiken twin goes further and runs the real `spend` handler
 // through an actual single-signature rotation.
-describe("Q63 single-owner governance consequence", () => {
+describe("single-owner governance consequence", () => {
   it("consequence 1 — a one-owner set admits exactly one representable update_threshold", () => {
     const representable: number[] = [];
 
@@ -385,7 +381,7 @@ describe("Q63 single-owner governance consequence", () => {
 // This recomputes the F04 arithmetic — `ceil(2n/3)` — directly and binds
 // the SDK's floor to it over every representable set size, so a floor/ceil
 // transcription error in the implementation breaks this leg.
-describe("Q63 floor arithmetic provenance", () => {
+describe("floor arithmetic provenance", () => {
   it("provenance — the SDK floor reproduces the F04 arithmetic over every representable set size", () => {
     // The Aiken constant and the size the attested-signer bitmap can index
     // are the same number.

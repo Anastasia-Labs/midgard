@@ -29,7 +29,7 @@ import {
  * no caller treats it as such. What it feeds is the machine's proof-step trace,
  * whose on-chain twin is `lib/midgard/validation-machine/`.
  *
- * **It survived the rebind, and the correction is worth stating (#592 → #597).**
+ * **It survived the rebind, and the correction is worth stating.**
  * The docstrings here used to promise that this trace "retires with the
  * openings". That is true only of the per-item *collection* opening, which is
  * gone: `bounded_collection_v1.verify_item` no longer runs in the machine and
@@ -110,11 +110,9 @@ const midgardWrappedItemBytes = (item: Uint8Array): number =>
  * The machine's chunk steps for one field, in the order it emits them:
  * item-major, chunk-major.
  *
- * This is the replacement for `midgard-core`'s retired
- * `deriveMidgardV1TxFieldChunks`, and the difference is what AC2 of #585 is about.
- * That function *published* per-item openings against a field's committed hash,
- * which §4 leaves nothing to check against. This one produces the machine's own
- * trace steps and makes no claim about the field commitment — a caller that wants
+ * These are the machine's own trace steps, not per-item openings against a
+ * field's committed hash: §4 leaves nothing to check such an opening against.
+ * They make no claim about the field commitment — a caller that wants
  * the field authenticated calls `verifyMidgardV1TxFieldPreimage`, once, over the
  * whole preimage.
  */
@@ -153,24 +151,15 @@ export const countedMachineFieldChunkSteps = (
 };
 
 /*
- * `verifyMachineFieldItemV1` used to live here and is retired (#597, the
- * TypeScript twin of #592's wire change). It checked one `transactionFieldItem`
- * opening against the machine's own trace for that field — and the machine
- * verifies no openings any more. Under §8 the door authenticates the whole §5.1
- * preimage once against the flat §4 commitment and an item is a slice of it, so
- * there is no per-item opening for a caller to hand over and nothing left for
- * this function to check. Its seven mutation rows retire with it: count,
- * ordering, swap, substitution, trailing-byte and field-substitution mutations
- * are all mutations of a preimage the door refuses by aborting (§7.3), which is
- * fail-closed but not a `False` an off-chain predicate can observe.
- *
- * A caller that wants a field authenticated calls
+ * Under §8 the door authenticates the whole §5.1 preimage once against the
+ * flat §4 commitment and an item is a slice of it, so there is no per-item
+ * opening to check. A caller that wants a field authenticated calls
  * `verifyMidgardV1TxFieldPreimage`, once, over the whole preimage.
  */
 
 /**
  * What a field-reading step says about the field it read, before anything knows
- * how the bytes will travel (#600).
+ * how the bytes will travel.
  *
  * A step names one committed field and needs its §5.1 preimage to reach the
  * consuming transaction; §8's three tiers are three answers to *how*, and the
@@ -182,7 +171,7 @@ export const countedMachineFieldChunkSteps = (
  *
  * The tier is therefore decided at the one place that has a transaction:
  * `buildValidationOneStepArgumentV1`. The committed `evidence_hash` is
- * transition-only (#619) — no carriage is ever hashed into it — so resolving
+ * transition-only — no carriage is ever hashed into it — so resolving
  * there is not a late substitution: the observe-stage field door verifies
  * whatever carriage arrives by content, and the tier is honestly named at the
  * first moment one can be.

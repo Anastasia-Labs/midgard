@@ -233,7 +233,7 @@ describe("public node containers", () => {
       compose,
       JSON.stringify({ services: node.services, networks: node.networks }),
     );
-    /** What the node, its migration and Postgres hold in their environment. */
+    /** What the node and Postgres hold in their environment. */
     const environments = async () => {
       const model = await renderedCompose(config, compose);
       expect(model.services.postgres!.environment).toMatchObject({

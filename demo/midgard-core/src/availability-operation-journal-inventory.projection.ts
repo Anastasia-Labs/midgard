@@ -118,7 +118,7 @@ export const projectInventoryRow = (
       if (row.value_type !== "text")
         inventoryRefuse("inventory_record_malformed");
       return {
-        key: key === "schema" || key === "halt" ? key : "other",
+        key: key === "schema" ? key : "other",
         keyDigest: createHash("sha256").update(key).digest("hex"),
         valuePresent: true,
         valueBytes: integer(row.value_bytes),

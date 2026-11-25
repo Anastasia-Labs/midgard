@@ -1,5 +1,5 @@
 /**
- * Pooled DA bond (#689): the availability challenge lifecycle against the ONE
+ * Pooled DA bond: the availability challenge lifecycle against the ONE
  * pooled committee bond, from attestation through close or timeout, with the
  * pool's `Slash` taking `min(da_bond, backing)` in the timeout itself.
  *

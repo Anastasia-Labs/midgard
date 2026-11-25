@@ -2,7 +2,7 @@
  * The node's write gate: every write that derives from the L1
  * view runs `viewValid(V)` in its own transaction, under `FOR SHARE` on the
  * follower cursor (`followerViewValid`, the node's one view check), then
- * takes the gate row (`node_follower_write_gate`, migration 0021) `FOR
+ * takes the gate row (`node_follower_write_gate`) `FOR
  * UPDATE`, so gated writes are serialized with each other and with the
  * follower-change driver's recompute.
  *

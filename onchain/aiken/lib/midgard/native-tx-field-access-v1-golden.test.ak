@@ -422,7 +422,7 @@ test golden_tier3_chunk_digests_match_typescript() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.6 certificate asset name — one constant for every certificate (#606)
+// §8.6 certificate asset name — one constant for every certificate
 // ---------------------------------------------------------------------------
 
 // The retired blake2b_256(field_index ‖ tx_id) derivation's vector class is
@@ -438,7 +438,7 @@ test golden_certificate_asset_name_matches_typescript() {
 
 /// The tier-3 manifest a TypeScript publisher derives for a preimage of
 /// 15665 bytes: chunk lengths 15148 + 517, one
-/// digest per chunk, and the mint-welded datum commitment (#606). The
+/// digest per chunk, and the mint-welded datum commitment. The
 /// `field_hash` equality is the datum-shape identity pin: the Aiken side
 /// recomputes §4's commitment over the rebuilt payload and it must equal the
 /// value the TypeScript producer welded into the datum.

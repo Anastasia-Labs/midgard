@@ -88,7 +88,7 @@ describe("read-only complete availability journal holds inventory", () => {
       expect(
         f.journal.pending("deployment", "actor").map((r) => r.intent.id),
       ).toEqual(["conflict", "pending"]);
-      db.exec(`INSERT INTO availability_journal_metadata VALUES ('halt', 'PRIVATE-HALT');
+      db.exec(`INSERT INTO availability_journal_metadata VALUES ('note', 'PRIVATE-NOTE');
         INSERT INTO availability_operation_resources VALUES ('orphan#0', 'missing', 'spend', 'foreign');
         INSERT INTO availability_operation_dependencies VALUES ('external', 'missing');
         INSERT INTO availability_operation_workflows VALUES ('foreign','other-deployment','other-header','missing',
@@ -159,10 +159,10 @@ describe("read-only complete availability journal holds inventory", () => {
       expect(
         db
           .prepare(
-            "SELECT value FROM availability_journal_metadata WHERE key = 'halt'",
+            "SELECT value FROM availability_journal_metadata WHERE key = 'note'",
           )
           .get()?.value,
-      ).toBe("PRIVATE-HALT");
+      ).toBe("PRIVATE-NOTE");
       expect(() => f.journal.acquire("actor", "intruder", 1, 10)).toThrow(
         "already leased",
       );
@@ -232,7 +232,7 @@ describe("read-only complete availability journal holds inventory", () => {
     }
   });
   it.each(["1", "2", "4"])(
-    "refuses historical or unknown schema %s without migration",
+    "refuses unknown schema %s and leaves it unchanged",
     (schema) => {
       const f = fixture();
       const db = new DatabaseSync(f.path);
@@ -240,11 +240,7 @@ describe("read-only complete availability journal holds inventory", () => {
         db.prepare(
           "UPDATE availability_journal_metadata SET value = ? WHERE key = 'schema'",
         ).run(schema);
-        expect(() => inspect(f.path)).toThrow(
-          schema === "4"
-            ? "inventory_schema_unsupported"
-            : "historical_schema_inventory_unsupported",
-        );
+        expect(() => inspect(f.path)).toThrow("inventory_schema_unsupported");
         expect(
           db
             .prepare(

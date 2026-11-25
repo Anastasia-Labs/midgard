@@ -1,4 +1,4 @@
-//// Measured ExUnits frontier for §5.3 descriptor derivation (#628).
+//// Measured ExUnits frontier for §5.3 descriptor derivation.
 ////
 //// The `#628` review left the basis crossing for `build_v1` as an
 //// *interpolated* point (~1,680 output bytes) drawn between two golden
@@ -19,7 +19,7 @@
 //// (`demo/midgard-core/src/script-budgets.json`) hold those differences, taken
 //// from fresh readings, to ceilings.
 ////
-//// Guardrail 3 (#617): no worst-case payload is written as a source literal.
+//// No worst-case payload is written as a source literal.
 //// `filler` builds every payload programmatically by doubling, so the source
 //// stays small and the vector size is a number in one place.
 

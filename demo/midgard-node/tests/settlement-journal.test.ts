@@ -115,8 +115,8 @@ describe("settlement durable submission journal", () => {
           ["03", "IncorrectWithdrawalSignature"],
         ]) {
           yield* sql`INSERT INTO withdrawal_utxos
-          (event_id, raw_event_info, settlement_event_info, inclusion_time, withdrawal_l1_tx_hash, withdrawal_l1_output_index, asset_name, l2_outref, l2_owner, l2_value, l1_address, l1_datum, refund_address, refund_datum, validity, status)
-          VALUES (${Buffer.from(event!, "hex")}, ${empty}, ${empty}, clock_timestamp(), ${hash}, ${Number(event)}, ${id}, ${empty}, ${ownerHash}, ${empty}, ${empty}, ${empty}, ${empty}, ${empty}, ${validity!}, 'finalized')`;
+          (event_id, raw_event_info, settlement_event_info, inclusion_time, withdrawal_l1_tx_hash, withdrawal_l1_output_index, asset_name, l2_outref, l2_owner, l2_value, l1_address, l1_datum, refund_address, refund_datum, validity, status, l2_ledger_outref_state)
+          VALUES (${Buffer.from(event!, "hex")}, ${empty}, ${empty}, clock_timestamp(), ${hash}, ${Number(event)}, ${id}, ${empty}, ${ownerHash}, ${empty}, ${empty}, ${empty}, ${empty}, ${empty}, ${validity!}, 'finalized', 'undecodable')`;
         }
         yield* sql`UPDATE deposits_utxos SET status = 'consumed'`;
         const jobs =

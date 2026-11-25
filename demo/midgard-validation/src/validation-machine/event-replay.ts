@@ -38,8 +38,8 @@ export type ValidationVerdictEventInput = Readonly<{
    * The block's clock for validity: its state-queue node's authenticated
    * `block_time`. The trace context's third element also carries this value,
    * but the on-chain validation claim derives that element from `header.end_time`
-   * (`validation_claim_v1.derive_validation_context_cbor`). The validation-trace family
-   * (00000006) is excluded in P1; P2 reconciles the context element.
+   * (`validation_claim_v1.derive_validation_context_cbor`), so the two can
+   * differ for the validation-trace family (00000006).
    */
   blockTimeMs: number;
   expectedNetworkId: bigint;

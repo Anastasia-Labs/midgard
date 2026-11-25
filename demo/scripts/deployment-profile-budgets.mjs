@@ -124,8 +124,7 @@ export const minimumPublicOpenAfterApplyMarginMs = (profile) =>
   l1BlocksBudgetMs(profile.l1_finality.confirmation_depth);
 
 // Earliest a DA committee may complete a pool withdrawal after BeginWithdraw
-// and still leave every block it applied slashable. The spec (#685 section 6)
-// form: the last applied block ends at most one validity range after
+// and still leave every block it applied slashable: the last applied block ends at most one validity range after
 // BeginWithdraw, the open lands inside the challenge window, the response
 // deadline is one full window later and the timeout gets the slash grace.
 export const specDaBondWithdrawDelayFloorMs = (timing) =>

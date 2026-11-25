@@ -1,5 +1,5 @@
 /**
- * The CARRIAGE half of published-chunk MPF proof carriage (issue #545): what a
+ * The CARRIAGE half of published-chunk MPF proof carriage: what a
  * step builder needs in order to take the chunked route.
  *
  * `publish-proof-chunks.ts` is the publication half, and it selects a fee input

@@ -1,5 +1,6 @@
 # Isolated emulator tests of a curated deployment: the timing and economics of
-# preprod-emulator-testing, with the stage-0 operator allow-list and the P1 catalogue.
+# preprod-emulator-testing, with the stage-0 operator allow-list and the full
+# fraud-proof catalogue.
 name: preprod-emulator-curated
 network: Preprod
 l1_finality:

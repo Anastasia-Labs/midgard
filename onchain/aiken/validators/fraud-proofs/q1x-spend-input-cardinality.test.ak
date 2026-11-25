@@ -1,4 +1,4 @@
-//// Execution cost against field cardinality (#551) for the steps that read an
+//// Execution cost against field cardinality for the steps that read an
 //// item of a variable-length field: `no-input` step-02 and `double-spend`
 //// step-04 at one spend input and at the admissible 296
 //// (`maximum_cardano_spend_redeemer_count`), and `missing-signature` step-04

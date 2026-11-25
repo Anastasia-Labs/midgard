@@ -59,7 +59,6 @@ import {
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import type { DeadHeaders } from "./pendingBlockFinalizations.status-sql.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
-import { backfillWithdrawalLedgerOutRefs } from "./withdrawal-ledger-outref.backfill.js";
 import * as Withdrawals from "./withdrawals.js";
 
 const table = "follower_event_ingestion";
@@ -415,7 +414,6 @@ export const reconcileFollowerEvents = (
       ...(yield* readmittedDepositOutRefs),
     ];
     const projected = yield* projectAwaitingDeposits(new Date(input.cutoffMs));
-    yield* backfillWithdrawalLedgerOutRefs;
     const ingestedThroughMs = input.slotToUnixTime(plan.view.point.slot);
     yield* sql`INSERT INTO follower_event_ingestion
         (id, generation, slot, block_hash, height, ingested_through_ms, updated_at)

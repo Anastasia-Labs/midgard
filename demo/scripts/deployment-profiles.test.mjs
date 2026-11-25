@@ -892,7 +892,7 @@ test("production profiles list their operators; testing profiles admit every key
   for (const name of publicProfiles) {
     const keys = profiles[name].allow_lists.operators;
     assert.ok(keys.length > 0);
-    // Mainnet remains undeployed; P1 public keys must be real release inputs.
+    // Mainnet remains undeployed; public keys must be real release inputs.
     const placeholder = name === "mainnet";
     assert.ok(
       keys.every((key) => isAllowListPlaceholderKey(key) === placeholder),

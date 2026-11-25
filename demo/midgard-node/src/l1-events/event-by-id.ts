@@ -1,6 +1,6 @@
 /**
  * One deposit or withdrawal event by its id, as the node's jobs read it
- * from the follower's facts (#869).
+ * from the follower's facts.
  *
  * The follower's own read (`eventOrderByIdIn`) answers `absent` both for an
  * event it has never admitted and for one whose retirement went more than k

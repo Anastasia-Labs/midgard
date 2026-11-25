@@ -1,7 +1,4 @@
-import {
-  type AvailabilityJournalOpenOptions,
-  openAvailabilityJournalDatabase,
-} from "#availability-operation-journal-schema";
+import { openAvailabilityJournalDatabase } from "#availability-operation-journal-schema";
 import { availabilityJournalStorage } from "#availability-operation-journal-storage";
 
 import type {
@@ -18,9 +15,8 @@ export type * from "./availability-operation-journal.types.js";
 /** One durable database must be shared by every process using an actor wallet. */
 export const openAvailabilityOperationJournal = (
   path: string,
-  options: AvailabilityJournalOpenOptions = {},
 ): AvailabilityOperationJournal => {
-  const db = openAvailabilityJournalDatabase(path, options);
+  const db = openAvailabilityJournalDatabase(path);
   const {
     retainedRecordCount,
     actorSnapshot,
@@ -430,7 +426,6 @@ export const openAvailabilityOperationJournal = (
           detail: conflict ?? detail,
         };
         write(next);
-        // Restore even a workflow row deleted before schema 3.
         if (record.intent.action === "open" || record.intent.completesWorkflow)
           restoreWorkflow(record.intent);
         return conflict;

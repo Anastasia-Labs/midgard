@@ -277,7 +277,7 @@ describe("journey drain and payout name the settlement worker's state", () => {
 });
 
 // A wait that outlasts the commit pipeline would otherwise report only its
-// own last error (#816): it names what the node's /readyz says is wrong, and
+// own last error: it names what the node's /readyz says is wrong, and
 // gives up once the node escalates a reason as needing an operator.
 const stalledCommit = (escalated: boolean) => ({
   ready: false,

@@ -148,7 +148,7 @@ fn disputed_tx_id() -> ByteArray {
   )
 }
 
-/// §8.6's constant asset name (#606) — one name for every certificate of the
+/// §8.6's constant asset name — one name for every certificate of the
 /// policy. Kept as a helper so every test names the token the same way the
 /// handlers do.
 fn certificate_asset_name() -> ByteArray {
@@ -335,7 +335,7 @@ test field_preimage_certificate_handler_mint_rejects_a_certificate_output_withou
   )
 }
 
-/// §8.6's name is one constant for every certificate (#606), and the mint
+/// §8.6's name is one constant for every certificate, and the mint
 /// still pins it: the single-pair check requires exactly the constant name at
 /// quantity 1, so a token of this policy is always the constant name over a
 /// datum the mint proved. The name is branding, not identity — but an
@@ -359,7 +359,7 @@ test field_preimage_certificate_handler_mint_rejects_an_asset_name_that_is_not_t
   )
 }
 
-/// The mint weld at the transaction seam (#606): the named output's datum is
+/// The mint weld at the transaction seam: the named output's datum is
 /// what the content check verifies, so a datum whose `field_hash` is not the
 /// commitment the chunks reconstruct is refused even when every byte of
 /// carriage is honest.
@@ -575,7 +575,7 @@ test field_preimage_certificate_handler_mint_rejects_a_chunk_without_an_inline_d
 /// the same content from the preimage bytes — their own key address, their own
 /// UTxOs, their own min-Ada reclaim authority — and certifies. The policy asks
 /// nothing about who they are, and the certificate they get is byte-identical
-/// modulo `owner` (#606: same bytes ⇒ same datum, under the one constant
+/// modulo `owner` (same bytes ⇒ same datum, under the one constant
 /// name), so every consuming step that matched the yanked certificate's datum
 /// matches the new one.
 test field_preimage_certificate_handler_mint_heals_a_yanked_publication_from_an_unrelated_party() {
@@ -942,7 +942,7 @@ test certificate_spend_fixture_only() {
 }
 
 /// Row 12 — one retirement. Size-independent by construction: the spend handler
-/// names the constant token (#606) and checks it does not survive — it never
+/// names the constant token and checks it does not survive — it never
 /// touches carriage, so there is one figure rather than one per size.
 test certificate_spend_cost() {
   run_spend(Some(certificate_for(publisher_hash)), honest_burn_tx())

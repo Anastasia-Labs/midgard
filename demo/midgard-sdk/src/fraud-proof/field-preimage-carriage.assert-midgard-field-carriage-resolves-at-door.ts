@@ -10,7 +10,7 @@ import {
 
 /**
  * Resolves one field's §8 carriage against the reference-input set of the
- * transaction **whose door will read it** (#600).
+ * transaction **whose door will read it**.
  *
  * The tier is §8.4's partition over the preimage's length — never a choice made
  * here — and the indices are resolved by content through the two resolvers
@@ -25,7 +25,7 @@ import {
  * indices that are right until the first transaction that references anything
  * else, which is every real one.
  *
- * Since Option B (#619/#621) this resolver **is** the production seam: the
+ * Since Option B this resolver **is** the production seam: the
  * dispute builder resolves the plan against the door transaction's own
  * reference-input set at build time and puts the result on the observe wire,
  * so no earlier transaction's index survives to disagree with it.
@@ -86,8 +86,7 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputs = ({
 
 /**
  * Refuses a carriage whose positional indices would not resolve to the same
- * UTxOs in the transaction that actually runs the §8.8 door (#600,
- * re-scoped by #619/#621).
+ * UTxOs in the transaction that actually runs the §8.8 door.
  *
  * When this guard was written, the auxiliary — carriage included — was hashed
  * into `evidence_hash` at PrepareSelected and dereferenced three transactions
@@ -152,8 +151,8 @@ export const assertMidgardFieldCarriageResolvesAtDoor = ({
       `${label} §8 carriage does not resolve at the door-running transaction: ${disagreement}. ` +
         "Positional indices are §8.7 content addresses into one concrete transaction's " +
         "reference-input set, so a carriage resolved against a different set names different " +
-        "UTxOs; resolve against the set the door will read (#600, re-scoped by #619/#621: " +
-        "production builds resolve at build time and put the fresh carriage on the wire).",
+        "UTxOs; resolve against the set the door will read " +
+        "(production builds resolve at build time and put the fresh carriage on the wire).",
     );
   }
 };

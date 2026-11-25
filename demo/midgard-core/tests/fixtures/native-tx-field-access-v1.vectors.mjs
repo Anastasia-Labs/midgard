@@ -206,11 +206,13 @@ export const buildNativeTxFieldAccessGoldenV1 = (codec) => {
       maxFieldItemCount: codec.MIDGARD_MAX_FIELD_ITEM_COUNT,
       maxTransactionAggregateFieldBytes:
         codec.MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
-      maxSpendInputsPreimageBytes: codec.MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
+      maxSpendInputsPreimageBytes:
+        codec.MIDGARD_MAX_SPEND_INPUTS_PREIMAGE_BYTES,
       maximumCardanoSpendRedeemerCount:
         codec.MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
       chunkBytesK: codec.MIDGARD_CHUNK_BYTES_K,
-      maxTier1RedeemerPreimageBytes: codec.MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+      maxTier1RedeemerPreimageBytes:
+        codec.MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       maxTier3ChunkCount: codec.MIDGARD_MAX_TIER3_CHUNK_COUNT,
       // §5.3 item widths. The *strides* are what the encoders spend, and they
       // are pinned by the stride table below; these are the payload widths the
@@ -224,8 +226,9 @@ export const buildNativeTxFieldAccessGoldenV1 = (codec) => {
       viewConstructors: [...codec.MIDGARD_FIELD_VIEW_CONSTRUCTORS],
     },
     emptyFieldCommitmentHex: hex(codec.MIDGARD_EMPTY_FIELD_COMMITMENT),
-    strides: Array.from({ length: codec.MIDGARD_FIELD_COUNT }, (_, fieldIndex) =>
-      codec.midgardFieldStride(fieldIndex),
+    strides: Array.from(
+      { length: codec.MIDGARD_FIELD_COUNT },
+      (_, fieldIndex) => codec.midgardFieldStride(fieldIndex),
     ),
     arrayHeaders: ARRAY_HEADER_COUNTS.map((count) => {
       const header = codec.encodeMidgardFieldArrayHeader(count);
@@ -258,7 +261,7 @@ export const buildNativeTxFieldAccessGoldenV1 = (codec) => {
       preimageBlockHex: hex(TIER3_PREIMAGE_BLOCK),
       chunkLengths: tier3Chunks.map((chunk) => chunk.length),
       chunkDigestsHex: tier3Certificate.chunkDigests.map(hex),
-      // The mint-welded datum commitment (#606) — the datum-shape identity
+      // The mint-welded datum commitment — the datum-shape identity
       // that replaced the retired per-(tx_id, field_index) asset-name class.
       // Recomputed on the Aiken side from the rebuilt payload.
       fieldHashHex: hex(tier3Certificate.fieldHash),
@@ -269,8 +272,8 @@ export const buildNativeTxFieldAccessGoldenV1 = (codec) => {
     certificateAssetName: {
       assetNameHex: hex(codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME),
       byteLength: codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.length,
-      ascii: codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("ascii"),
+      ascii:
+        codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.toString("ascii"),
     },
   };
 };
-

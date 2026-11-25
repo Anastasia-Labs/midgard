@@ -73,7 +73,7 @@ export const txOrderMaterialCarriageVector = ({
    *
    * Optional because only tier-3 fields consult it, and **absent is refused
    * rather than defaulted**: a tier-3 entry locates its manifest by the
-   * policy's constant-name token over the plan's datum identity (#606), so an
+   * policy's constant-name token over the plan's datum identity, so an
    * empty or otherwise stand-in policy id would emit a redeemer that names a
    * token nobody can hold. The refusal is here, at the one place that needs
    * the value, rather than at a caller that might forget it.

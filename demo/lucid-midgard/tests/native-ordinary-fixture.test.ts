@@ -26,7 +26,7 @@ const readFixture = (): OrdinaryNativeTxFixture =>
  * default — asserts the checked-in file is what the construction produces today.
  *
  * `golden_core_native_full_tx_cbor` in `native-tx.test.ak` was the last
- * hand-maintained seed on the generator's ordinary path (#588 item 4). It is now
+ * hand-maintained seed on the generator's ordinary path. It is now
  * rebound from this fixture by
  * `scripts/generate-native-compact-aiken-goldens.mjs`, so the Aiken module has no
  * literal a contributor is expected to retype.

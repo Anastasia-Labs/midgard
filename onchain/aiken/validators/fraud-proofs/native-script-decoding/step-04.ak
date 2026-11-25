@@ -1,4 +1,4 @@
-//// ## Native-Script Decoding Fault Proof — Step 04 (#635, #633)
+//// ## Native-Script Decoding Fault Proof — Step 04
 ////
 //// The thread's proven verdict finalizes into a permanent fraud-proof token.
 //// Everything substantive was proven upstream; this step checks the classed

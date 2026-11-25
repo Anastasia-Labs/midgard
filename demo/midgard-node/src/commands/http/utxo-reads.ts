@@ -133,15 +133,7 @@ export const getUtxosHandler = Effect.gen(function* () {
     failWith500("GET", UTXOS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    e.message === "E_PUBLIC_READ_MIGRATING"
-      ? HttpServerResponse.json(
-          {
-            error: "Pending withdrawal read authority is being populated",
-            error_code: "E_PUBLIC_READ_MIGRATING",
-          },
-          { status: 503, headers: { "retry-after": "5" } },
-        )
-      : failWith500("GET", UTXOS_ENDPOINT, e),
+    failWith500("GET", UTXOS_ENDPOINT, e),
   ),
 );
 

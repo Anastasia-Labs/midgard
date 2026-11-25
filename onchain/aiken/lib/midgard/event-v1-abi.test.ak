@@ -526,7 +526,7 @@ test canonical_settlement_v1_typescript_abi_vectors() {
   }
 }
 
-// V-11 (#532). Every rejection test below used to end in
+// Every rejection test below used to end in
 // `cbor.serialise(decoded) == cbor.serialise(decoded)`, a tautology that is
 // True for every value the generated decoder could possibly produce, so no
 // round-trip property was established. The intended property is the canonical

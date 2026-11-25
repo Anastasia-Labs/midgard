@@ -33,7 +33,7 @@ const NODE_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 describe("CLI log lines", () => {
   // Worker threads log through Effect's logfmt logger; the main fiber must
   // match it, a UTC timestamp with its date, so one node log lines up with
-  // journey logs and L1 slots (#816). They go to stderr, so a command's
+  // journey logs and L1 slots. They go to stderr, so a command's
   // stdout carries only its JSON result.
   it("logs the main fiber's lines to stderr, in UTC with a date, whatever TZ is", async () => {
     const failed = await execFileAsync(

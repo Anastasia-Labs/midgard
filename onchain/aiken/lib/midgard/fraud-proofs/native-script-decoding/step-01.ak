@@ -1,6 +1,6 @@
 //// Datum and redeemer wire shapes for the decoding-fault thread's first
 //// step. The step has no input state; its `Continue` payload selects how the
-//// verdict subject is bound (#635, #633).
+//// verdict subject is bound.
 
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}

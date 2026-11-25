@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` adversarial-prover emulator suite (#635, #633).
+ * `native-script-decoding` adversarial-prover emulator suite.
  *
  * Every scenario here starts from an HONEST commitment — a header whose
  * decoding classification is correct — and puts an adversarial prover against

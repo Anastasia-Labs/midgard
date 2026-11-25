@@ -265,7 +265,7 @@ export const buildValidationTraceDisputeChain = ({
      * cannot carry a hand-written argument list per title without drifting from
      * what the validators declare — which is precisely how the ten resolvers
      * that gained `field_preimage_certificate_policy_id` in #592 kept being
-     * deployed with two arguments and became always-succeeds scripts (#605).
+     * deployed with two arguments and became always-succeeds scripts.
      * Resolving each declared parameter BY NAME makes the blueprint the only
      * authority on both the count and the order: a resolver that grows a
      * parameter is served automatically if the name is known, and refused
@@ -305,7 +305,7 @@ export const buildValidationTraceDisputeChain = ({
               `Semantic resolver "${title}" declares parameter ` +
                 `"${parameter.title}", which this deployment builder has no value ` +
                 "for. Add it to the semantic-resolver parameter set rather than " +
-                "deploying the resolver under-applied (#609).",
+                "deploying the resolver under-applied.",
             );
           }
           return value;

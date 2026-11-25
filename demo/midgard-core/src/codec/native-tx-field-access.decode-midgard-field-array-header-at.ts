@@ -242,7 +242,7 @@ export type MidgardFieldPreimageCertificate = {
   readonly fieldIndex: number;
   /**
    * The §4 flat field commitment of the whole preimage — mint-welded to
-   * `chunkDigests` (#606, owner ruling 2026-08-16): the policy checks
+   * `chunkDigests`: the policy checks
    * `hash(concat(chunks))` against this exact value, so a consumer comparing
    * it to a commitment it authenticated itself is talking about these bytes.
    */
@@ -266,10 +266,8 @@ export const exactBytes = (
 
 /**
  * §8.6's certificate asset name — one constant for every certificate of the
- * policy (#606, owner ruling 2026-08-16; supersedes the retired
- * `blake2b_256(field_index_byte ‖ tx_id)` derivation). The name is branding,
- * not identity: everything the derived name encoded is in the mint-verified
- * datum, which since #606 also carries the welded `fieldHash`. The mint still
+ * policy. The name is branding, not identity: the certificate's identity is
+ * in the mint-verified datum, which also carries the welded `fieldHash`. The mint still
  * pins the constant, so a token of the policy is always this name over a
  * datum the mint proved. Discovery is by enumerating the single certificate
  * address and filtering by datum; same-name tokens are disambiguated by

@@ -14,6 +14,7 @@ import {
   logDatabaseError,
   sqlErrorToDatabaseError,
 } from "../../src/database/utils/common.js";
+import { withdrawalLedgerOutRefColumns } from "../../src/database/withdrawal-ledger-outref.decode.js";
 import type { Database } from "../../src/services/database.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
 
@@ -195,6 +196,8 @@ export const insertWithdrawals = (
       WithdrawalsDB.Columns.WITHDRAWAL_L1_OUTPUT_INDEX,
       WithdrawalsDB.Columns.ASSET_NAME,
       WithdrawalsDB.Columns.L2_OUTREF,
+      WithdrawalsDB.Columns.L2_LEDGER_OUTREF,
+      WithdrawalsDB.Columns.L2_LEDGER_OUTREF_STATE,
       WithdrawalsDB.Columns.L2_OWNER,
       WithdrawalsDB.Columns.L2_VALUE,
       WithdrawalsDB.Columns.L1_ADDRESS,
@@ -211,6 +214,7 @@ export const insertWithdrawals = (
     // because sql.insert only preserves parameter/custom fragments, not casts.
     const normalizedEntries = [...incomingById.values()].map((entry) => ({
       ...entry,
+      ...withdrawalLedgerOutRefColumns(entry[WithdrawalsDB.Columns.L2_OUTREF]),
       [WithdrawalsDB.Columns.VALIDITY_DETAIL]: sql`CAST(${JSON.stringify(
         entry[WithdrawalsDB.Columns.VALIDITY_DETAIL] ?? {},
       )} AS TEXT)::JSONB`,

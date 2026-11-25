@@ -1359,7 +1359,7 @@ pub fn validate_remove_fraudulent_v1(
   //    and header suffix are authenticated exactly as before, and the
   //    header equality below is the same `expect`. It is read first only
   //    because the prover it also yields is what the slashing arms route
-  //    the reward to, and the fraud-proof datum is where F04 §2.3 says
+  //    the reward to, and the fraud-proof datum is where decision 0002 §2.3 says
   //    that identity lives.
   let referenced_fraudulent_header_hash, fraud_prover, fraud_proof_asset_name <- fraud_proof.get_proven_fraud_record_with_identity(
     reference_inputs,
@@ -1421,7 +1421,7 @@ pub fn validate_remove_fraudulent_v1(
         //       protects no prover-controlled input.
         //
         //       The reward rides the slash rather than the target block's
-        //       removal. F04 §2.3 reads "only the transaction that both
+        //       removal. Decision 0002 §2.3 reads "only the transaction that both
         //       consumes the operator-directory node and removes the
         //       fraud-proved target block can pay the reward", but the two
         //       cannot always coincide: a fraudulent block with successors
@@ -1430,7 +1430,7 @@ pub fn validate_remove_fraudulent_v1(
         //       `slashing_approach`, and `OperatorAlreadySlashed` is only
         //       constructible after the slash. The slash therefore happens
         //       on the first pruning transaction. Pinning the reward to the
-        //       bond is where F04 §2.4 puts the idempotency boundary ("at
+        //       bond is where decision 0002 §2.4 puts the idempotency boundary ("at
         //       most one reward from an operator's slashable bond"): the
         //       singleton directory node is consumed exactly once, so one
         //       reward is payable however many proof tokens exist for the
@@ -2131,9 +2131,9 @@ test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
   }
 }
 
-// ## Fraud-prover reward routing (2026-08-11 owner ruling)
+// ## Fraud-prover reward routing
 //
-// The lovelace figure below is F04 §2.2's bounded-acceptance
+// The lovelace figure below is decision 0002 §2.2's bounded-acceptance
 // `fraud_prover_reward` (400 tADA) used purely as a **test vector**. Nothing
 // here is an economics authority: the compiled validator routes
 // `env.fraud_prover_reward` unchanged. Exercising the seams at the bounded

@@ -143,7 +143,7 @@ export type UserEventAuthenticateMintRedeemerParams = {
  *
  * Exported as a *value* rather than only as encoded bytes because one policy — the
  * tx-order minting policy — carries this redeemer nested inside its own
- * `MintRedeemer` beside the §8 carriage vector (#594), so it needs the value and
+ * `MintRedeemer` beside the §8 carriage vector, so it needs the value and
  * cannot use the encoder. Hand-copying the four-field mapping there instead is how
  * a renamed or reordered field ends up spelled two ways.
  */

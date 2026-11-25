@@ -238,7 +238,7 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
   }
 }
 
-// V-10 (#532). Both rejection tests below used to assert against
+// Both rejection tests below used to assert against
 // `auxiliary_constructor_is_exact`, a test-local reimplementation of the ABI.
 // `ValidationAuxiliaryWitnessV1` has exactly 37 constructors (tags 0..36), so
 // `auxiliary_fixture.auxiliary_arity(37)` hits the generated catch-all `_ ->

@@ -516,7 +516,7 @@ test admitted_order_datum_refuses_a_33_byte_datum_hash() fail {
 }
 
 // ---------------------------------------------------------------------------
-// §8 forced-order material carriage (#594)
+// §8 forced-order material carriage
 // ---------------------------------------------------------------------------
 
 const certificate_policy_id: PolicyId =
@@ -977,7 +977,7 @@ test certified_carriage_below_the_tier_three_boundary_is_refused() fail {
 
 /// The manifest is authenticated by its token, not by its shape: an inline datum
 /// of the right type at the right address without the policy's constant-name
-/// token (#606) is not a certificate.
+/// token is not a certificate.
 test certified_carriage_without_the_policy_token_is_refused() fail {
   expect [chunk_0, chunk_1] = tier3_chunks()
   let certificate = certificate_publication(
@@ -1059,7 +1059,7 @@ test declared_length_of_an_empty_field_other_than_one_is_refused() fail {
   )
 }
 
-// -- The submitted body's validity bounds (#817) ----------------------------
+// -- The submitted body's validity bounds ----------------------------
 
 /// The canonically-empty transaction's forced source with its two validity
 /// bounds written raw, so a bound the encoder refuses still reaches the mint's
@@ -1198,7 +1198,7 @@ test tx_order_mint_redeemer_wire_form_is_the_event_plus_the_carriage_vector() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.11's published cost claim (#594)
+// §8.11's published cost claim
 // ---------------------------------------------------------------------------
 //
 // §8.11 publishes a cost for this mint — "§12.5's tier-2 per-step

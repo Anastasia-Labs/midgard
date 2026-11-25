@@ -2,7 +2,7 @@
  * The **declared construction** of the size-balanced conformance fixture.
  *
  * `native-size-balanced-15_5k.json` used to be an opaque checked-in blob: a
- * ~16 kB `fullTxCborHex` with no producer anywhere in the repo (#588). Every
+ * ~16 kB `fullTxCborHex` with no producer anywhere in the repo. Every
  * derived artifact — the Aiken goldens in
  * `onchain/aiken/lib/midgard/fraud-proofs/native-tx.size-balanced.test.ak`, the
  * retained-DA boundary measurement, the `mixed-size-balanced` row of the

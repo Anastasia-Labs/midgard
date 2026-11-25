@@ -52,7 +52,6 @@ readiness fails with `availability_responder_retries_exhausted:<error>` and the
 responder keeps draining on its poll interval until a drain no longer fails. A confirmed intent the chain no longer
 carries is rewound to pending and its identical signed bytes are rebroadcast.
 Ordinary rollback and expired orphan chains reconcile without replacement bytes.
-A `halt` row left by an older journal is cleared on open with one log line.
 
 Each opened challenge is its own journal workflow, keyed by actor, deployment and
 header. The workflow ends when the actor's own terminal transaction is finalized
@@ -80,8 +79,7 @@ for a header whose own Open landed. The watcher reports each refused step under
 `workflowRefused`, naming the deployment and header of the live workflow that
 blocks it. A challenge still live in a deployment nobody drives any more keeps
 refusing other deployments until someone terminates it. Actor processes must
-share one journal; it migrates a schema-1 journal (one
-workflow per actor) in place. A provisional terminal permits progress in the
+share one journal. A provisional terminal permits progress in the
 same deployment while keeping the capital guard against another deployment;
 a failed terminal re-verification keeps that guard. A verified foreign
 terminal beyond recovery depth clears the capital guard even while its Open
@@ -90,8 +88,7 @@ its capital guard without deleting its historical progress. Confirmed
 ancestor history is pruned independently using authenticated block heights,
 so continuous activity does not retain the entire ancestry. Expired progress
 is kept through 2160 blocks after its first authenticated post-expiry boundary
-and while an unresolved child still needs it. Older journals start this
-conservative retention clock on their first authenticated observation.
+and while an unresolved child still needs it.
 Wallet funding excludes resources reserved under
 any deployment. Both watcher and CLI check the
 remaining live queue suffix before timeout; the transaction references that

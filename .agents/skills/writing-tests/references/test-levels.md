@@ -151,7 +151,7 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   node scripts/contrib.mjs test --package midgard-node --file tests/<file>.test.ts
   ```
 
-  Global setup creates and migrates one database per worker
+  Global setup creates one database per worker, with the schema,
   (`<prefix>_w0`..`<prefix>_wN`) before any file runs and builds the native
   owner binary with cargo (`tests/global-setup.ts`).
 
@@ -168,7 +168,7 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   - `MIDGARD_NODE_TEST_FORKS` caps parallel files; `MIDGARD_NODE_TEST_BAIL`
     opts into bail for one run and is never committed.
 - **CI:** `Midgard Node CI/Test Midgard node`, after
-  `Build Midgard node and migrate isolated CI database`.
+  `Build Midgard node`.
 - **Does not prove:** behavior against real Ogmios, Kupo or a real node.
 
 ## 6. Devnet and live acceptance

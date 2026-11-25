@@ -32,7 +32,7 @@ export const addressAtRawNetworkNibble = (networkNibble: number): Buffer => {
 /**
  * This suite used to assert that `midgardOutRefToCbor` reproduced CML's
  * canonical `TransactionInput` CBOR. That is no longer the contract, and the
- * change is deliberate (#586's owner ruling): the ledger out-ref key is spec
+ * change is deliberate: the ledger out-ref key is spec
  * §5.3's field-0/1 item, `82 ‖ 58 20 tx_id ‖ 19 index_be16`, a fixed 38 bytes
  * with a non-minimal 3-byte index — the same bytes on-chain `ledger_outref_key`
  * derives. CML minimises the index, so it disagrees for every index below 256,

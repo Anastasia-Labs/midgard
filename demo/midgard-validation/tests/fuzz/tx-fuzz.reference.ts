@@ -5,17 +5,6 @@ import { join } from "node:path";
 
 import { aikenBinary } from "@al-ft/midgard-test-support/aiken-evaluator";
 
-import {
-  Application,
-  Builtin,
-  Case,
-  Constr,
-  Delay,
-  Force,
-  Lambda,
-  type UPLCTerm,
-} from "../../src/uplc-term.js";
-
 /**
  * The reference leg of the transaction differential: a UPLC evaluator outside
  * this repository, `<bin> uplc eval`, given by `MIDGARD_TX_FUZZ_UPLC_BIN`.
@@ -213,21 +202,3 @@ export const makeReference = (binary: string) => {
 };
 
 export type Reference = ReturnType<typeof makeReference>;
-
-/** The flat builtin tags a term names. */
-export const builtinTagsOf = (term: UPLCTerm): ReadonlySet<number> => {
-  const tags = new Set<number>();
-  const pending: UPLCTerm[] = [term];
-  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-    if (next instanceof Builtin) tags.add(Number(next.builtinTag));
-    else if (next instanceof Application) pending.push(next.func, next.arg);
-    else if (next instanceof Lambda) pending.push(next.body);
-    else if (next instanceof Delay) pending.push(next.delayedTerm);
-    else if (next instanceof Force) pending.push(next.forced);
-    else if (next instanceof Constr) pending.push(...next.terms);
-    else if (next instanceof Case) {
-      pending.push(next.constrTerm, ...next.continuations);
-    }
-  }
-  return tags;
-};

@@ -6,7 +6,7 @@
 //
 // #579, owner rulings of 2026-08-14, removed `txOrderFieldPreimageSpend`,
 // `txOrderFieldReceiptSpend` and `txOrderFieldReceiptMint` together. Commit
-// df53dc6a7 (#587) deleted their validators on-chain and #594 replaced the
+// df53dc6a7 deleted their validators on-chain and #594 replaced the
 // tx-order mint's receipt parameters with the §8.6 certificate policy id, so
 // the blueprint declares none of the three titles.
 export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([

@@ -119,7 +119,7 @@ export const isolatedForksPool = ({ maxForks, heapMb = 4096 }) => ({
 
 /**
  * Serves `.sql` files to test code as default-exported strings, so a suite can
- * assert against the same migration text the runtime executes instead of a
+ * assert against the same schema text the runtime executes instead of a
  * transcription of it.
  */
 export const rawSqlLoaderPlugin = () => ({

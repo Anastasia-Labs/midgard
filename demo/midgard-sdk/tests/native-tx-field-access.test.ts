@@ -330,7 +330,7 @@ describe("§4/§8.6 values a builder must reproduce", () => {
     expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX);
   });
 
-  it("pins the constant certificate token name (#606)", () => {
+  it("pins the constant certificate token name", () => {
     // One constant for every certificate of the policy — ASCII
     // "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes. The identity the retired
     // per-(tx_id, field_index) derivation carried lives in the datum, which

@@ -741,7 +741,7 @@ pub fn inline_witness_opening(
 // disputed transaction — the door has no preimage to hash, which is what tier 3
 // is for. These builders produce a certificate that is honest in every
 // mechanical respect: real byte length, real per-chunk digests, the mint-welded
-// `field_hash` of the preimage's own bytes (#606), minted under the policy the
+// `field_hash` of the preimage's own bytes, minted under the policy the
 // selector parameterises its validator with, carrying the constant §8.6 asset
 // name over a datum naming the committed transaction's `(tx_id, field_index)`.
 // Whether the *field* it certifies is the one that transaction committed is
@@ -930,7 +930,7 @@ pub fn native_inclusion_carriage_v1(
   common.RedeemerCarriedInclusion(native_inclusion_args_v1(fixture))
 }
 
-// ## Published-chunk carriage fixtures (issue #545)
+// ## Published-chunk carriage fixtures
 //
 // The on-chain library has no prover, so a proof deep enough to matter is
 // synthesised here and the block's header is then made to commit exactly the
@@ -1186,7 +1186,7 @@ pub fn chunked_verify_withdraw_redeemer_entry(
 }
 
 /// Withdraw redeemer entry mirroring the merkelized `pexcludes` invocation for
-/// one delegated non-membership claim (#582). The step fixtures attach this
+/// one delegated non-membership claim. The step fixtures attach this
 /// exact entry and the `exclusion` selectors in `validators/pexcludes.ak`
 /// execute its payload, so a fixture cannot drift into a witness shape the
 /// production validator would refuse without a selector going red.

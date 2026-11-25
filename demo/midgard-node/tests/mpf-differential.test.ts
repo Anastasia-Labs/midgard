@@ -11,7 +11,7 @@ import {
 } from "./helpers/native-owner-binary.js";
 
 // The architecture_g replay spawns the native owner binary; see the helper
-// for the build/skip contract (#642).
+// for the build/skip contract.
 const binaryPresent = nativeOwnerBinaryPresent();
 if (!binaryPresent) {
   warnNativeOwnerBinaryAbsent("mpf-differential");

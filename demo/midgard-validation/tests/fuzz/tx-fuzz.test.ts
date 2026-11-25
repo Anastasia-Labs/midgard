@@ -9,7 +9,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { adjudicateCases } from "./cek-step-fuzz.harness.js";
 import { runTxCase, type TxCaseResult } from "./tx-fuzz.legs.js";
 import {
-  pinsWithoutReferenceLeg,
   TX_CORPUS_PINS,
   TX_FIXED_SET_PINS,
   type TxRowPins,
@@ -30,9 +29,8 @@ import { txFuzzScenario } from "./tx-fuzz.scenario.js";
  * machine through the Aiken step evaluator, as in the step differential.
  *
  * - CI: the fixed seed set and the corpus seeds, with zero divergences. Each
- *   known disagreement and catalogued step is pinned to its seed: the counts
- *   of each class per seed, and per class over the row, must equal
- *   `tx-fuzz.pins.ts` (less the reference leg's classes when it is off).
+ *   catalogued step is pinned to its seed: the counts of each class per
+ *   seed, and per class over the row, must equal `tx-fuzz.pins.ts`.
  *   The package suite runs it with the leg off; the `tx-fuzz-reference`
  *   check runs it again with the leg on, against the pinned aiken.
  * - Release: `MIDGARD_TX_FUZZ_SECONDS=<n>` adds a random run of about n
@@ -60,16 +58,10 @@ type TxRunSummary = {
   referenced: number;
   adjudicatedSteps: number;
   readonly verdicts: Record<string, number>;
-  readonly known: Record<string, number>;
   readonly catalogued: Record<string, number>;
   readonly divergences: string[];
-  /** Per seed, its known disagreements and catalogued steps, by class. */
-  readonly perSeed: Record<string, SeedCounts>;
-};
-
-type SeedCounts = {
-  known?: Record<string, number>;
-  catalogued?: Record<string, number>;
+  /** Per seed, its catalogued steps, by class. */
+  readonly perSeed: Record<string, Record<string, number>>;
 };
 
 const emptySummary = (): TxRunSummary => ({
@@ -77,7 +69,6 @@ const emptySummary = (): TxRunSummary => ({
   referenced: 0,
   adjudicatedSteps: 0,
   verdicts: {},
-  known: {},
   catalogued: {},
   divergences: [],
   perSeed: {},
@@ -87,14 +78,8 @@ const bump = (counts: Record<string, number>, key: string): void => {
   counts[key] = (counts[key] ?? 0) + 1;
 };
 
-const bumpSeed = (
-  summary: TxRunSummary,
-  seed: number,
-  part: keyof SeedCounts,
-  key: string,
-): void => {
-  const counts = (summary.perSeed[seed.toString()] ??= {});
-  bump((counts[part] ??= {}), key);
+const bumpSeed = (summary: TxRunSummary, seed: number, key: string): void => {
+  bump((summary.perSeed[seed.toString()] ??= {}), key);
 };
 
 describe("transaction differential", () => {
@@ -135,12 +120,7 @@ describe("transaction differential", () => {
         for (const { catalogued } of adjudicated.steps) {
           if (catalogued === null) continue;
           bump(summary.catalogued, catalogued);
-          bumpSeed(
-            summary,
-            adjudicated.prepared.sampleSeed,
-            "catalogued",
-            catalogued,
-          );
+          bumpSeed(summary, adjudicated.prepared.sampleSeed, catalogued);
         }
         summary.divergences.push(
           ...adjudicated.divergences.map(
@@ -148,22 +128,17 @@ describe("transaction differential", () => {
           ),
         );
       }
-      results.forEach((result, index) => {
-        const seed = seeds[start + index]!;
+      for (const result of results) {
         summary.cases += 1;
         if (result.referenced) summary.referenced += 1;
         bump(
           summary.verdicts,
           `${result.verdict}${result.rejectionCode === null ? "" : `/${result.rejectionCode}`}`,
         );
-        for (const known of result.known) {
-          bump(summary.known, known);
-          bumpSeed(summary, seed, "known", known);
-        }
         summary.divergences.push(
           ...result.divergences.map((detail) => `${result.label}: ${detail}`),
         );
-      });
+      }
     }
   };
 
@@ -173,19 +148,15 @@ describe("transaction differential", () => {
     );
 
   /**
-   * The row's pins, less the reference leg's classes when it is off. A row
-   * run with the leg configured must have referenced some spend: otherwise a
-   * leg that never ran would match the leg-off pins.
+   * The row's pins. A row run with the leg configured must have referenced
+   * some spend: otherwise a leg that never ran would pass unseen.
    */
   const expectPinned = (summary: TxRunSummary, pins: TxRowPins): void => {
     if (process.env.MIDGARD_TX_FUZZ_UPLC_BIN !== undefined) {
       expect(summary.referenced).toBeGreaterThan(0);
     }
-    const expected =
-      reference === undefined ? pinsWithoutReferenceLeg(pins) : pins;
-    expect(summary.perSeed).toStrictEqual(expected.seeds);
-    expect(summary.known).toStrictEqual(expected.known);
-    expect(summary.catalogued).toStrictEqual(expected.catalogued);
+    expect(summary.perSeed).toStrictEqual(pins.seeds);
+    expect(summary.catalogued).toStrictEqual(pins.catalogued);
   };
 
   it(

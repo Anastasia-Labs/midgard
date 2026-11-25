@@ -1,5 +1,5 @@
 /**
- * Process-level evidence for the pooled DA bond journey (ticket #692):
+ * Process-level evidence for the pooled DA bond journey:
  * what a real `da-committee-node` process and
  * real `midgard-node da-bond` processes must show, and the pure checks the
  * journey driver applies to it.

@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` family (#635, #633) — off-chain codec twins.
+ * `native-script-decoding` family — off-chain codec twins.
  *
  * Proves an operator verdict wrong about the decodability of a resolved
  * reference script — the `ResolvedReferenceScriptMalformed` / `NodeLimit` /

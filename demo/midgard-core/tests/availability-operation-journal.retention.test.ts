@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   type AvailabilityOperationIntent,
@@ -407,81 +407,5 @@ describe("availability journal retention is bounded by validity and recovery dep
     } finally {
       journal.close();
     }
-  });
-
-  it("clears a persisted halt row on open with one notice and never refuses work for it", () => {
-    const database = path();
-    openAvailabilityOperationJournal(database).close();
-    const legacy = new DatabaseSync(database);
-    legacy.exec(
-      "INSERT INTO availability_journal_metadata VALUES ('halt', 'post-finality rollback')",
-    );
-    legacy.close();
-    const notice = vi.fn();
-    let journal = openAvailabilityOperationJournal(database, {
-      onLegacyHaltCleared: notice,
-    });
-    try {
-      expect(notice.mock.calls).toEqual([["post-finality rollback"]]);
-      const lease = journal.acquire("actor", "owner", 0, 100);
-      journal.persist(lease, intent("first"), 1);
-      expect(journal.pending("deployment", "actor")).toHaveLength(1);
-      expect(journal.reservedOutRefs("actor")).toContain("first-input#0");
-    } finally {
-      journal.close();
-    }
-    expect(
-      rows(
-        database,
-        "SELECT * FROM availability_journal_metadata WHERE key = 'halt'",
-      ),
-    ).toEqual([]);
-    journal = openAvailabilityOperationJournal(database, {
-      onLegacyHaltCleared: notice,
-    });
-    journal.close();
-    expect(notice).toHaveBeenCalledTimes(1);
-  });
-
-  it("migrates a schema-2 journal to schema 3 and keeps its live workflow", () => {
-    const database = path();
-    const legacy = new DatabaseSync(database);
-    legacy.exec(`
-      CREATE TABLE availability_journal_metadata (
-        key TEXT PRIMARY KEY, value TEXT NOT NULL
-      );
-      CREATE TABLE availability_operation_workflows (actor TEXT NOT NULL,
-        deployment TEXT NOT NULL, header_hash TEXT NOT NULL,
-        PRIMARY KEY(actor, deployment, header_hash));
-      INSERT INTO availability_journal_metadata VALUES ('schema', '2');
-      INSERT INTO availability_operation_workflows VALUES ('actor', 'deployment', 'header');
-    `);
-    legacy.close();
-    const journal = openAvailabilityOperationJournal(database);
-    try {
-      const lease = journal.acquire("actor", "owner", 0, 100);
-      expect(() =>
-        journal.assertWorkflow(lease, "deployment", "header", "prepare", 1),
-      ).toThrow(/already has a live challenge workflow/);
-    } finally {
-      journal.close();
-    }
-    expect(
-      rows(
-        database,
-        "SELECT value FROM availability_journal_metadata WHERE key = 'schema'",
-      ),
-    ).toEqual([{ value: "3" }]);
-    expect(
-      rows(database, "SELECT * FROM availability_operation_workflows"),
-    ).toEqual([
-      {
-        actor: "actor",
-        deployment: "deployment",
-        header_hash: "header",
-        retired_by: null,
-        release: null,
-      },
-    ]);
   });
 });

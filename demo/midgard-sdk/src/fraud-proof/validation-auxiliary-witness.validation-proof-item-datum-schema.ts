@@ -18,7 +18,7 @@ export const ValidationAuxiliaryWitness =
  * **It publishes the field's whole §5.1 preimage, not one item.** Under the
  * retired counted scheme it published one item's bytes beside an `ItemProofV1`
  * opening them against the field commitment — an opening §4 made unsatisfiable
- * (#592). Under §8 the unit that authenticates is the whole preimage, so the
+ *. Under §8 the unit that authenticates is the whole preimage, so the
  * whole preimage is what a publication carries;
  * `canonical_decode_item_observe_v1`'s `ObserveReference` arm wraps it as
  * `Inline` carriage and the door hashes it once against the committed field

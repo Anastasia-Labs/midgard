@@ -107,7 +107,8 @@ export const nativeRootDrift = (
 /**
  * The hold a blocked rebase plan holds. The unnamed block waits on landed
  * processing, which the driver's backoff runs again; a named one (the
- * follower schema missing) needs `migrate`, so it is `notRetried`.
+ * follower schema missing) needs the database recreated, so it is
+ * `notRetried`.
  */
 export const blockedRebaseHold = (
   plan: Extract<RebasePlan, { kind: "blocked" }>,

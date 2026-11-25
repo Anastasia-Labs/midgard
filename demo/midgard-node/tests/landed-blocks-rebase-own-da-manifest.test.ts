@@ -1,5 +1,5 @@
 /**
- * A bad DA manifest never holds the landed-block rebase (#926). With the
+ * A bad DA manifest never holds the landed-block rebase. With the
  * node's DA manifest missing, and separately corrupt, the rebase applies a
  * foreign landed block and this node's own landed block on it: the own
  * block's transaction reaches `immutable` and `blocks`, its payload is

@@ -60,8 +60,7 @@ export const minimumLovelaceForValidationProofItemPublication = ({
  * Builds the publication a `CanonicalDecode` complete-item step reaches by
  * reference input.
  *
- * **What it publishes is the field's whole §5.1 preimage, not one item** (#597,
- * the TypeScript twin of #592's wire change). Under §4 a field commits to a flat
+ * **What it publishes is the field's whole §5.1 preimage, not one item**. Under §4 a field commits to a flat
  * `blake2b_256` over its preimage bytes, so a per-item opening has nothing to be
  * checked against and the unit that authenticates is the preimage. The consuming
  * step names this UTxO by reference-input index and never a tier;

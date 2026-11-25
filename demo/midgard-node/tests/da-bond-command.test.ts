@@ -131,7 +131,7 @@ vi.mock(
 );
 
 /**
- * Contract tests for the operator `da-bond` CLI (#691 AC1, AC2) on the real
+ * Contract tests for the operator `da-bond` CLI on the real
  * pool, DA params governor and emulator ledger: one test per command, each
  * refusal paired with its honest control. The owners are the fixture's
  * challenger and responder, `update_threshold` 2. Validator-level refusals

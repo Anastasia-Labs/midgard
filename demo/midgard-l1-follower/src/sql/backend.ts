@@ -90,7 +90,7 @@ export type TransactionOptions = Readonly<{
    * store large enough would outlast any fixed one and fail every start.
    * Like a real write, only TCP keepalive ends one whose peer vanished.
    * That adds no new way for a start to hang: a start runs unbounded
-   * writes on the same server just before its scan (migrations, the
+   * writes on the same server just before its scan (schema creation, the
    * tracked-set check, the epoch bump).
    */
   scansWholeStore?: boolean;

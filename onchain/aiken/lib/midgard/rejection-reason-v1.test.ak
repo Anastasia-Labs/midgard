@@ -312,7 +312,7 @@ test reason_vectors_arms_36_to_47() {
 }
 
 /// The interim sentinel coordinate (-1), a two-byte coordinate, and the
-/// P1 mint-item arm at its smallest coordinate.
+/// mint-item arm at its smallest coordinate.
 test reason_vectors_sentinel_and_width() {
   and {
     pinned(

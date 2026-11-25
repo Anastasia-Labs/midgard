@@ -952,7 +952,7 @@ fn c20_script_equal_length_variant() -> MidgardVersionedScript {
   }
 }
 
-// V-9 (#532), C20-6 / C20-7. The two cross-substitution tests below were
+// The two cross-substitution tests below were
 // `test ... fail` over a single call to the production
 // `verify_midgard_transaction_field_preimage_v1` conjunction, so the names
 // could not establish which guard fired. Mutation controls (aiken-fork

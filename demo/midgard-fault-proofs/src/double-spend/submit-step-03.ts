@@ -176,7 +176,7 @@ export const buildStep03 = async ({
    * the one demotion §8 leaves open, and it changes which transaction pays,
    * never what the door authenticates. Below the tier-1 bound the ladder
    * picks `Inline` on its own, which is what capped this family's admissible
-   * spend-input cardinality at the L1 byte frontier (#612).
+   * spend-input cardinality at the L1 byte frontier.
    */
   readonly publishCarriage?: boolean;
   /** Pre-observed tier-2/3 publications for workflow use. */

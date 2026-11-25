@@ -319,7 +319,7 @@ validator mint(
         // contexts from protocol version 11), so a node can never serve as
         // its own proof and a lone honest registration cannot be slashed.
         // 1. `slashing_penalty` must be paid via the transaction fee, which is
-        //    the pinned destination of the penalty (F04 §2.3).
+        //    the pinned destination of the penalty (decision 0002 §2.3).
         expect fee == env.slashing_penalty
 
         // 1a. The bounty claimant named in the redeemer must sign: nothing
@@ -327,7 +327,7 @@ validator mint(
         expect bounty_claimant |> utils.has_signed(extra_signatories)
 
         // 1b. The rest of the removed bond, exactly `env.fraud_prover_reward`,
-        //     must reach the claimant (F04 §2.3).
+        //     must reach the claimant (decision 0002 §2.3).
         expect
           bounty_routing_is_exact_v1(
             outputs,

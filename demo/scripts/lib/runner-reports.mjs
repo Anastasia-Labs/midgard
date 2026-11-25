@@ -4,7 +4,7 @@
 // *passage*: a count of `it(` lines in a test file, or of `test <name>(`
 // declarations in an Aiken module, was reported as the number of checks that
 // passed. Nine throwing test bodies, an `it.skip`, or a selector that collects
-// nothing all leave those counts untouched (issue #519, finding V-2).
+// nothing all leave those counts untouched.
 //
 // the canonical V1 domain checks
 // established the remedy for the Vitest side: spawn the runner, read its

@@ -61,7 +61,7 @@ export const deriveTxOrderMaterial = ({
   if (refusal !== null) {
     throw new MidgardForcedTxAdmissionRefused(refusal);
   }
-  // The P1 capacity limits: an admitted transaction the mint's execution
+  // The capacity limits: an admitted transaction the mint's execution
   // budget is not expected to fit is refused here too, by the measured rates.
   const estimate = estimateMidgardForcedTxOrderMintMemory(tx);
   if (estimate.memory > MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS) {
@@ -192,7 +192,7 @@ export type TxOrderCarriagePlan = {
 
 /**
  * Chooses, per non-empty field, whether the order carries its preimage inline or
- * references a predeployed publication (#594 AC6).
+ * references a predeployed publication.
  *
  * The rule is simplest-fitting-first under one aggregate
  * reserve, taken in **descending preimage size**: the largest field is offered

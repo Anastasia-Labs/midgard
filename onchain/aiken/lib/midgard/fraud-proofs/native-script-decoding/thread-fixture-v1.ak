@@ -1,4 +1,4 @@
-//// Test fixtures for the decoding-fault thread family (#635, #633): crafted
+//// Test fixtures for the decoding-fault thread family: crafted
 //// reference-script items, resolved-output descriptors, single-leaf tries
 //// for the committed-claim roots and the pre-state ledger, and L1 step
 //// transactions. Test-only — never referenced by a validator.

@@ -49,8 +49,6 @@ export type TxFuzzScenario = {
   readonly scriptTerm: UPLCTerm;
   /** The declared ex-units of the spend redeemer. */
   readonly exUnits: { readonly memory: bigint; readonly steps: bigint };
-  /** Builtin tags the script names, for the reference leg's known classes. */
-  readonly primaryTag: number;
   readonly returnsUnit: boolean;
   readonly redeemer: Data;
   readonly event: ValidationMachineEventReplayInput;
@@ -159,7 +157,6 @@ export const txFuzzScenario = async (seed: number): Promise<TxFuzzScenario> => {
     scriptFlat,
     scriptTerm: term,
     exUnits,
-    primaryTag,
     returnsUnit,
     redeemer,
     event: {

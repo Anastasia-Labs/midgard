@@ -52,7 +52,7 @@ export const deriveMidgardFieldPreimageCertificate = ({
     owner: exactBytes(owner, 28, "certificate owner"),
     txId: exactBytes(txId, 32, "certificate tx_id"),
     fieldIndex: exactMidgardFieldIndex(fieldIndex),
-    // The mint weld (#606): the §4 commitment of the bytes themselves, the
+    // The mint weld: the §4 commitment of the bytes themselves, the
     // same value the policy checks `hash(concat(chunks))` against.
     fieldHash: midgardFieldCommitment(preimage),
     totalLength: preimage.length,

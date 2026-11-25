@@ -330,7 +330,7 @@ describe.each(resetAdapters(databases, scratch))(
       try {
         await store.start();
         await store.transaction("write", async (tx) => {
-          // A role table no follower migration declares, so never in the catalog.
+          // A role table no follower schema declares, so never in the catalog.
           await tx.exec(
             "CREATE TABLE outside_note (slot bigint REFERENCES l1_blocks(slot) ON DELETE CASCADE)",
           );

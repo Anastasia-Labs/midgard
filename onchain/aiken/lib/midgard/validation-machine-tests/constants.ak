@@ -23,7 +23,7 @@ pub const maximum_mint_policy_item_cbor =
 pub const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
 
-// C49 (#540). The C70 target snapshot: the preprod epoch-303 protocol
+// The target snapshot: the preprod epoch-303 protocol
 // parameters pinned by `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1`
 // (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts:78),
 // which is the same snapshot every TypeScript Cardano boundary corpus is built

@@ -122,7 +122,7 @@ describe("DA redeemer constructor ABI", () => {
     // The added field. Without it the apply handler has no way to reach
     // the current DA params, which is precisely how rotation stayed
     // non-retroactive.
-    // The pooled-bond apply (#688 register C3) appends the pool reference and
+    // The pooled-bond apply appends the pool reference and
     // the beneficiary refund and no longer names an availability-policy mint.
     expect(aikenConstructorFields("MintRedeemer", "ApplyToStateQueue")).toEqual(
       [

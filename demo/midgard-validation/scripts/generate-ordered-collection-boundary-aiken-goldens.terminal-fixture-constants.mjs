@@ -32,7 +32,7 @@ const PRODUCING_SUITES = [
   "tests/ordered-collection-observer-native-script-boundary.test.ts",
   "tests/ordered-collection-redeemer-boundary.test.ts",
   "tests/blob-chunk-boundary.test.ts",
-  // Added by #592. These four gained a write channel (#590 scope item 0) because
+  // Added by #592. These four gained a write channel because
   // the machine's terminal-fold fixtures now carry §8's carriage — the field's
   // whole §5.1 preimage — and a preimage is not a value a human mirrors.
   "tests/ordered-collection-spend-inputs-boundary.test.ts",

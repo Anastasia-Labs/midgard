@@ -62,7 +62,7 @@ export type CanonicalDecodabilityContracts = {
   /**
    * Policy id the step-01 chain was parameterized with for §8.6 field-preimage
    * certificates (the tier-3 `Certified` field carriage). In the emulator
-   * harness this is the always-succeeds stand-in (#579 ruling A); in
+   * harness this is the always-succeeds stand-in; in
    * production it is the real certificate policy.
    */
   readonly fieldPreimageCertificatePolicyId: string;

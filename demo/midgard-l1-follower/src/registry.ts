@@ -18,7 +18,7 @@ export type RetentionRule =
  * `tableColumn` equals this row's `column`: a decision that reads the row
  * stays answerable while the pinning row lives. `table` is a registered
  * temporal table (itself possibly pinned: pins are transitive, never
- * cyclic), or an owner-managed table a migration declares (the schema lint
+ * cyclic), or an owner-managed table a schema declares (the schema lint
  * checks it), whose rows its owner deletes when the hold ends.
  */
 export type TemporalRowPin = Readonly<{

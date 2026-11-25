@@ -1,4 +1,4 @@
-//// Merkelized verifier for published-chunk MPF proof carriage (issue #545).
+//// Merkelized verifier for published-chunk MPF proof carriage.
 ////
 //// ## Why this is a withdraw script and not step-local code
 ////

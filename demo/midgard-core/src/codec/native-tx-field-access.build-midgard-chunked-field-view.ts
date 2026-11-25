@@ -34,7 +34,7 @@ import {
  * `certified_view` never re-hashes anything. Off-chain a
  * `MidgardFieldPreimageCertificate` is just a record the caller handed over;
  * no policy stands behind it, and the §8.6 constant asset name a door can
- * check names the policy, never the content (#606). Authentication therefore
+ * check names the policy, never the content. Authentication therefore
  * has to happen here or nowhere, and §4 commits the *whole* preimage under one
  * flat `blake2b_256` with no Merkle structure to open a single chunk against —
  * so authenticating any byte of a tier-3 field means hashing all of them.
@@ -106,14 +106,14 @@ export const buildMidgardChunkedFieldView = ({
       `certificate=${certificate.fieldIndex},requested=${exactField}`,
     );
   }
-  // The load-bearing E2 equality (#606), mirrored from the on-chain door: the
+  // The load-bearing equality, mirrored from the on-chain door: the
   // certificate's mint-welded `field_hash` must be the commitment the caller
   // authenticated. Off-chain the reconstruction below re-establishes the
   // commitment anyway, but a manifest welded to some other hash is a manifest
   // the on-chain door would refuse, and this twin must refuse it in step.
   if (!certificate.fieldHash.equals(Buffer.from(expectedCommitment))) {
     return failField(
-      "certificate field_hash does not match the anchored commitment (#606)",
+      "certificate field_hash does not match the anchored commitment",
       `certificate=${certificate.fieldHash.toString("hex")}`,
     );
   }
@@ -225,7 +225,7 @@ export type ResolvedCarriageReferenceInput = {
   readonly certificate?: MidgardFieldPreimageCertificate;
   /**
    * The certificate token's asset name as observed at that UTxO, checked
-   * against the §8.6 constant when supplied (#606: every certificate token
+   * against the §8.6 constant when supplied (every certificate token
    * carries the one constant name; identity lives in the datum).
    *
    * This is an *identity* check, not an authentication: it catches a carriage

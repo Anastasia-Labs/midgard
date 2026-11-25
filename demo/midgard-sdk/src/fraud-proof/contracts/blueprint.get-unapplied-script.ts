@@ -41,7 +41,7 @@ export const getUnappliedScript = (
       `Blueprint validator "${title}" declares ` +
         `${declaredParameters(validator).length.toString()} parameter(s) ` +
         `(${describeDeclaredParameters(validator)}) but is deployed with none ` +
-        "applied, which is an always-succeeds script (#609).",
+        "applied, which is an always-succeeds script.",
     );
   }
   recordBlueprintApplication(blueprint, title, [], validator.compiledCode);

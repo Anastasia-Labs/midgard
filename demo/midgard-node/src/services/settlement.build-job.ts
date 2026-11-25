@@ -78,7 +78,7 @@ const buildJob = (
     // that settlement is cd deep, as it does from its own attempts, and
     // waits, counting no failure, while it is shallower. A rollback that
     // undoes it leaves nothing settled, and the job goes on below. One more
-    // than k deep, whose facts the follower has pruned, is final (#869).
+    // than k deep, whose facts the follower has pruned, is final.
     const settled = yield* settledDepth(job.kind, job.event_id);
     if (settled !== null) {
       const done =

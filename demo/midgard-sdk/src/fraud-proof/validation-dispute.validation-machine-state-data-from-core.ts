@@ -68,7 +68,7 @@ export const ValidationPrepareSelectedSpendRedeemer =
     ValidationPrepareSelectedSpendRedeemerSchema,
   );
 
-// Option B (#620): the canonical-decode preparation commits to the transition
+// The canonical-decode preparation commits to the transition
 // alone — the validator computes `hash_one_step_evidence(transition,
 // NoAuxiliaryWitness)` on-chain, so its `PrepareSelected` carries no auxiliary
 // and the retired `PrepareSelectedByEvidenceHash` arm is gone. Single Aiken

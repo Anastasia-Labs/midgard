@@ -176,7 +176,7 @@ test l2_tx_mistag_step_01_rejects_a_lie_about_the_forwarded_code() fail {
   run_step_01(block, lie)
 }
 
-// ## Published-chunk carriage (#545)
+// ## Published-chunk carriage
 
 const adversarial_branch_levels: Int = 22
 

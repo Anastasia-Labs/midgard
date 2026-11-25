@@ -49,7 +49,7 @@ export type ValidationMachineEventReplay = Readonly<{
 /**
  * Replays one event with the canonical validation pipeline, then constructs its
  * trace from the independently derived verdict and exact ledger mutations.
- * Test support: no production path builds a per-transaction trace in P1, so
+ * Test support: no production path builds a per-transaction trace, so
  * the tests that exercise the trace builder drive it through this helper.
  */
 export const replayValidationMachineEvent = (

@@ -1,7 +1,7 @@
 /**
- * The P1 validation-trace descriptor: a deterministic two-state placeholder.
+ * The validation-trace descriptor: a deterministic two-state placeholder.
  *
- * P1 runs no validation-machine trace. Each transaction event still commits a
+ * No validation-machine trace runs. Each transaction event still commits a
  * descriptor of the frozen shape, built from the event identity and the
  * verdict alone, so every party that knows the event and its verdict derives
  * the same bytes without replaying the machine and without retaining any

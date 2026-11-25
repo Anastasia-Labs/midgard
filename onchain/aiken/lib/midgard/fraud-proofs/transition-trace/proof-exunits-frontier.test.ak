@@ -1,4 +1,4 @@
-//// Measured ExUnits frontier for the §5.5.3 transition-trace arms (#628).
+//// Measured ExUnits frontier for the §5.5.3 transition-trace arms.
 ////
 //// Two questions the `#628` evidence left open, both answered here by
 //// measurement rather than by interpolation:
@@ -30,7 +30,7 @@
 //// through a single `*_parts` builder whose every field is consumed by both
 //// flavours, so the twin cannot silently skip work the measured row paid for.
 ////
-//// Guardrail 3 (#617): payloads are built programmatically by `filler`, never
+//// Payloads are built programmatically by `filler`, never
 //// pinned as source literals.
 
 use aiken/cbor

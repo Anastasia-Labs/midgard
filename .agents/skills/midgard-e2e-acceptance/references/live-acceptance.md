@@ -71,7 +71,7 @@ prover/availability seed match are checked later, after the builds.
 ## Choose where to run
 
 - **Fresh**: fresh local storage is required: a Postgres volume that was never
-  used or was only migrated, and an empty or absent node `db` directory. Do not
+  used, and an empty or absent node `db` directory. Do not
   delete existing volumes to get one. Run from a separate linked worktree; the
   operator Compose wrapper gives it its own project, volumes, host ports and
   node directory. Point `nodeRoot`, `envFile` and `runDirectory` at that

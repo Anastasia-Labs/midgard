@@ -96,7 +96,7 @@ fn sorted_unique_len_from(
   }
 }
 
-/// F04 §4 governed threshold floor: `ceil(2*set_len/3)`, defined for
+/// The governed threshold floor: `ceil(2*set_len/3)`, defined for
 /// `set_len >= 1`.
 ///
 /// `ceil(2*set_len/3)` is evaluated as `(2*set_len + 2) / 3` under integer
@@ -267,7 +267,7 @@ fn value_not_drained(input_value: Value, output_value: Value) -> Bool {
   )
 }
 
-// ## Q63 governed-floor fixtures
+// ## Governed-floor fixtures
 //
 // Committee keys and owner key hashes are generated with a strictly ascending
 // leading byte so that every generated set satisfies the sorted-unique
@@ -382,7 +382,7 @@ fn thresholds_satisfying_floor(set_len: Int, threshold: Int, count: Int) -> Int 
   }
 }
 
-// ## Q63 spend-seam fixtures
+// ## Spend-seam fixtures
 //
 // `valid_datum` is a private function; the property that actually matters is
 // that the `spend` handler runs it over the *continuing* output's datum, so a
@@ -521,13 +521,11 @@ fn test_governor_mint(minted_datum: DaParamsDatum) -> Bool {
   )
 }
 
-// ## Q63 governed floor/drain invariants
+// ## Governed floor/drain invariants
 //
-// These three tests pin the *arithmetic* — `governed_threshold_floor`, which
-// after the two owner rulings is the whole of the governed bound — as absolute
-// values against F04 §4 rather than against each other. There is no companion
-// constant left to pin: `min_governed_threshold` and `min_owner_count` are both
-// retired. They deliberately do not exercise a datum: that `valid_datum`
+// These three tests pin the *arithmetic* — `governed_threshold_floor`, the
+// whole of the governed bound — as absolute values rather than against each
+// other. They deliberately do not exercise a datum: that `valid_datum`
 // applies the floor to `da_threshold` and `update_threshold` is pinned by the
 // valid-boundary controls and the below-floor rejections below, and that the
 // `spend` handler applies `valid_datum` to a continuing output is pinned by the
@@ -617,7 +615,7 @@ test da_params_governor_invariant_owner_set_drain_protection() {
   }
 }
 
-// ## Q63 valid-boundary controls
+// ## Valid-boundary controls
 //
 // Both controls sit exactly on the F04 floor, so they prove the governed
 // bound admits the smallest configuration it is meant to admit rather than
@@ -635,7 +633,7 @@ test da_params_governor_control_update_threshold_at_floor_accepted() {
   test_valid_datum(test_params(3, 2, 4, 3))
 }
 
-// ## Q63 below-floor and drain rejection classes
+// ## Below-floor and drain rejection classes
 //
 // All three rejections pin exactly one disposition: every field other than the
 // one under test sits at or above its own governed bound, so the failure can
@@ -683,20 +681,12 @@ test da_params_governor_rejects_empty_owner_set() fail {
   test_valid_datum(test_params(6, 4, 0, 1))
 }
 
-// ## Q63 single-member-committee consequence
+// ## Single-member-committee consequence
 //
-// This section used to pin the opposite claim, and the inversion is the first
-// of the F04 §4 amendment's two observable effects.
-// `governed_threshold_floor(1)` was two, so a one-member DA committee could
-// name no `da_threshold` at all and every single-signer DA topology was invalid
-// by construction. The 2026-08-11 owner ruling lifted that: the floor at one is
-// now one, a one-member committee attesting 1-of-1 is representable, and the
-// node's single-key configuration is a warned-about deployment shape rather
-// than a refused one.
-//
-// The owner set followed two days later, under its own ruling — see the
-// single-owner governance section below. Both sides of the datum now admit a
-// set of one.
+// `governed_threshold_floor(1)` is one, so a one-member committee attesting
+// 1-of-1 is representable, and the node's single-key configuration is a
+// warned-about deployment shape rather than a refused one. The owner set
+// admits a set of one too; see the single-owner governance section below.
 
 /// Consequence, exhaustively: over a one-member committee exactly one
 /// `da_threshold` in `0..1` satisfies both governed bounds. Counting rather
@@ -709,7 +699,7 @@ test da_params_governor_accepts_single_member_committee_thresholds() {
 
 /// Consequence, at the datum: a one-member committee attesting 1-of-1 is
 /// accepted. The owner set sits at its own floor, so this is the single-key
-/// attest-loop configuration the ruling accepted, admitted by the real
+/// attest-loop configuration, admitted by the real
 /// `valid_datum` rather than by the arithmetic alone.
 test da_params_governor_accepts_single_member_committee_datum() {
   test_valid_datum(test_params(1, 1, 4, 3))
@@ -724,11 +714,10 @@ test da_params_governor_rejects_single_member_committee_threshold_above_size() f
   test_valid_datum(test_params(1, 2, 4, 3))
 }
 
-// ## Q63 single-owner governance consequence (2026-08-13 owner ruling)
+// ## Single-owner governance consequence
 //
-// The owner-side counterpart of the section above, and the newer of the two
-// lifts. The 2026-08-13 in-session owner ruling recorded on #602 dropped the
-// governor's owner-set minimum to one, so a single owner carrying
+// The owner-side counterpart of the section above. The governor's owner-set
+// minimum is one, so a single owner carrying
 // `update_threshold == 1` is representable and can exercise the full governance
 // power: rotating the committee and both thresholds on its own signature.
 //
@@ -780,7 +769,7 @@ test da_params_governor_rejects_single_owner_threshold_above_size() fail {
   test_valid_datum(test_params(6, 4, 1, 2))
 }
 
-// ## Q63 mint-seam datum enforcement
+// ## Mint-seam datum enforcement
 //
 // The mint path has its own `valid_datum` call, in
 // `params_output_datum_at_script`, and it is the one that binds the governed
@@ -809,7 +798,7 @@ test da_params_governor_mint_rejects_initial_datum_below_floor() fail {
   test_governor_mint(test_params(6, 3, 3, 2))
 }
 
-// ## Q63 spend-seam datum enforcement
+// ## Spend-seam datum enforcement
 //
 // Every test above reaches `valid_datum` directly. That leaves the seam that
 // actually matters unpinned: dropping `expect valid_datum(...)` from

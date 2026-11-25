@@ -116,7 +116,7 @@ export const TxOrderSpendRedeemer = asDataType<TxOrderSpendRedeemer>(
 
 /**
  * The tx-order minting policy's redeemer — `midgard/user_events/tx_order_v1`'s
- * `MintRedeemer` (#594).
+ * `MintRedeemer`.
  *
  * It wraps the shared user-event mint redeemer rather than widening it, because
  * that type is the deposit, withdrawal and witness policies' redeemer too and
@@ -250,7 +250,7 @@ export type TxOrderFieldCarriage = {
  *
  * This replaced `deriveTxOrderFragmentBundleV1`, which produced counted per-item
  * `TxFieldPreimageV1` fragments for the retired publication receipt chain
- * (#587). The nine field preimages are the same bytes either way — what changed
+ *. The nine field preimages are the same bytes either way — what changed
  * is that a field is now committed by one flat hash over the whole preimage
  * (§4), so there are no per-item openings to publish and the unit of carriage is
  * the field, not the item.

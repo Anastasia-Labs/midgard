@@ -1,6 +1,6 @@
 //// Datum and redeemer wire shapes for the decoding-fault thread's final
 //// step: check the proven verdict's shape per direction and finalize into a
-//// permanent fraud-proof token (#635, #633).
+//// permanent fraud-proof token.
 
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_script_decoding/engine.{ScanThreadStateV1}

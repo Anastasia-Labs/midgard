@@ -65,13 +65,13 @@ export const fieldCarriageData = (
 
 /**
  * Turns one step's carriage plan input into the §8 carriage §8.4 admits for it
- * (#600).
+ *.
  *
  * This is the seam. A trace records *which field a step read*; a carriage says
  * *how those bytes reach the consuming transaction*, and tiers 2–3 answer that
  * with positional reference-input indices §8.7 requires to be resolved by
  * content against a concrete transaction. The committed `evidence_hash` is
- * transition-only (#619), so the tier named here is a delivery decision the
+ * transition-only, so the tier named here is a delivery decision the
  * observe-stage field door verifies by content — it is never part of what
  * `prepare_semantic_resolution` commits.
  *
@@ -88,7 +88,7 @@ export type ValidationMachineFieldCarriageResolver = (
  * not admit tier 1 for the preimage's length.
  *
  * **This is not the retired trace-time refusal.** Nothing refuses while a trace
- * is built — the block-build path depends on that (#600). What refuses is
+ * is built — the block-build path depends on that. What refuses is
  * *encoding an auxiliary without the context its carriage needs*: above §8.3's
  * tier-1 cap the carriage is reference-input indices, and a caller that
  * supplied no reference inputs has nothing for them to point at. Emitting tier-1
@@ -153,8 +153,8 @@ export const inlineFieldCarriageResolver: ValidationMachineFieldCarriageResolver
  * the one §8.4's partition admits for the preimage it was asked about.
  *
  * The resolver is the dispute submitter's, and the submitter is not trusted to
- * pick a tier past what §8 admits (#597 Ruling 1: never emit a carriage §8.4
- * does not admit): the preimage's length names its tier, and below the tier-3
+ * pick a tier past what §8 admits (a carriage §8.4 does not admit is never
+ * emitted): the preimage's length names its tier, and below the tier-3
  * boundary §8 admits tier 2 as well as tier 1 (`admitsFieldCarriageTier`).
  * Without this check the seam would encode whatever came back — a tier-1
  * `Inline` above §8.3's cap, or a tier-3 `Certified` below its boundary — a

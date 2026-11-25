@@ -73,7 +73,7 @@ export const tx2InputsPreimage: readonly TestOutputReference[] = [
 
 /**
  * Distinct filler spend inputs, used to drive the spend-input preimage
- * cardinality axis (issue #549). A filler is never the input a
+ * cardinality axis. A filler is never the input a
  * family selects — it is what the step's authenticated preimage must
  * nevertheless re-hash, item by item, before it can select anything.
  */

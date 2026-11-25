@@ -149,7 +149,7 @@ export const mintDeltaToScriptMintValue = (
   return result;
 };
 
-// C49 (#540). Mirrors `min_ada_output_overhead_bytes`/`min_ada_lovelace_v1`/
+// Mirrors `min_ada_output_overhead_bytes`/`min_ada_lovelace_v1`/
 // `output_meets_min_ada_v1` in
 // onchain/aiken/lib/midgard/validation-machine/ verbatim: the
 // Cardano minimum-Ada floor for one ledger output is linear in its serialized
@@ -160,9 +160,9 @@ export const mintDeltaToScriptMintValue = (
 // `CML.min_ada_required` does appear in
 // `demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts`, but it funds a
 // _proof publication output_ on L1 and is not this consensus quantity; do not
-// read the two as the same computation (decision 0003, Q27).
+// read the two as the same computation (decision 0003).
 //
-// Both copies (#618) are hand-written, so a change to the slope, the
+// Both copies are hand-written, so a change to the slope, the
 // intercept, or the comparison on either side must be mirrored by hand.
 export const MIN_ADA_OUTPUT_OVERHEAD_BYTES = 160n;
 

@@ -333,7 +333,7 @@ let deployedFixture: DeployedFixture | undefined;
 export const makeFixture = async (): Promise<EmulatorFixture> => {
   // Every fixture of the run restores the same deployment, so node rows an
   // earlier test on this worker's database keyed to it would otherwise be
-  // found by this one. Each fixture starts from freshly migrated application
+  // found by this one. Each fixture starts from freshly created application
   // tables, seed rows included, as `restoreHistorySource` does.
   await runNodeDatabaseEffect(resetApplicationTables);
   if (deployedFixture === undefined) {

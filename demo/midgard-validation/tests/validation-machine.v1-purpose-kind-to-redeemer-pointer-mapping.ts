@@ -88,7 +88,7 @@ export const canonicalDecodeFieldIndex = (
 };
 
 /**
- * The carriage plan input a field-reading step carries for one field (#600).
+ * The carriage plan input a field-reading step carries for one field.
  *
  * This replaces a `carriage: { carriage: "Inline" }` assertion, and it is
  * stronger than what it replaces rather than weaker. A step no longer names a

@@ -269,7 +269,7 @@ pub fn narrow_route_is_wider_than_generic(deployed: Bool, generic: Bool) -> Bool
   }
 }
 
-// ====================================================================// R5 item 1 (#617) -- cek and ValueAndMint per-kind route agreement controls.
+// ====================================================================// Cek and ValueAndMint per-kind route agreement controls.
 //
 // Indices 11 (`cek`) and 12 (`valueAndMint`) used to be served by one
 // aggregate resolver each. They are now `prepare_selected` plus one semantic

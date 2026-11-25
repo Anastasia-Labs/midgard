@@ -55,7 +55,7 @@ timing:
   # dominates, so the 24 h window leaves the delay unchanged.
   da_bond_withdraw_delay_ms: 778080000
 da_transport:
-  # P1 participants bootstrap by replaying retained inputs from empty genesis.
+  # Participants bootstrap by replaying retained inputs from empty genesis.
   retention_days: 120
 da_bond:
   da_bond_lovelace: 500000000
@@ -70,7 +70,7 @@ da_bond:
   challenge_record_lovelace: 27000000
 limits:
   max_bisection_rounds: 32
-  # P1: out of reach, so a strike skips the shift but never ejects an operator.
+  # Out of reach, so a strike skips the shift but never ejects an operator.
   max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
   # Most a validation-trace move may take from its thread for the fee
@@ -91,7 +91,7 @@ economics:
 # Forfeited validation-dispute bonds go to the protocol treasury
 # (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
 # form, separate from the reserve. Its hash is derived by the generator.
-# P1 keys: payment key hashes of three Preprod treasury wallets, any two of
+# Payment key hashes of three Preprod treasury wallets, any two of
 # which sign.
 protocol_treasury_native_script:
   type: atLeast
@@ -104,9 +104,8 @@ protocol_treasury_native_script:
     - type: sig
       keyHash: "65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53"
 allow_lists:
-  # P1 curated operators (owner input I1): payment key hashes of the Preprod
-  # operator wallets and, one per operator, their merge wallets (owner,
-  # 2026-10-31). Fault provers and DA challengers are permissionless.
+  # Curated operators: payment key hashes of the Preprod operator wallets and,
+  # one per operator, their merge wallets. Fault provers and DA challengers are permissionless.
   operators:
     - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
     - "089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf"

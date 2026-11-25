@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` envelope/frontier measurement suite (#635).
+ * `native-script-decoding` envelope/frontier measurement suite.
  *
  * This file runs FIRST in the family's §9 build order because its step-02
  * check is the one place the offchain wave can still escalate:

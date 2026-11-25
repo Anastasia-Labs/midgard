@@ -1,5 +1,5 @@
 /**
- * The pooled DA bond journey (ticket #692) run end to end over the emulator
+ * The pooled DA bond journey run end to end over the emulator
  * adapter: all six spec steps, on the compiled validators, with the real
  * commit, Apply and `da-bond` operator commands. A fast dry run of what the
  * live devnet adapter proves; its report says so in its header.

@@ -236,7 +236,7 @@ export const makeFixture = () => {
     stateQueueNode,
     headerHash,
   };
-  // A 2-of-2 committee over a 2-of-2 owner set, each at its F04 §4 floor.
+  // A 2-of-2 committee over a 2-of-2 owner set, each at its governed floor.
   // Both sets are sorted-unique.
   const daParamsDatum: DaParamsDatum = {
     committee: h32(0x11) + h32(0x22),

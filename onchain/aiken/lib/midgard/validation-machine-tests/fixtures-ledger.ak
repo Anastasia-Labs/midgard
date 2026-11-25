@@ -48,7 +48,7 @@ pub fn value_output_descriptor_min_ada_floor() -> Int {
   )
 }
 
-/// RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1). This fixture used to fund its
+/// RE-AUTHORED, NOT SUPPRESSED. This fixture used to fund its
 /// output with 3 lovelace, which was fine while the min-Ada floor was unwired
 /// arithmetic. Now that the ValueAndMint output-descriptor step convicts an
 /// under-funded output with `E_MIN_ADA`, a 3-lovelace output can no longer take
@@ -201,7 +201,7 @@ pub fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
 }
 
 // ---------------------------------------------------------------------------
-// C49 (#540) closure -- the four prescribed value/fee/mint selectors.
+// The four prescribed value/fee/mint selectors.
 //
 // The six selectors above authenticate the ValueAndMint scan machinery. These
 // four close the row's remaining semantics: the canonical parameterized

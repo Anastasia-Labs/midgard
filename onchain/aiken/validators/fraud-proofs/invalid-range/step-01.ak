@@ -308,7 +308,7 @@ test invalid_range_step_01_binds_native_v1_block_fixture() {
   }
 }
 
-// ## Published-chunk carriage (issue #545)
+// ## Published-chunk carriage
 //
 // Branch level 22 is past the depth at which the direct route exhausts the
 // 16,384-byte L1 envelope for this family (level 21, at a measured 276 signed

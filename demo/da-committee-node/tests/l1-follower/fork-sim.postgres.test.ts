@@ -35,7 +35,7 @@ const openPostgres: ForkRunOptions["open"] = async (optionsFor) => {
 };
 
 // The committee's follower tables run on Postgres in production; the
-// corpus runs here too so the Postgres dialect of the migrations, the
+// corpus runs here too so the Postgres dialect of the schema, the
 // derivation and the reads is held to the same oracle.
 describe("committee projections in the fork simulator (Postgres)", () => {
   it.each(

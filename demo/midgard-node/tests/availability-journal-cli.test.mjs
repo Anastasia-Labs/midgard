@@ -109,21 +109,20 @@ test("compiled holds refuses missing files without creating a journal", () => {
   }
 });
 
-test("compiled holds preserves schema and legacy halt while refusing historical layouts", () => {
+test("compiled holds refuses an unsupported schema and leaves it unchanged", () => {
   const f = fixture();
   const journal = openAvailabilityOperationJournal(f.path);
   const db = new DatabaseSync(f.path);
   try {
     db.exec(
-      "UPDATE availability_journal_metadata SET value = '2' WHERE key = 'schema'; INSERT INTO availability_journal_metadata VALUES ('halt','PRIVATE-HALT')",
+      "UPDATE availability_journal_metadata SET value = '2' WHERE key = 'schema'",
     );
     const result = run(f, ["--journal", f.path]);
     assert.equal(result.status, 1);
     assert.equal(
       events(result.stdout).at(-1).code,
-      "historical_schema_inventory_unsupported",
+      "inventory_schema_unsupported",
     );
-    assert.equal(result.stdout.includes("PRIVATE-HALT"), false);
     assert.equal(
       db
         .prepare(
@@ -131,14 +130,6 @@ test("compiled holds preserves schema and legacy halt while refusing historical 
         )
         .get().value,
       "2",
-    );
-    assert.equal(
-      db
-        .prepare(
-          "SELECT value FROM availability_journal_metadata WHERE key='halt'",
-        )
-        .get().value,
-      "PRIVATE-HALT",
     );
   } finally {
     db.close();

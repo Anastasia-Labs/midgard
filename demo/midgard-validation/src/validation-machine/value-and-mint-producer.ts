@@ -306,7 +306,7 @@ export const produceValueAndMint = (
         ).siblings,
       });
       const value = decodeMidgardTxOutput(outputCbor).value;
-      // E_MIN_ADA / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005). The
+      // E_MIN_ADA / MIN-ADA-TX (R8 of decision 0005). The
       // mirror of the ValueAndMint stage-3 output-descriptor conjunct in
       // onchain/aiken/lib/midgard/validation-machine/, evaluated in the same
       // place: after the descriptor step's witness is committed, before this

@@ -92,18 +92,16 @@ validator field_preimage_certificate {
         expect InlineDatum(certificate_data) = datum
         expect certificate: FieldPreimageCertificateV1 = certificate_data
 
-        // 6. §8.6's constant name (#606 retired the per-certificate
-        //    derivation — the name is branding, not identity; everything it
-        //    encoded is in the datum, which now also carries the mint-welded
-        //    `field_hash`). The bounds the derivation used to force ride the
-        //    content check instead: step 10 re-derives the tx-id (32 bytes by
+        // 6. §8.6's constant name (branding, not identity: the certificate's
+        //    identity is in the datum, which carries the mint-welded
+        //    `field_hash`). The `field_index` and tx-id bounds ride the
+        //    content check: step 10 re-derives the tx-id (32 bytes by
         //    construction) and reads the commitment positionally, which
         //    refuses a `field_index` outside 0..8.
         let asset_name = field_preimage_certificate_asset_name
         // 7. Exactly one token of this policy in the whole transaction, and it
         //    is the constant name at quantity 1. Three lines, enforcing two
-        //    different properties — worth separating, because #606's constant
-        //    name moved the work from one to the other.
+        //    different properties — worth separating.
         //
         //    **The pair pins the name.** The single-pair destructuring plus
         //    `minted_name == asset_name` say there is *no other* asset name of
@@ -219,7 +217,7 @@ validator field_preimage_certificate {
     // 3. Mint and spend are handlers of one validator, so the script hash
     //    guarding this UTxO *is* the certificate policy id.
     expect Script(own_policy_id) = own_input.output.address.payment_credential
-    // 4. The same §8.6 constant name the mint handler pinned (#606). The
+    // 4. The same §8.6 constant name the mint handler pinned. The
     //    datum still names the burn's authority (`owner` below); the asset
     //    name no longer varies with it.
     let asset_name = field_preimage_certificate_asset_name

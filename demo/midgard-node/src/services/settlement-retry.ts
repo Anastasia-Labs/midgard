@@ -1,5 +1,5 @@
 /**
- * How the settlement worker retries a failed job (#821). Each consecutive
+ * How the settlement worker retries a failed job. Each consecutive
  * failure doubles the wait. A job whose consecutive failures reach
  * `SETTLEMENT_JOB_FAILURE_CAP` is stuck: `/readyz` names it, and it is
  * retried only once per `SETTLEMENT_STUCK_RETRY_MS`, so it never crowds out

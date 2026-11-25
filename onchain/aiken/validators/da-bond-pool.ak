@@ -1,4 +1,4 @@
-//// The pooled DA committee bond (spec #685; ticket #687).
+//// The pooled DA committee bond.
 ////
 //// One UTxO at `Address { Script(own policy), None }` holds the committee's
 //// bond, identified by a one-shot NFT that is never burned. Anyone tops it up;

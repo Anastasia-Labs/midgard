@@ -209,10 +209,9 @@ pub type FieldViewV1 {
 /// `field_hash` is the §4 flat field commitment the certified chunks
 /// concatenate to — the same value the minting policy checks
 /// `hash(concat(chunks))` against, restated in the mint-verified datum so a
-/// consumer can compare it to a commitment it authenticated itself (#606,
-/// owner ruling 2026-08-16). That weld is what closes §8.3 erratum E2: a
-/// certificate minted over a fabricated witness set wears the fabricated
-/// hash here and fails the door's equality against the anchored commitment.
+/// consumer can compare it to a commitment it authenticated itself. A
+/// certificate minted over a fabricated witness set therefore wears the
+/// fabricated hash here and fails the door's equality against the anchored commitment.
 pub type FieldPreimageCertificateV1 {
   owner: VerificationKeyHash,
   tx_id: ByteArray,
@@ -223,11 +222,9 @@ pub type FieldPreimageCertificateV1 {
 }
 
 /// §8.6's certificate asset name — one constant for every certificate of the
-/// policy (#606, owner ruling 2026-08-16; supersedes the retired
-/// `blake2b_256(field_index_byte ‖ tx_id)` derivation). The name is branding,
-/// not identity: everything the derived name encoded is in the mint-verified
-/// datum, and once the datum carries `field_hash` the name carries no
-/// security weight. The mint still pins it — its single-pair check requires
+/// policy. The name is branding, not identity: the certificate's identity is
+/// in the mint-verified datum, which carries `field_hash`, so the name carries
+/// no security weight. The mint still pins it — its single-pair check requires
 /// exactly this name at quantity 1 — so a token of the policy is always this
 /// name over a datum the mint proved. Discovery is by enumerating the single
 /// certificate address (§8.5) and filtering by datum; consumers disambiguate
@@ -435,7 +432,7 @@ fn field_commitment_at(
 /// policy's constant-name token, so a look-alike UTxO at any address cannot
 /// pass its datum off as a manifest; the datum's `(tx_id, field_index)` and
 /// mint-welded `field_hash` are then matched against authenticated values
-/// (#606).
+///.
 pub fn authenticated_field_view(
   verified: VerifiedTxSourceView,
   witness_set: NativeTxWitnessSetCompact,
@@ -951,7 +948,7 @@ fn certified_chunks(
   expect certificate: FieldPreimageCertificateV1 = cert_datum
   expect certificate.tx_id == tx_id
   expect certificate.field_index == field_index
-  // The load-bearing E2 equality (#606): the certificate's mint-welded
+  // The load-bearing equality: the certificate's mint-welded
   // `field_hash` must equal the commitment the door's caller authenticated —
   // for the witness-set fields, the chain that reaches the anchored
   // `witness_set_hash`. A certificate minted against a fabricated witness set

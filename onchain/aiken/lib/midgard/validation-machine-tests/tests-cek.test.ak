@@ -1466,7 +1466,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   let base = empty_v1_transaction()
   // The same signed transaction the field-3 terminal fixture pins, through the
   // same generated constants — one exact source for both selectors, rather than
-  // two hand-mirrored copies that could drift apart (#590).
+  // two hand-mirrored copies that could drift apart.
   let transaction_id = maximum_observer_terminal_transaction_id
   let transaction_commitment = maximum_observer_terminal_transaction_commitment
   let native_control = vm_machine_types.NativeScriptsControlV1 {

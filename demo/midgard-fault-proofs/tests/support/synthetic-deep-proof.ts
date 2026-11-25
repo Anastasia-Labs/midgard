@@ -1,6 +1,6 @@
 /**
  * Synthetic deep MPF membership proofs for the published-chunk carriage
- * fixtures (issue #545).
+ * fixtures.
  *
  * ## Why these are synthetic
  *
@@ -105,7 +105,7 @@ export const syntheticDeepMembershipProof = ({
 };
 
 // ---------------------------------------------------------------------------
-// Several deep openings of ONE trie (issue #549)
+// Several deep openings of ONE trie
 //
 // The invalid-range and zero-input families open the challenged block's
 // transactions trie exactly once, so a standalone ladder per proof suffices.

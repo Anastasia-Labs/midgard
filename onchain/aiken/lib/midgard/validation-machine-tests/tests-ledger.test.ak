@@ -393,7 +393,7 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
   )
 }
 
-// C49 (#540). The canonical parameterized minimum-fee rule is
+// The canonical parameterized minimum-fee rule is
 // `body.fee >= min_fee_a * canonical_tx_size + min_fee_b`, evaluated by
 // `static_rules_rejection` (validation-machine-v1.ak) over
 // `native_tx_canonical_size_v1`. This selector instantiates it at the C70
@@ -426,7 +426,7 @@ test parameterized_min_fee_boundary_matches_target_snapshot() {
   }
 }
 
-// C49 (#540). The canonical parameterized minimum-Ada floor,
+// The canonical parameterized minimum-Ada floor,
 // `min_ada_lovelace_v1` (validation-machine-v1.ak), instantiated at the C70
 // target snapshot `coinsPerUtxoByte = 4_310` over a concrete serialized ledger
 // output. The boundary is pinned adjacently: an output funded at exactly the
@@ -531,8 +531,7 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
 }
 
 // ---------------------------------------------------------------------------
-// E_MIN_ADA wiring (#618 ruling 1; R8 of decision 0005; #627 owner ruling,
-// option B). Everything above this line exercises the floor as ARITHMETIC. The
+// E_MIN_ADA wiring (R8 of decision 0005). Everything above this line exercises the floor as ARITHMETIC. The
 // vectors below exercise it as a CONVICTION: the ValueAndMint output-descriptor
 // step, at `output_asset_cursor == 0`, now rejects an under-funded output with
 // `E_MIN_ADA` instead of folding its lovelace into the accumulator.
@@ -626,7 +625,7 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
   }
 }
 
-/// ZERO LOVELACE, RE-AUTHORED NOT SUPPRESSED (#618 ruling 1). This is the shape
+/// ZERO LOVELACE, RE-AUTHORED NOT SUPPRESSED. This is the shape
 /// the output-descriptor fixture used to carry (3 lovelace over a 16 KiB
 /// output) taken to its limit. Before the wiring it advanced; now it convicts.
 test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
@@ -670,7 +669,7 @@ test value_and_mint_output_descriptor_min_ada_code_is_not_interchangeable() {
   )
 }
 
-// C49 (#540). Exact signed multi-asset conservation, including the Ada-specific
+// Exact signed multi-asset conservation, including the Ada-specific
 // rule, on the SAME numeric vector the TypeScript twin pins in
 // demo/midgard-validation/tests/value-accounting.test.ts (`mint-aware value
 // accounting`, over `valuePreservationDelta`):
@@ -713,7 +712,7 @@ test parameterized_ada_and_multi_asset_conservation_matches_typescript() {
   }
 }
 
-// C49 (#540). Mint and burn authorization. A ValueAndMint mint step may only
+// Mint and burn authorization. A ValueAndMint mint step may only
 // move an asset delta for a policy the AUTHENTICATED native mint frontier
 // commits to: `value_and_mint_stage_four` requires membership of
 // `mint_asset_leaf_hash(policy_id, asset_name, quantity)` in

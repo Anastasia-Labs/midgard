@@ -1,4 +1,4 @@
-//// ## Native-script decoding-fault thread engine (#635, #633)
+//// ## Native-script decoding-fault thread engine
 ////
 //// Library core of the standalone single-party computation-thread family
 //// that proves an operator verdict wrong about the *decodability of a

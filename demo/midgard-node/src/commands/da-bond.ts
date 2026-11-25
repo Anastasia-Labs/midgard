@@ -1,5 +1,5 @@
 /**
- * `da-bond`: operate the pooled DA committee bond (spec #685, ticket #691).
+ * `da-bond`: operate the pooled DA committee bond.
  *
  * - `status` reads the pool: state, backing against `da_bond_lovelace`, and
  *   `unlock_at` while a withdrawal is pending.

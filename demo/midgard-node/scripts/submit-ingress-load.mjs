@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The submit-ingress load harness (#871): builds a request corpus, offers it to
+// The submit-ingress load harness: builds a request corpus, offers it to
 // a node's `/submit` at a fixed rate, and writes a report of admitted TPS, the
 // refusal mix, latency, Postgres write rates and the node's main-thread CPU.
 //

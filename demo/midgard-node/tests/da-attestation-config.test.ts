@@ -94,7 +94,7 @@ describe("DA attestation configuration", () => {
     expect(params.committee_signers_hash).toBe(blake2b256Hex(committee));
   });
 
-  // Q63 (F04 §4): with no explicit DA_THRESHOLD the bootstrap must land on the
+  // With no explicit DA_THRESHOLD the bootstrap must land on the
   // governed floor, never on a default of one.
   it("defaults both thresholds to the governed floor", async () => {
     const committee =

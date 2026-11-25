@@ -48,7 +48,7 @@ pub type NativeTxInclusionArgs {
 /// The same evidence as [`NativeTxInclusionArgs`](#NativeTxInclusionArgs) with
 /// the membership proof taken out of the transaction: the proof's steps live in
 /// published chunk UTxOs and only their order reaches the redeemer, as indices
-/// into `tx.reference_inputs` (issue #545).
+/// into `tx.reference_inputs`.
 ///
 /// Field-for-field identical to `NativeTxInclusionArgs` up to the proof: the
 /// two carriages authenticate the very same commitment and differ only in where
@@ -165,7 +165,7 @@ pub fn verify_non_membership_carried(
       // Delegated to the merkelized verifier, which reads the published chunks
       // from the very same `reference_inputs` this step sees. Keeping the walk
       // out of the step's own script is what stops the chunked route from
-      // enlarging the direct one (issue #545).
+      // enlarging the direct one.
       chunked_inclusion_v1.delegated_chunk_non_membership(
         env.mpf_chunked_verify_validator_hash,
         redeemers,

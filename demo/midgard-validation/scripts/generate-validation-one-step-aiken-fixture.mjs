@@ -509,7 +509,7 @@ const evidenceHash = computeHash32(
     ),
   ]),
 );
-// Option B (#620): the complete-item pipeline commits to the transition alone —
+// The complete-item pipeline commits to the transition alone —
 // `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — whatever carriage
 // the item auxiliary names. Pin both halves of that rule cross-language: the
 // transition-only hash over this vector's transition is exactly `evidenceHash`
@@ -697,7 +697,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
 ///
 /// The carriage is tier-1 \`Inline\`: §8.4's partition admits only that tier for a
 /// preimage this size. The two tiers above it are pinned by the two vectors
-/// below (#600).
+/// below.
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
   expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
@@ -788,7 +788,7 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
   }
 }
 
-/// Option B (#620). The complete-item pipeline commits to the transition alone:
+/// The complete-item pipeline commits to the transition alone:
 /// \`hash_one_step_evidence(transition, NoAuxiliaryWitness)\`, whatever carriage
 /// the item auxiliary names. Both halves of that rule are pinned here with
 /// TypeScript-computed hashes: the transition-only commitment over this

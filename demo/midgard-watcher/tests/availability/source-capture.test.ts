@@ -464,7 +464,7 @@ describe("availability captures on the follower's reads", () => {
   });
 });
 
-describe("DA bond pool read (spec #685, #691)", () => {
+describe("DA bond pool read", () => {
   const raw = (utxo: ReturnType<typeof daBondPoolUtxo>) => ({
     outRef: `${utxo.txHash}#${utxo.outputIndex}`,
     outputCbor: utxoToCore(utxo).output().to_cbor_hex(),

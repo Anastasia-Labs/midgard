@@ -111,7 +111,7 @@ export const buildAdmittedWatcherAvailabilityOperation = async <
 };
 
 /**
- * Collateral a Timeout can need (spec #685). Its fee is
+ * Collateral a Timeout can need. Its fee is
  * `min(penalty, taken) + c` with `c <= max_timeout_fee`, and the ledger holds
  * collateral of `collateralPercentage` of the fee, so a full slash needs
  * `collateralPercentage x (penalty + max_timeout_fee)` in at most three coins,

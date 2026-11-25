@@ -63,8 +63,8 @@ export type ValidationMachineReplayInput = {
    * The block's clock for validity: its state-queue node's authenticated
    * `block_time`. The trace context's third element also carries this value,
    * but the on-chain validation claim derives that element from `header.end_time`
-   * (`validation_claim_v1.derive_validation_context_cbor`). The validation-trace family
-   * (00000006) is excluded in P1; P2 reconciles the context element.
+   * (`validation_claim_v1.derive_validation_context_cbor`), so the two can
+   * differ for the validation-trace family (00000006).
    */
   readonly blockTimeMs: number;
   readonly expectedNetworkId: bigint;
@@ -87,7 +87,7 @@ export type ValidationMachineWorkWitness = {
          *
          * It used to carry a counted `(collectionProof, chunkProof)` pair
          * checked against the §4 flat field commitment — a predicate no honest
-         * prover could satisfy (#592). What replaces the pair is not a smaller
+         * prover could satisfy. What replaces the pair is not a smaller
          * proof but *no* proof: the carriage names where the field's preimage
          * is, the door authenticates the whole preimage once against the flat
          * commitment, and the item is then a slice.
@@ -100,7 +100,7 @@ export type ValidationMachineWorkWitness = {
          *
          * `fieldPreimage` is the plan input, not wire: it is replaced by the §8
          * carriage §8.4 admits for its length when the auxiliary is encoded
-         * (#600). See {@link ValidationMachineFieldCarriagePlanInputV1}.
+         *. See {@link ValidationMachineFieldCarriagePlanInputV1}.
          */
         readonly kind: "transactionFieldChunk";
         readonly fieldIndex: number;
@@ -113,7 +113,7 @@ export type ValidationMachineWorkWitness = {
          * the item: `canonicalDecode`'s complete-item step, the `inputSets`
          * descending merge and the `signatures` field-7 cursor. The carriage is
          * the entire wire surface — `fieldIndex` here is the plan input's,
-         * never encoded (#600).
+         * never encoded.
          */
         readonly kind: "transactionFieldItem";
         readonly fieldIndex: number;
@@ -140,7 +140,7 @@ export type ValidationMachineWorkWitness = {
          * evidence the step decides on. No field or item index **on the wire**:
          * the field is 4 by construction and the item index is
          * `control.required_seen`. `fieldIndex` is carried only as the plan
-         * input's, and is never encoded (#600).
+         * input's, and is never encoded.
          */
         readonly kind: "requiredSignerItem";
         readonly fieldIndex: number;
@@ -229,7 +229,7 @@ export type ValidationMachineWorkWitness = {
          * `bounded_item_v1` commitment and never look at its bytes, so the
          * door's derived commitment is all the carriage has to yield; field
          * index and item index are fixed by the stage and its cursor, so
-         * `fieldIndex` here is the plan input's and is never encoded (#600).
+         * `fieldIndex` here is the plan input's and is never encoded.
          *
          * This is the C21-STAGE4 site. Its evidence is O(1) in output size
          * exactly when the resolved carriage is tier 2 or 3

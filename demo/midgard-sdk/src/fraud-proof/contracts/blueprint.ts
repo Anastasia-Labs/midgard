@@ -59,7 +59,7 @@ import {
  * without error, and the ledger reads "no error" as SUCCESS — the deployment is
  * an unconditional always-succeeds script whose Aiken guards never execute.
  * That is exactly how ten validation-trace semantic resolvers shipped after
- * #592 added their `field_preimage_certificate_policy_id` parameter (#605/#609).
+ * #592 added their `field_preimage_certificate_policy_id` parameter.
  * Applying too MANY is a well-formed script with a wrong hash, which surfaces
  * days later as a credential that matches nothing on chain.
  *
@@ -79,7 +79,7 @@ export const applyBlueprintParams = (
         `(${describeDeclaredParameters(validator)}) but ` +
         `${params.length.toString()} were applied. Under-application deploys an ` +
         "always-succeeds script and over-application deploys a wrong hash; " +
-        "apply exactly the declared parameters (#609).",
+        "apply exactly the declared parameters.",
     );
   }
   assertParameterShapes(validator, params);

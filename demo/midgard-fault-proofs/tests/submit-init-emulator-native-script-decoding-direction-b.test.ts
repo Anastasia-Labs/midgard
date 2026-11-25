@@ -1,5 +1,5 @@
 /**
- * `native-script-decoding` forced-source emulator lifecycles (#635, #633).
+ * `native-script-decoding` forced-source emulator lifecycles.
  *
  * Three forced-leaf threads, all driven through the proving core off a
  * finding record:

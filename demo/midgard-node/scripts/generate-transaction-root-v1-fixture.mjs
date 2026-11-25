@@ -86,7 +86,7 @@ if (
 }
 
 // The canonical-input verdict vocabulary. Each name selects one
-// `OperatorVerdict` value (#640): `ForcedTxValid`, or `ForcedTxInvalid` with
+// `OperatorVerdict` value: `ForcedTxValid`, or `ForcedTxInvalid` with
 // the named `RejectionReason` arm at subject ordinal 0. The names are the
 // arm spellings of `midgard/rejection_reason_v1` — the canonical input names
 // the reason, not a coarse validity bucket.

@@ -1,4 +1,4 @@
-//// Published proof chunks with atomic final verification (issue #541).
+//// Published proof chunks with atomic final verification.
 ////
 //// ## Why this exists
 ////

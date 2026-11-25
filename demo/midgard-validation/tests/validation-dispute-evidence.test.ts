@@ -127,7 +127,7 @@ const falsifyTerminalVerdict = (
 const buildAcceptedForcedTrace =
   async (): Promise<DeterministicValidationMachineTrace> => {
     const spent = outRefFromByte(0x31);
-    // RE-AUTHORED, NOT SUPPRESSED (#618 ruling 1): this trace has to be
+    // RE-AUTHORED, NOT SUPPRESSED: this trace has to be
     // genuinely accepted, and since the ValueAndMint output-descriptor step
     // began convicting under-funded outputs with `E_MIN_ADA` a 10-lovelace
     // output can no longer be. The rejected counterpart below keeps its

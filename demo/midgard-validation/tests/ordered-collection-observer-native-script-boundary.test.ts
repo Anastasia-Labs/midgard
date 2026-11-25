@@ -319,7 +319,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
     // 224 native-script witnesses, their preimage, and the compact forms that
     // bind them. Publishing the vector after the assertions above is what lets
     // `generate-ordered-collection-boundary-aiken-goldens.mjs` rebind those
-    // constants instead of a human retyping ~10 kB of hex (#588).
+    // constants instead of a human retyping ~10 kB of hex.
     // §5.1's wrapped width of one field-6 item at this boundary — what the field
     // grows by when one identical native script is added. Every item here is the
     // same synthetic signer/expiry script, so the field is exactly its array

@@ -117,7 +117,7 @@ export type CekStepKind = "finish" | "selection" | "context" | "core";
  * the execution count) and an execution selection otherwise. The language
  * bitmap takes no part in the discrimination: a transaction whose executions
  * are all native carries `language_bitmap == 0` and still has one selection
- * step per execution, exactly as the machine emits them (#629). The
+ * step per execution, exactly as the machine emits them. The
  * auxiliary is not consulted: each on-chain semantic
  * resolver `expect`s the auxiliary shape of its own kind (none, a
  * `NativeExecutionScanWitness`, a cek context witness, a
