@@ -12,6 +12,8 @@
  *   A retired one without a row is inserted only while a processed landed
  *   block names it (a foreign block may include an event this node never
  *   saw live); any other is skipped.
+ * - On a node that took its ledger from a snapshot, an event included at or
+ *   before the anchor's end time gets no row (`snapshot-anchor.ts`).
  * - One bad event never fails the run: an event that does not decode into a
  *   node row (`l1_event_undecodable`), or whose public id has a row under
  *   another live identity or none (`l1_event_identity_conflict`), is refused
@@ -58,6 +60,7 @@ import {
 } from "./l1-admission-identity.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import type { DeadHeaders } from "./pendingBlockFinalizations.status-sql.js";
+import * as SnapshotAnchor from "./snapshot-anchor.js";
 import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 import * as Withdrawals from "./withdrawals.js";
 
@@ -384,14 +387,20 @@ export const reconcileFollowerEvents = (
     if (!(yield* followerViewValid(plan.view)))
       return { kind: "stale" } as FollowerIngestionOutcome;
     const read = (event: ProjectedEvent) => readUserEvent(event, input.network);
+    // The ledger a node took from a snapshot holds what the events its
+    // anchor's block or an earlier one included did: they get no row.
+    const anchor = yield* SnapshotAnchor.retrieve;
+    const events = plan.events.filter(
+      (event) => !SnapshotAnchor.includedByAnchor(anchor, event.inclusionTime),
+    );
     const deposits = yield* ingestKind(
       "deposit",
-      plan.events.filter((event) => event.kind === "deposit"),
+      events.filter((event) => event.kind === "deposit"),
       read,
     );
     const withdrawals = yield* ingestKind(
       "withdrawal",
-      plan.events.filter((event) => event.kind === "withdrawal"),
+      events.filter((event) => event.kind === "withdrawal"),
       read,
     );
     // Every row is either backed by its canonical admission or an orphan the

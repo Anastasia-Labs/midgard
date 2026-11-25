@@ -5,24 +5,33 @@
  * mint authenticated, so an order whose outputs or native scripts do not
  * decode gets a row (classification rejects it) and never holds the commit
  * horizon. Only an order that cannot be rebuilt holds
- * `forced_order_ingestion_failed` (forced-order-carriage.test.ts).
+ * `forced_order_ingestion_failed` (forced-order-carriage.test.ts). On a
+ * node started from a snapshot, an order the anchor's block or an earlier
+ * one included gets no row.
  */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec";
+import { simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 
+import * as SnapshotAnchor from "../src/database/snapshot-anchor.js";
 import {
   MINT_ADMITTED_UNDECODABLE,
   MINT_REFUSED,
 } from "./forced-mint-boundary.fixtures.js";
-import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
+import {
+  FORCED_CONFIG,
+  nativeTransactionCbor,
+} from "./helpers/forced-orders-chain.js";
 import {
   honest,
   horizon,
+  INCLUSION,
   inlineOrder,
   nodeFollowerLifecycle,
   rows,
 } from "./helpers/forced-orders-node-chain.js";
 import {
+  db,
   ingestionHook,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
@@ -74,6 +83,34 @@ describe("forced-order hook ingests orders whose items do not decode (N10b)", ()
         .map((row) => Buffer.from(row.native_tx_cbor).toString("hex"))
         .sort(),
     ).toEqual(orders.map((bytes) => bytes.toString("hex")).sort());
+    expect(await horizon()).toBeNull();
+  });
+});
+
+describe("forced-order hook on a node started from a snapshot", () => {
+  it("gives no row to an order the snapshot anchor's block or an earlier one included, and it bounds no horizon", async () => {
+    const { store, chain } = await follow();
+    const atAnchor = inlineOrder(chain.chain, honest(), INCLUSION);
+    const after = inlineOrder(
+      chain.chain,
+      nativeTransactionCbor([0x22]),
+      INCLUSION + 1n,
+    );
+    await chain.forward([atAnchor, after]);
+    await db(
+      SnapshotAnchor.record({
+        headerHash: "ab".repeat(28),
+        utxosRoot: "cd".repeat(32),
+        endTimeMs: INCLUSION,
+      }),
+    );
+    const { hook } = ingestionHook(store, FORCED_CONFIG);
+    expect(await hook(UNCHANGED)).toBeUndefined();
+    expect(
+      (await rows()).map((row) => Buffer.from(row.tx_order_l1_tx_hash)),
+    ).toEqual([simTxHash(after)]);
+    // The order after the anchor has its row; the one at it is no due
+    // event, so no later block is held below it.
     expect(await horizon()).toBeNull();
   });
 });

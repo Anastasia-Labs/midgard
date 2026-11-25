@@ -6,7 +6,9 @@
  * it: the bound is the earliest such inclusion time minus one. With no such
  * order there is no bound (`null`). An order that cannot be rebuilt bounds
  * the horizon as well; it also holds `/readyz` by name. An `unreadable`
- * order is never due, so it bounds nothing.
+ * order is never due, so it bounds nothing; nor does an order included at
+ * or before the snapshot anchor's end time, which gets no row
+ * (`snapshot-anchor.ts`).
  *
  * A node row without a header whose order is gone (a rollback removed it)
  * bounds the horizon the same way until the forced-order hook deletes it or
@@ -19,6 +21,7 @@ import { Effect } from "effect";
 
 import { tableName as forcedTransactionsTable } from "../database/forcedTransactions.exact-forced-transaction-journal-member.js";
 import { canonicalForcedAdmission } from "../database/l1-admission-identity.js";
+import { includedAfterAnchor } from "../database/snapshot-anchor.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
@@ -32,6 +35,7 @@ export const forcedOrderHorizon = Effect.gen(function* () {
         FROM ${sql(FORCED_ORDERS_TABLE)} f
         WHERE f.spent_slot IS NULL
           AND f.status <> ${FORCED_ORDER_UNREADABLE}
+          AND ${includedAfterAnchor(sql, "f")}
           AND NOT EXISTS (
             SELECT 1 FROM ${sql(forcedTransactionsTable)} t
             WHERE t.tx_order_l1_tx_hash = f.order_tx_hash

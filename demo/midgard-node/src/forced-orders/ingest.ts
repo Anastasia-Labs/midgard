@@ -13,6 +13,9 @@
  *   rebuilds the transaction when all of them resolve;
  * - `malformed`: nothing to rebuild.
  *
+ * On a node that took its ledger from a snapshot, an order included at or
+ * before the anchor's end time gets no row (`snapshot-anchor.ts`).
+ *
  * Rebuilt rows are inserted in one node transaction that re-checks the
  * follower view. An order whose carriage no source has yet keeps the node
  * unready with `forced_order_carriage_pending` and is retried on the
@@ -61,6 +64,7 @@ import {
   abandonedForcedAdmission,
   orphanedForcedAdmission,
 } from "../database/l1-admission-identity.js";
+import * as SnapshotAnchor from "../database/snapshot-anchor.js";
 import {
   type DriverHold,
   type DriverHook,
@@ -384,6 +388,12 @@ export const forcedOrderIngestionHook = (
         reason: FORCED_ORDER_INGESTION_FAILED,
         detail: failureText(named),
       };
+    const anchor = await options.run(SnapshotAnchor.retrieve);
+    if (Exit.isFailure(anchor))
+      return {
+        reason: FORCED_ORDER_INGESTION_FAILED,
+        detail: failureText(anchor),
+      };
     const read = await forcedOrdersAt(
       options.store,
       view.point,
@@ -409,6 +419,10 @@ export const forcedOrderIngestionHook = (
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
+      // The ledger a node took from a snapshot holds what the orders its
+      // anchor's block or an earlier one included did: they get no row.
+      if (SnapshotAnchor.includedByAnchor(anchor.value, row.inclusionTime))
+        continue;
       if (row.spent) {
         // Spent before the node saw it: only a processed landed block that
         // names it (another operator's, while this node was down) needs its

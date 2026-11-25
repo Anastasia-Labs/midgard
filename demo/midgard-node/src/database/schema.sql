@@ -484,6 +484,21 @@ CREATE TABLE public.node_landed_blocks (
     CONSTRAINT node_landed_blocks_withdrawals_check CHECK ((jsonb_typeof(withdrawals) = 'array'::text))
 );
 
+-- class: D-x; retention: one row, written once by the install of a peer's ledger snapshot; absent on a node that started from the empty ledger
+-- The confirmed header a node's ledger was taken from (a peer's snapshot of
+-- its post-state root) and that header's end time: the node keeps no row
+-- for an event included at or before it.
+CREATE TABLE public.node_ledger_snapshot_anchor (
+    id boolean DEFAULT true NOT NULL,
+    header_hash bytea NOT NULL,
+    utxos_root text NOT NULL,
+    end_time_ms bigint NOT NULL,
+    CONSTRAINT node_ledger_snapshot_anchor_end_time_ms_check CHECK ((end_time_ms >= 0)),
+    CONSTRAINT node_ledger_snapshot_anchor_header_hash_check CHECK ((octet_length(header_hash) = 28)),
+    CONSTRAINT node_ledger_snapshot_anchor_id_check CHECK (id),
+    CONSTRAINT node_ledger_snapshot_anchor_utxos_root_check CHECK ((utxos_root ~ '^[0-9a-f]{64}$'::text))
+);
+
 CREATE TABLE public.operator_membership_observations (
     hub_oracle_policy_id bytea NOT NULL,
     operator_key bytea NOT NULL,
@@ -939,6 +954,9 @@ ALTER TABLE ONLY public.node_import_checks
 
 ALTER TABLE ONLY public.node_landed_blocks
     ADD CONSTRAINT node_landed_blocks_pkey PRIMARY KEY (header_hash);
+
+ALTER TABLE ONLY public.node_ledger_snapshot_anchor
+    ADD CONSTRAINT node_ledger_snapshot_anchor_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.operator_membership_observations
     ADD CONSTRAINT operator_membership_observations_pkey PRIMARY KEY (hub_oracle_policy_id, operator_key);
