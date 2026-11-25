@@ -4,14 +4,17 @@ import { encodeCbor } from "../src/codec/cbor.js";
 import {
   DA_PUBLIC_RETAINED_DA_PROTOCOLS,
   type DaLedgerSnapshotEntry,
+  DaLedgerSnapshotMalformed,
   daLedgerSnapshotPage,
   type DaLedgerSnapshotRequest,
   type DaLedgerSnapshotResponse,
+  DaLedgerSnapshotUnserved,
   DaRequestResponseProtocol,
   decodeDaLedgerSnapshotRequestCbor,
   decodeDaLedgerSnapshotResponseCbor,
   encodeDaLedgerSnapshotRequestCbor,
   encodeDaLedgerSnapshotResponseCbor,
+  fetchDaLedgerSnapshot,
 } from "../src/da-transport.js";
 
 const b = (byte: number, count: number): Buffer => Buffer.alloc(count, byte);
@@ -256,5 +259,177 @@ describe("daLedgerSnapshotPage", () => {
       entries: [],
       done: true,
     });
+  });
+});
+
+/**
+ * A peer whose ledger is `ledger` (entries in trie path order), answering
+ * each request with `answer`, by default the honest page after `after` at
+ * the `bound` page size. Records each decoded request.
+ */
+const peerOf = (
+  ledger: readonly DaLedgerSnapshotEntry[],
+  answer?: (
+    request: DaLedgerSnapshotRequest,
+    ask: number,
+  ) => Promise<Uint8Array>,
+) => {
+  const asked: DaLedgerSnapshotRequest[] = [];
+  const honest = async (request: DaLedgerSnapshotRequest) => {
+    const from =
+      request.after === null
+        ? 0
+        : ledger.findIndex(({ outRef }) =>
+            Buffer.from(outRef).equals(request.after!),
+          ) + 1;
+    return encodedPage(
+      await daLedgerSnapshotPage(counted(ledger.slice(from)).source, 6_000),
+    );
+  };
+  const request = async (requestCbor: Buffer): Promise<Uint8Array> => {
+    const decoded = decodeDaLedgerSnapshotRequestCbor(requestCbor);
+    asked.push(decoded);
+    return await (answer ?? honest)(decoded, asked.length - 1);
+  };
+  return { request, asked, honest };
+};
+
+const fetchFrom = (
+  request: (requestCbor: Buffer) => Promise<Uint8Array>,
+  signal = new AbortController().signal,
+) =>
+  fetchDaLedgerSnapshot({
+    peerIdentity: "peer-a",
+    deploymentFingerprint: deploymentFingerprint.toString("hex"),
+    utxosRoot: utxosRoot.toString("hex"),
+    request,
+    signal,
+  });
+
+const drain = async (
+  entries: AsyncIterable<{ outRef: Buffer; output: Buffer }>,
+): Promise<{ outRef: Buffer; output: Buffer }[]> => {
+  const taken = [];
+  for await (const item of entries) taken.push(item);
+  return taken;
+};
+
+/** What `promise` rejects with. */
+const rejection = async (promise: Promise<unknown>): Promise<unknown> =>
+  await promise.then(
+    () => expect.unreachable("expected a rejection"),
+    (error: unknown) => error,
+  );
+
+describe("fetchDaLedgerSnapshot", () => {
+  const ledger = Array.from({ length: 400 }, (_, index) => entry(index));
+
+  it("takes every entry of a ledger spanning many pages, asking for each page once", async () => {
+    const peer = peerOf(ledger);
+
+    const taken = await drain(fetchFrom(peer.request));
+
+    expect(taken).toEqual(ledger);
+    expect(peer.asked.length).toBeGreaterThan(2);
+    for (const request of peer.asked) {
+      expect(request.deploymentFingerprint).toEqual(deploymentFingerprint);
+      expect(request.utxosRoot).toEqual(utxosRoot);
+    }
+    const afters = peer.asked.map(({ after }) => after?.toString("hex"));
+    expect(afters[0]).toBeUndefined();
+    expect(new Set(afters).size).toBe(afters.length);
+  });
+
+  it("asks for the next page only once the consumer has taken the page before", async () => {
+    const peer = peerOf(ledger);
+    const first = decodeDaLedgerSnapshotResponseCbor(
+      await peer.honest({ deploymentFingerprint, utxosRoot, after: null }),
+    );
+    if (first.status !== "ok" || first.done)
+      expect.unreachable("the ledger spans more than one page");
+    const entries = fetchFrom(peer.request)[Symbol.asyncIterator]();
+
+    for (let n = 0; n < first.entries.length; n += 1) await entries.next();
+    expect(peer.asked).toHaveLength(1);
+    await entries.next();
+    expect(peer.asked).toHaveLength(2);
+    await entries.return(undefined);
+  });
+
+  it("takes an empty ledger from one empty last page", async () => {
+    const peer = peerOf([]);
+
+    expect(await drain(fetchFrom(peer.request))).toEqual([]);
+    expect(peer.asked).toHaveLength(1);
+  });
+
+  it.each(["not_held", "rejected"] as const)(
+    "rejects as unserved when the peer answers %s",
+    async (status) => {
+      const peer = peerOf(ledger, async () =>
+        encodeDaLedgerSnapshotResponseCbor({ status }),
+      );
+
+      const error = await rejection(drain(fetchFrom(peer.request)));
+
+      expect(error).toBeInstanceOf(DaLedgerSnapshotUnserved);
+      expect(error).toMatchObject({ peerIdentity: "peer-a" });
+      expect((error as Error).message).toContain(status);
+    },
+  );
+
+  it("rejects as unserved when a request fails mid-transfer, after the pages before it", async () => {
+    const failure = new Error("stream reset");
+    const peer = peerOf(ledger, async (request, ask) => {
+      if (ask === 1) throw failure;
+      return await peerOf(ledger).honest(request);
+    });
+    const taken: unknown[] = [];
+
+    const error = await rejection(
+      (async () => {
+        for await (const item of fetchFrom(peer.request)) taken.push(item);
+      })(),
+    );
+
+    expect(error).toBeInstanceOf(DaLedgerSnapshotUnserved);
+    expect(error).toMatchObject({ peerIdentity: "peer-a", cause: failure });
+    expect(taken.length).toBeGreaterThan(0);
+    expect(taken.length).toBeLessThan(ledger.length);
+    expect(peer.asked).toHaveLength(2);
+  });
+
+  it("rejects with the abort reason when a request fails after the transfer is aborted", async () => {
+    const lifetime = new AbortController();
+    const reason = new Error("closed");
+    const peer = peerOf(ledger, async () => {
+      lifetime.abort(reason);
+      throw new Error("connection closed");
+    });
+
+    expect(
+      await rejection(drain(fetchFrom(peer.request, lifetime.signal))),
+    ).toBe(reason);
+  });
+
+  it("rejects as malformed when the response does not decode", async () => {
+    const peer = peerOf(ledger, async () => Buffer.from("ff00", "hex"));
+
+    const error = await rejection(drain(fetchFrom(peer.request)));
+
+    expect(error).toBeInstanceOf(DaLedgerSnapshotMalformed);
+    expect(error).toMatchObject({ peerIdentity: "peer-a" });
+  });
+
+  it("rejects as malformed on an empty page short of the end, asking no more", async () => {
+    const peer = peerOf(ledger, async () =>
+      encodedPage({ entries: [], done: false }),
+    );
+
+    const error = await rejection(drain(fetchFrom(peer.request)));
+
+    expect(error).toBeInstanceOf(DaLedgerSnapshotMalformed);
+    expect((error as Error).message).toMatch(/page with no entry/u);
+    expect(peer.asked).toHaveLength(1);
   });
 });

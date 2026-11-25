@@ -113,15 +113,18 @@ export {
 } from "./da-transport.enum-label.js";
 export {
   type DaLedgerSnapshotEntry,
+  DaLedgerSnapshotMalformed,
   type DaLedgerSnapshotPage,
   daLedgerSnapshotPage,
   type DaLedgerSnapshotRequest,
   type DaLedgerSnapshotResponse,
   DaLedgerSnapshotStatus,
+  DaLedgerSnapshotUnserved,
   decodeDaLedgerSnapshotRequestCbor,
   decodeDaLedgerSnapshotResponseCbor,
   encodeDaLedgerSnapshotRequestCbor,
   encodeDaLedgerSnapshotResponseCbor,
+  fetchDaLedgerSnapshot,
 } from "./da-transport.ledger-snapshot.js";
 export {
   daDeploymentFingerprintFromHex,

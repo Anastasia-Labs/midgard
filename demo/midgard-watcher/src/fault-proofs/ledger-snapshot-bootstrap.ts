@@ -16,6 +16,10 @@
  * duplicate check or the entry check refuses, or a malformed answer) is not
  * asked again by this process, and is logged once.
  */
+import {
+  DaLedgerSnapshotMalformed,
+  DaLedgerSnapshotUnserved,
+} from "@al-ft/midgard-core/da-transport";
 import { LedgerRootMismatchError } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   LedgerEntryNotCanonical,
@@ -25,11 +29,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/ledger-store";
 
 import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
-import {
-  WatcherLedgerSnapshotMalformed,
-  type WatcherLedgerSnapshotPeer,
-  WatcherLedgerSnapshotUnserved,
-} from "../storage/ledger-snapshot-fetch.js";
+import type { WatcherLedgerSnapshotPeer } from "../storage/ledger-snapshot-fetch.js";
 
 /** The warn-level log reason of a DA peer that served a wrong snapshot. */
 export const WATCHER_LEDGER_SNAPSHOT_PEER_EXCLUDED =
@@ -37,7 +37,7 @@ export const WATCHER_LEDGER_SNAPSHOT_PEER_EXCLUDED =
 
 /** A stream no honest peer serves for the root asked for. */
 const servedWrong = (error: unknown): boolean =>
-  error instanceof WatcherLedgerSnapshotMalformed ||
+  error instanceof DaLedgerSnapshotMalformed ||
   error instanceof LedgerRootMismatchError ||
   error instanceof LedgerSnapshotRefused ||
   error instanceof LedgerEntryNotCanonical;
@@ -80,7 +80,7 @@ export const createWatcherLedgerSnapshotBootstrap = (
         await input.store.admit(peer.entries(utxosRoot), utxosRoot);
         return true;
       } catch (error) {
-        if (error instanceof WatcherLedgerSnapshotUnserved) continue;
+        if (error instanceof DaLedgerSnapshotUnserved) continue;
         if (!servedWrong(error)) throw error;
         excluded.add(peer.identity);
         log(
