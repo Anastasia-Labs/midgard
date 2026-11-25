@@ -90,6 +90,8 @@ export class L1NodeTransport {
     detail: "the sidecar has not started",
   };
   #sidecar: SidecarProcess | undefined;
+  /** The sidecar spawned and not yet through its hello. */
+  #starting: SidecarProcess | undefined;
   #restartTimer: NodeJS.Timeout | undefined;
   #restartDelay: number;
   #stopped = false;
@@ -145,20 +147,22 @@ export class L1NodeTransport {
   async #start(): Promise<void> {
     if (this.#stopped) return;
     const startedAt = Date.now();
-    let sidecar: SidecarProcess;
+    const sidecar = SidecarProcess.spawn({
+      binaryPath: this.#options.binaryPath,
+      socketPath: this.#options.socketPath,
+      networkMagic: this.#options.networkMagic,
+      requestDeadlineMs: requestDeadlineMs(this.#requestTimeoutMs),
+      helloTimeoutMs: this.#options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS,
+      ...(this.#options.onDiagnostic === undefined
+        ? {}
+        : { onDiagnostic: this.#options.onDiagnostic }),
+    });
+    this.#starting = sidecar;
     try {
-      sidecar = await SidecarProcess.start({
-        binaryPath: this.#options.binaryPath,
-        socketPath: this.#options.socketPath,
-        networkMagic: this.#options.networkMagic,
-        requestDeadlineMs: requestDeadlineMs(this.#requestTimeoutMs),
-        helloTimeoutMs:
-          this.#options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS,
-        ...(this.#options.onDiagnostic === undefined
-          ? {}
-          : { onDiagnostic: this.#options.onDiagnostic }),
-      });
+      await sidecar.hello();
     } catch (error) {
+      await sidecar.close();
+      if (this.#stopped) return;
       const exit = error instanceof SidecarExitedError ? error.exit : undefined;
       if (exit !== undefined && this.#failOn(exit)) return;
       this.#scheduleRestart(
@@ -168,9 +172,11 @@ export class L1NodeTransport {
         exit === undefined ? (error as Error).message : describe(exit),
       );
       return;
+    } finally {
+      this.#starting = undefined;
     }
     if (this.#stopped) {
-      void sidecar.close();
+      await sidecar.close();
       return;
     }
     this.#sidecar = sidecar;
@@ -430,7 +436,7 @@ export class L1NodeTransport {
     return stream;
   }
 
-  /** Stops the supervisor, closes every stream and ends the sidecar. */
+  /** Stops the supervisor, closes every stream and waits for the sidecar's exit. */
   async close(): Promise<void> {
     if (this.#stopped) return;
     this.#stopped = true;
@@ -442,7 +448,7 @@ export class L1NodeTransport {
       detail: "the transport is closed",
     });
     for (const waiter of this.#readyWaiters.splice(0)) waiter();
-    const sidecar = this.#sidecar;
+    const sidecar = this.#sidecar ?? this.#starting;
     this.#sidecar = undefined;
     await sidecar?.close();
   }
@@ -479,7 +485,10 @@ export const sharedL1NodeTransport = (
   return transport;
 };
 
-/** Closes every shared transport (process shutdown, tests). */
+/**
+ * Closes every shared transport and waits for the sidecars' exits. A worker
+ * thread that opened one awaits this before it ends (README, worker threads).
+ */
 export const closeSharedL1NodeTransports = async (): Promise<void> => {
   const transports = [...shared.values()];
   shared.clear();

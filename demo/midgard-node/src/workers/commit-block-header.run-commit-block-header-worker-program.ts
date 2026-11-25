@@ -35,6 +35,7 @@ import {
   followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
+import { postCommitWorkerOutput } from "./commit-block-header.post-commit-worker-output.js";
 import {
   type LocalFaultMark,
   VERIFIER_UNAVAILABLE_FAULT,
@@ -277,15 +278,7 @@ if (parentPort !== null) {
     FollowerL1ChainParametersLive,
   );
 
-  void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) => {
-    // The parent reports a failure as `commit_worker_failed` (one warning, an
-    // error once escalated, its first line on /readyz), so a failure that
-    // repeats every tick logs here at debug.
-    const log =
-      output.type === "FailureOutput" ? Effect.logDebug : Effect.logInfo;
-    Effect.runSync(
-      log(`👷 Block commitment work completed (${JSON.stringify(output)}).`),
-    );
-    parentPort?.postMessage(output);
-  });
+  void Effect.runPromise(captureCommitWorkerFailure(program)).then((output) =>
+    postCommitWorkerOutput(workerParentPort, output),
+  );
 }

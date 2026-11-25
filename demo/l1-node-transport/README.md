@@ -104,6 +104,11 @@ The client has these behaviours:
 - **Shared instances.** `sharedL1NodeTransport` returns one instance per
   (binary, socket, magic, request timeout). Every caller in a process shares that instance,
   so a role holds one node connection.
+- **Worker threads.** A sidecar is a child of the thread that spawned it,
+  and only that thread collects its exit. A worker thread that opened a
+  transport awaits `close()` (`closeSharedL1NodeTransports()` for shared
+  instances) before it ends; a sidecar still running when its thread ends
+  stays a defunct child of the process until the process exits.
 
 ## Frame protocol (version 3)
 

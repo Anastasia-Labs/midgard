@@ -1,3 +1,4 @@
+import { closeSharedL1NodeTransports } from "@al-ft/l1-node-transport";
 import { Effect } from "effect";
 
 import type { SettlementHealth } from "../services/settlement.js";
@@ -14,7 +15,9 @@ export type SettlementWorkerPort = {
  * cause as a last 'error' report, naming each failing call and what the
  * provider answered, and exits the thread with code 1; the node's supervisor
  * reports the death with that error and counts it towards its failure
- * streak. */
+ * streak. The run's L1 node transport is closed first, either way: its
+ * sidecar is a child of this thread, and nothing collects its exit once the
+ * thread is gone. */
 export const runSettlementWorker = (
   port: SettlementWorkerPort,
   program: Effect.Effect<unknown, unknown>,
@@ -22,6 +25,7 @@ export const runSettlementWorker = (
   Effect.runPromise(
     program.pipe(
       Effect.asVoid,
+      Effect.ensuring(Effect.promise(closeSharedL1NodeTransports)),
       Effect.catchAllCause((cause) =>
         Effect.sync(() => {
           port.postMessage({

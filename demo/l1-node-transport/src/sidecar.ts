@@ -118,15 +118,18 @@ export class SidecarProcess {
     child.on("close", (code, signal) => this.#closed(code, signal));
   }
 
-  /** Spawns the sidecar and completes the hello exchange. */
-  static async start(options: SidecarOptions): Promise<SidecarProcess> {
-    const child = spawn(options.binaryPath, [], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-    });
-    const sidecar = new SidecarProcess(options, child);
-    await sidecar.#helloExchange();
-    return sidecar;
+  /**
+   * Spawns the sidecar. It takes requests once `hello` resolves; whoever
+   * spawned it ends it with `close`, whether or not the hello succeeded.
+   */
+  static spawn(options: SidecarOptions): SidecarProcess {
+    return new SidecarProcess(
+      options,
+      spawn(options.binaryPath, [], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+      }),
+    );
   }
 
   get exited(): SidecarExit | undefined {
@@ -138,7 +141,8 @@ export class SidecarProcess {
     else this.#exitListeners.push(listener);
   }
 
-  async #helloExchange(): Promise<void> {
+  /** Completes the hello exchange; rejects when the sidecar ends first. */
+  async hello(): Promise<void> {
     const answer = new Promise<Frame>((resolve, reject) => {
       this.#hello = { resolve, reject };
     });
@@ -229,7 +233,12 @@ export class SidecarProcess {
     }
   }
 
-  /** Orderly stop: closes the sidecar's input, then kills it after a bound. */
+  /**
+   * Orderly stop: closes the sidecar's input, then kills it after a bound.
+   * Resolves once the exit has been collected, so the process is gone and
+   * not defunct. Only the thread that spawned it can collect it: a worker
+   * thread awaits this before it ends.
+   */
   async close(boundMs = 5000): Promise<void> {
     if (this.#exit !== undefined) return;
     const exited = new Promise<void>((resolve) => this.onExit(() => resolve()));
