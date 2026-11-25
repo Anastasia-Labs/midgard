@@ -271,11 +271,8 @@ export const pruneFoldedBeyondChallengeability = ({
       Effect.gen(function* () {
         const dead = deadHeadersOf(yield* deadJournals);
         const sql = yield* SqlClient.SqlClient;
-        // Without the intent journal's table no intent can be read gone.
-        const [intents] = yield* sql<{ present: boolean }>`SELECT
-          to_regclass('l1_intents') IS NOT NULL AS present`;
         const spentDead =
-          dead.length === 0 || intents?.present !== true
+          dead.length === 0
             ? sql`FALSE`
             : sql`(${deadHeader(sql, `p.${Columns.HEADER_HASH}`, dead)}
               AND p.${sql(Columns.INTENDED_TX_HASH)} IS NOT NULL

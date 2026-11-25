@@ -25,12 +25,13 @@ must hash differently from the deployed script
 (`demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts`);
 `demo/midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts`.
 
-Provenance: #605 found ten semantic resolvers deployed with two of their three
-parameters, which made them succeed for any prover; `ac54d01a1` (#609)
+Provenance: ten semantic resolvers were deployed with two of their three
+parameters, which made them succeed for any prover; `ac54d01a1`
 applied the third parameter and added the arity guard to every application.
 
-Recurrence: 1 live instance, 10 validators. Blind spot: #610 (OPEN) —
-`phas` membership is deployed bare from `compiledCode`, outside the door.
+Recurrence: 1 live instance, 10 validators. The `phas` membership loader
+deploys `compiledCode` bare and refuses a blueprint that declares a parameter
+for it (`f26292930`).
 
 ## FP2. On chain trusts deployment parameters
 
@@ -82,7 +83,7 @@ Enforced: every script, the pre-commit hook and CI run the compiler only
 through `scripts/aiken`, which builds the commit `demo/flake.lock` pins
 `[script: scripts/lib/aiken.mjs]`, `[hook: pre-commit]`.
 
-Provenance: #521 — stock v1.1.22 generated under-strict decoders when two
+Provenance: stock v1.1.22 generated under-strict decoders when two
 modules declared the same type name (`ValueWitnessV1` in `cek_builtin_v1` and
 `cek_machine_v1`); `a954669fc` (2026-08-04) renamed the collision, and the
 fork carries the compiler fix.
@@ -108,9 +109,9 @@ Enforced: `expect verified.tx_compact.witness_set_hash == witness_set_hash`
 `tier_three_certificate_over_a_witness_field_binds_to_nothing_committed`,
 `certified_carriage_opens_the_address_witness_field_with_the_welded_hash`.
 
-Provenance: the #575 review found the first rebind "re-derived the
+Provenance: review found the first field-door rebind "re-derived the
 witness-set hash but dropped the MPF anchoring", reproduced end to end;
-`2fec6b0fb` restored it. `d14c3e9aa` (#606, 2026-08-16) welded `field_hash`
+`2fec6b0fb` restored it. `d14c3e9aa` (2026-08-16) welded `field_hash`
 into the preimage-certificate mint, so a certificate minted over a fabricated
 witness set carries the fabricated hash and fails the door equality.
 
@@ -177,9 +178,9 @@ Rule: a focused Aiken selector that collects zero tests fails the gate.
 Enforced: `onchain/aiken/scripts/guard-focused-selector.mjs`
 `[script: onchain/aiken/scripts/guard-focused-selector.mjs]`.
 
-Provenance: #519 found 24 gates that could not fail; #523 and `8a4b87707`
-made zero collection fatal. The bare `-m native_script_decoding` selector in
-`fa9eeb41c`'s era matched no module; the Q60 selector in SQ1 did the same.
+Provenance: one sweep found 24 gates that could not fail; `8a4b87707` made
+zero collection fatal. The bare `-m native_script_decoding` selector in
+`fa9eeb41c`'s era matched no module; the selector of SQ1's bound did the same.
 
 Recurrence: at least 5. Blind spot: a selector that collects the wrong tests
 still passes.
@@ -198,7 +199,7 @@ Enforced: `[aiken-test: midgard/forced-submission.test/]`
 `[aiken-test: midgard/forced-source-bindings.test/]`
 (`forced_source_binds_both_verdicts`).
 
-Provenance: #640 (`165db5ca6`, `11c5bf548`) bound forced disputes to the
+Provenance: `165db5ca6` and `11c5bf548` bound forced disputes to the
 committed leaf verdict; `742df026e` (2026-09-12) made forced submissions
 immutable with one authoritative verdict.
 
@@ -225,8 +226,8 @@ CI, and regenerating a golden file makes both sides green together.
 ## Miss patterns in this subtree
 
 - A fix applied to one family's copy and not to its twins (FP6, five rounds).
-- An ABI or parameter change that outran the builders (#592 to #605).
-- A replacement path that drops a guard the old path had (FP5 via #575; SQ1
+- An ABI or parameter change that outran the builders (FP1).
+- A replacement path that drops a guard the old path had (FP5 via the first field-door rebind; SQ1
   via `c07ac1326`; SQ5 via `3e3090aa1`).
 - Gates that pass while testing nothing (FP8).
 - Cross-language drift between a validator and its SDK twin (FP10).

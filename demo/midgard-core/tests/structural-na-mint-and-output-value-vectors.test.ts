@@ -13,8 +13,8 @@ import {
  *
  * Every hex string below is byte-identical to the constant of the same name in
  * the Aiken modules
- *   onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-q24-ada-minted.test.ak
- *   onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-q25-negative-output-value.test.ak
+ *   onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-ada-minted.test.ak
+ *   onchain/aiken/lib/midgard/fraud-proofs/native-tx/structural-na-negative-output-value.test.ak
  * so the same bytes are proven unrepresentable on both sides of the boundary.
  */
 

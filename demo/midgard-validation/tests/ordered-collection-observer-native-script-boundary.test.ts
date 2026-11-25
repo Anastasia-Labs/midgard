@@ -21,7 +21,7 @@ import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundar
 // `onchain/aiken/lib/midgard/validation-machine-tests/`
 // (`cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree`
 // and `maximum_observer_field_terminal_fixture_v1`), so this object is the
-// TypeScript half of the cross-language agreement for C20-3.
+// TypeScript half of the cross-language agreement for the observer maximum.
 const MAXIMUM_OBSERVER_ACCEPTED_COUNT = 224;
 const MAXIMUM_OBSERVER_ACCEPTED_SIGNED_BYTES = 16_338;
 const MAXIMUM_OBSERVER_ADJACENT_COUNT = 225;
@@ -314,7 +314,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       collectionProof: observerField.terminalFoldVector.collectionProof,
       chunkProof: observerField.terminalFoldVector.chunkProof,
     }).toEqual(maximumObserverTerminalFoldVector);
-    // This suite is the producer for the C20-6 constant family in
+    // This suite is the producer for the field-6 constant family in
     // `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`: field 6's
     // 224 native-script witnesses, their preimage, and the compact forms that
     // bind them. Publishing the vector after the assertions above is what lets

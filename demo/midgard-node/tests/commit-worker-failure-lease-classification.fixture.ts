@@ -13,7 +13,7 @@ import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { expect, vi } from "vitest";
+import { expect } from "vitest";
 
 import {
   PendingBlockFinalizationsDB,
@@ -33,6 +33,7 @@ import { commitSubmitDeferError } from "../src/workers/commit-block-header/build
 import { submitDepositOnlyCommit } from "../src/workers/commit-block-header/submission.submit-deposit-only-commit.js";
 import { submitTxBackedCommit } from "../src/workers/commit-block-header/submission.submit-tx-backed-commit.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { emptySql } from "./helpers/empty-sql.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /**
@@ -88,14 +89,6 @@ const fakeLucid = {
   api: {},
   switchToOperatorsMainWallet: Effect.void,
 } as never;
-const fakeSql = Object.assign(
-  ((..._args: readonly unknown[]) =>
-    Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  {
-    array: vi.fn((values: readonly unknown[]) => values),
-    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
-  },
-) as unknown as SqlClient.SqlClient;
 
 export const baseCommitArgs = {
   contracts: {
@@ -190,7 +183,7 @@ const runDepositOnlyCommit = () =>
       Effect.provideService(Lucid, fakeLucid),
       Effect.provideService(NodeConfig, depthConfig),
       Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
+      Effect.provideService(SqlClient.SqlClient, emptySql),
     ) as Effect.Effect<unknown, never, never>,
   );
 
@@ -211,7 +204,7 @@ const runTxBackedCommit = () =>
       Effect.provideService(Lucid, fakeLucid),
       Effect.provideService(NodeConfig, depthConfig),
       Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
+      Effect.provideService(SqlClient.SqlClient, emptySql),
     ) as Effect.Effect<unknown, never, never>,
   );
 

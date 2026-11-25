@@ -163,7 +163,7 @@ The same workers check every `/peer/txs` transaction, and each node checks
 every transaction of the cluster once (its own users' through `/submit`, the
 rest as its peers forward them), so size `SUBMIT_INGRESS_WORKER_POOL_SIZE` for
 the cluster's TPS, not this node's share. One worker checks, by transaction
-shape (inputs/outputs, measured on #886's Phase A):
+shape (inputs/outputs, measured on Phase A):
 
 | Shape | Worker time per tx | Txs a second per worker |
 | ----- | ------------------ | ----------------------- |

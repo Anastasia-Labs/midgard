@@ -1,4 +1,4 @@
-import "./fabricated-withdrawal.q40-fabricated-withdrawal-l1-witness-authentication.js";
+import "./fabricated-withdrawal.fabricated-withdrawal-l1-witness-authentication.js";
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -50,7 +50,7 @@ import {
   presentEventWitness,
   withdrawalEventDatum,
   withdrawalEventUtxoFixture,
-} from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
+} from "./fabricated-withdrawal.fabricated-withdrawal-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-withdrawal submit-side re-derivation", () => {

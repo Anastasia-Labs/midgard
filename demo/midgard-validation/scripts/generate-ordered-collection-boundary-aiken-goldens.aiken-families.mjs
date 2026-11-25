@@ -32,80 +32,89 @@ const AIKEN_FAMILIES = [
     constants: {
       cardano_max_transaction_bytes: signerWitness.cardanoMaxTransactionBytes,
 
-      c20_7_maximum_cardano_vkey_witness_count: signerWitness.vkeyWitnessCount,
-      c20_7_maximum_cardano_field_bytes: signerWitness.addressWitnessFieldBytes,
-      c20_7_maximum_cardano_signed_cardano_bytes:
+      vkey_witnesses_maximum_cardano_vkey_witness_count:
+        signerWitness.vkeyWitnessCount,
+      vkey_witnesses_maximum_cardano_field_bytes:
+        signerWitness.addressWitnessFieldBytes,
+      vkey_witnesses_maximum_cardano_signed_cardano_bytes:
         signerWitness.acceptedSignedCardanoBytes,
-      c20_7_adjacent_cardano_signed_cardano_bytes:
+      vkey_witnesses_adjacent_cardano_signed_cardano_bytes:
         signerWitness.adjacentSignedCardanoBytes,
-      c20_7_maximum_cardano_canonical_bytes: signerWitness.nativeCanonicalBytes,
-      c20_7_maximum_cardano_transaction_id: bytes(
+      vkey_witnesses_maximum_cardano_canonical_bytes:
+        signerWitness.nativeCanonicalBytes,
+      vkey_witnesses_maximum_cardano_transaction_id: bytes(
         signerWitness.transactionIdHex,
       ),
-      c20_7_maximum_cardano_transaction_commitment: bytes(
+      vkey_witnesses_maximum_cardano_transaction_commitment: bytes(
         signerWitness.transactionCommitmentHex,
       ),
-      c20_7_maximum_cardano_collection_commitment: bytes(
+      vkey_witnesses_maximum_cardano_collection_commitment: bytes(
         signerWitness.addressWitnessFieldCommitmentHex,
       ),
-      c20_7_maximum_cardano_preimage_hash: bytes(
+      vkey_witnesses_maximum_cardano_preimage_hash: bytes(
         signerWitness.addressWitnessFieldPreimageHashHex,
       ),
-      c20_7_maximum_cardano_compact_cbor: bytes(signerWitness.compactCborHex),
-      c20_7_maximum_cardano_witness_set_compact_cbor: bytes(
+      vkey_witnesses_maximum_cardano_compact_cbor: bytes(
+        signerWitness.compactCborHex,
+      ),
+      vkey_witnesses_maximum_cardano_witness_set_compact_cbor: bytes(
         signerWitness.witnessSetCompactCborHex,
       ),
-      c20_7_maximum_cardano_field_preimage_lengths_cbor: bytes(
+      vkey_witnesses_maximum_cardano_field_preimage_lengths_cbor: bytes(
         signerWitness.fieldPreimageLengthsCborHex,
       ),
-      c20_7_maximum_cardano_address_witnesses_preimage_cbor: bytes(
+      vkey_witnesses_maximum_cardano_address_witnesses_preimage_cbor: bytes(
         signerWitness.addressWitnessFieldPreimageCborHex,
       ),
-      c20_7_maximum_cardano_first_verification_key: bytes(
+      vkey_witnesses_maximum_cardano_first_verification_key: bytes(
         addressWitnessVerificationKey(addressWitnessItems[0]),
       ),
-      c20_7_maximum_cardano_last_verification_key: bytes(
+      vkey_witnesses_maximum_cardano_last_verification_key: bytes(
         addressWitnessVerificationKey(addressWitnessItems.at(-1)),
       ),
 
-      c20_6_maximum_cardano_native_script_witness_count:
+      script_witnesses_maximum_cardano_native_script_witness_count:
         observerScript.nativeScriptWitnessCount,
-      c20_6_maximum_cardano_field_bytes: observerScript.scriptWitnessFieldBytes,
-      c20_6_maximum_cardano_signed_cardano_bytes:
+      script_witnesses_maximum_cardano_field_bytes:
+        observerScript.scriptWitnessFieldBytes,
+      script_witnesses_maximum_cardano_signed_cardano_bytes:
         observerScript.acceptedSignedCardanoBytes,
-      c20_6_adjacent_cardano_signed_cardano_bytes:
+      script_witnesses_adjacent_cardano_signed_cardano_bytes:
         observerScript.adjacentSignedCardanoBytes,
-      c20_6_maximum_cardano_canonical_bytes:
+      script_witnesses_maximum_cardano_canonical_bytes:
         observerScript.nativeCanonicalBytes,
-      c20_6_maximum_cardano_transaction_id: bytes(
+      script_witnesses_maximum_cardano_transaction_id: bytes(
         observerScript.transactionIdHex,
       ),
-      c20_6_maximum_cardano_transaction_commitment: bytes(
+      script_witnesses_maximum_cardano_transaction_commitment: bytes(
         observerScript.transactionCommitmentHex,
       ),
-      c20_6_maximum_cardano_collection_commitment: bytes(
+      script_witnesses_maximum_cardano_collection_commitment: bytes(
         observerScript.scriptWitnessFieldCommitmentHex,
       ),
-      c20_6_maximum_cardano_preimage_hash: bytes(
+      script_witnesses_maximum_cardano_preimage_hash: bytes(
         observerScript.scriptWitnessFieldPreimageHashHex,
       ),
-      c20_6_maximum_cardano_compact_cbor: bytes(observerScript.compactCborHex),
-      c20_6_maximum_cardano_witness_set_compact_cbor: bytes(
+      script_witnesses_maximum_cardano_compact_cbor: bytes(
+        observerScript.compactCborHex,
+      ),
+      script_witnesses_maximum_cardano_witness_set_compact_cbor: bytes(
         observerScript.witnessSetCompactCborHex,
       ),
-      c20_6_maximum_cardano_field_preimage_lengths_cbor: bytes(
+      script_witnesses_maximum_cardano_field_preimage_lengths_cbor: bytes(
         observerScript.fieldPreimageLengthsCborHex,
       ),
-      c20_6_maximum_cardano_script_witnesses_preimage_cbor: bytes(
+      script_witnesses_maximum_cardano_script_witnesses_preimage_cbor: bytes(
         observerScript.scriptWitnessFieldPreimageCborHex,
       ),
       // §5.1's wrapped width of one field-6 item, so the adjacent-count test
       // states the stride once instead of carrying a literal that the envelope
       // silently invalidates.
-      c20_6_field_item_stride_bytes:
+      script_witnesses_field_item_stride_bytes:
         observerScript.scriptWitnessItemStrideBytes,
-      c20_6_maximum_cardano_signer_hash: observerSignerHash(),
-      c20_6_maximum_cardano_expiry_base: observerScript.observerExpiryBase,
+      script_witnesses_maximum_cardano_signer_hash: observerSignerHash(),
+      script_witnesses_maximum_cardano_expiry_base:
+        observerScript.observerExpiryBase,
     },
   },
   {

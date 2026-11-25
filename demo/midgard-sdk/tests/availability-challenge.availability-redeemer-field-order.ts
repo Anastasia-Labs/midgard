@@ -1,4 +1,4 @@
-import "./availability-challenge.q58-canonical-da-availability-commitment-v1.js";
+import "./availability-challenge.canonical-da-availability-commitment-v1.js";
 
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";

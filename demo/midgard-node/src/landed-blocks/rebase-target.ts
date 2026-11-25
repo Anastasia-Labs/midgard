@@ -16,7 +16,7 @@ import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import * as MempoolInclusionsDB from "../database/mempoolInclusions.js";
-import { type DriverHold, notRetried } from "../l1-events/driver.js";
+import type { DriverHold } from "../l1-events/driver.js";
 import { followerWriteHeld } from "../services/follower-write-gate.js";
 import type { NativeMpfOwnerService } from "../services/mpf-native-owner/protocol.js";
 import { retrieveMergeLinks } from "./confirmed-merges.js";
@@ -63,8 +63,6 @@ export type RebasePlan =
   | Readonly<{
       kind: "blocked";
       detail: string;
-      /** The hold's reason, when not `landed_block_rebase_pending`. */
-      reason?: string;
     }>
   | Readonly<{
       kind: "ready";
@@ -105,17 +103,12 @@ export const nativeRootDrift = (
   );
 
 /**
- * The hold a blocked rebase plan holds. The unnamed block waits on landed
- * processing, which the driver's backoff runs again; a named one (the
- * follower schema missing) needs the database recreated, so it is
- * `notRetried`.
+ * The hold a blocked rebase plan holds: it waits on landed processing,
+ * which the driver's backoff runs again.
  */
 export const blockedRebaseHold = (
   plan: Extract<RebasePlan, { kind: "blocked" }>,
-): DriverHold =>
-  plan.reason === undefined
-    ? { reason: LANDED_BLOCK_REBASE_PENDING, detail: plan.detail }
-    : notRetried({ reason: plan.reason, detail: plan.detail });
+): DriverHold => ({ reason: LANDED_BLOCK_REBASE_PENDING, detail: plan.detail });
 
 const NO_FRONTIER: Extract<RebasePlan, { kind: "blocked" }> = {
   kind: "blocked",
@@ -130,12 +123,6 @@ const targetOn = (
   journals: OwnJournalDisposition,
 ) =>
   Effect.gen(function* () {
-    if (journals.held !== undefined)
-      return {
-        kind: "blocked",
-        reason: journals.held.reason,
-        detail: journals.held.detail,
-      } satisfies RebasePlan;
     const onChain = new Set(landed.chain.map((row) => row.headerHash));
     const stray = rows.find(
       (row) => row.state === "processed" && !onChain.has(row.headerHash),
@@ -227,10 +214,7 @@ export const rebasePlanOf = (
     const rows = yield* retrieveRows;
     const landed = yield* landedChain(rows);
     if (landed === undefined) return rebaseNeeded(rows) ? NO_FRONTIER : NOT_DUE;
-    const due =
-      journals.held !== undefined ||
-      rebaseNeeded(rows) ||
-      journals.dispose.length > 0;
+    const due = rebaseNeeded(rows) || journals.dispose.length > 0;
     if (!due && owner === undefined) return NOT_DUE;
     const on: RebasePlan = yield* targetOn(rows, landed, journals);
     if (due) return on;

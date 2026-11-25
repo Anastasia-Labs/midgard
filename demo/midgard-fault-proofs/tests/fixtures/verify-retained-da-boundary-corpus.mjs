@@ -16,7 +16,7 @@ const demoRoot = resolve(packageRoot, "..");
 const validationPackageRoot = resolve(demoRoot, "midgard-validation");
 const daCommitteePackageRoot = resolve(demoRoot, "da-committee-node");
 const temporaryDirectory = mkdtempSync(
-  join(tmpdir(), "midgard-cardano-p2-retained-da-"),
+  join(tmpdir(), "midgard-retained-da-boundary-corpus-"),
 );
 const jsonlPath = resolve(temporaryDirectory, "corpus.jsonl");
 const regeneratedPath = resolve(temporaryDirectory, "regenerated.json");
@@ -34,7 +34,7 @@ if (
   (mode !== undefined && mode !== "--update")
 ) {
   throw new Error(
-    "usage: node verify-cardano-capability-p2-retained-da-v1.mjs [--update]",
+    "usage: node verify-retained-da-boundary-corpus.mjs [--update]",
   );
 }
 

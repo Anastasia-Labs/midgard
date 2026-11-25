@@ -163,7 +163,7 @@ fn script_items(next: Int, remaining: Int) -> List<ByteArray> {
   }
 }
 
-/// The exact C20.6 Cardano-maximum native-script witness shape: every encoded
+/// The exact Cardano-maximum native-script witness shape: every encoded
 /// item is 44 bytes and its §5.1 field wrapper is two more. 224 such items
 /// produce the authoritative 10,306-byte field; item 225 is outside Cardano's
 /// signed-transaction envelope.
@@ -493,7 +493,7 @@ fn count_item(state: Int, _index: Int, _item: ByteArray) -> Int {
 // §10.2 grammar certification — exact field-6 maximum and adversarial matrix
 // ---------------------------------------------------------------------------
 
-/// Transaction 1 at the exact field-6 maximum (C20.6's 224 native script
+/// Transaction 1 at the exact field-6 maximum (224 native script
 /// witnesses): authenticate the 10,306-byte inline field, consume only the
 /// first 32 envelopes, and commit an 87-byte position. The runner row is the per-transaction fit evidence.
 test grammar_maximum_inline_open_and_32_fit() {

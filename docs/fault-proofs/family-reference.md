@@ -230,7 +230,7 @@ The claim convicts only when the final delta is non-zero and its sign matches
 the claimed inflation/deflation direction. ADA minting and negative output
 quantities are structurally unrepresentable in canonical V1. Malformed committed
 bytes are covered by `mintItemNonCanonical` and `transactionOutputNonCanonical`;
-the Q24/Q25 decoder controls alone do not prove adversarial-byte coverage.
+the ADA-minting and negative-quantity decoder controls alone do not prove adversarial-byte coverage.
 
 The installed conservation route also authenticates the selected event
 pre-state, including prior effects in the same block. Wrongful forced rejection

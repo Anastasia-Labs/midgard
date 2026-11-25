@@ -2200,7 +2200,7 @@ pub fn verify_cek(
   }
 }
 
-/// Per-kind cek semantic resolvers (R5 item 1). Each one re-runs the shared
+/// Per-kind cek semantic resolvers. Each one re-runs the shared
 /// cek control decode, pins its own discriminator and calls the same branch
 /// the aggregate `verify_cek` would have taken, so the four resolvers
 /// partition the cek step space exactly.

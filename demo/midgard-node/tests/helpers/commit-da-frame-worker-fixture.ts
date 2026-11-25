@@ -1,7 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { vi } from "vitest";
 
 import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { WorkerInput } from "../../src/workers/utils/commit-block-header.js";
@@ -25,15 +23,6 @@ export const deploymentIdentity = ContractDeploymentIdentity.make({
   hubOraclePolicyId: "ab".repeat(28),
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 });
-export const fakeSql = Object.assign(
-  ((..._args: readonly unknown[]) =>
-    Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  {
-    array: vi.fn((values: readonly unknown[]) => values),
-    in: vi.fn((values: readonly unknown[]) => values),
-    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
-  },
-) as unknown as SqlClient.SqlClient;
 export const workerInput = {
   nativeMpf: {
     port: {} as MessagePort,

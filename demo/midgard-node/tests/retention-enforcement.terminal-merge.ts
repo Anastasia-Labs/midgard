@@ -19,7 +19,7 @@ import {
   deploymentManifest,
   h32,
   NOW,
-} from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
+} from "./retention-enforcement.executable-retention-deadline-alert.js";
 import { deterministicFixtureBytes } from "./utils.js";
 
 /**

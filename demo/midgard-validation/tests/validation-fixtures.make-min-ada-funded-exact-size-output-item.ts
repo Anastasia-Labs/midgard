@@ -101,12 +101,9 @@ export const outRefFromTxId = (txId: Buffer, index = 0n): Buffer =>
  * The lovelace every fixture output that a fixture transaction PRODUCES is
  * funded with.
  *
- * RE-AUTHORED, NOT SUPPRESSED (R8 of decision 0005). These
- * fixtures used to produce 10-lovelace outputs, which was admissible while the
- * minimum-Ada floor was unwired arithmetic. The ValueAndMint output-descriptor
- * scan now convicts an under-funded output with `E_MIN_ADA`, so a 10-lovelace
- * output is no longer a valid transaction at all and a fixture built from one
- * measures the min-Ada rejection instead of whatever it was written to
+ * The ValueAndMint output-descriptor scan convicts an under-funded output
+ * with `E_MIN_ADA` (decision 0005), so a fixture whose output sits below the
+ * floor measures the min-Ada rejection instead of whatever it was written to
  * measure.
  *
  * 10 ADA is a round number chosen to clear the floor with room to spare rather
@@ -205,21 +202,17 @@ export const canonicalDatumOfExactLength = (datumBytes: number): Buffer => {
  * Builds a canonical output item whose exact encoded length equals
  * `targetItemBytes`, funded at exactly its own minimum-Ada floor.
  *
- * RE-AUTHORED, NOT SUPPRESSED (R8 of decision 0005). The four
- * carriage suites each carried their own copy of this builder, each producing
- * 10-lovelace items, which the ValueAndMint output-descriptor scan now
- * convicts with `E_MIN_ADA` -- and it would convict every one of them, since
- * the whole point of those suites is items at and beyond the carriage
- * frontiers. The four copies are now this one, so the exact-length algorithm
- * and the funding rule cannot drift apart between them.
+ * The four carriage suites share this one builder, so the exact-length
+ * algorithm and the funding rule cannot drift apart between them; an item
+ * below the floor would be convicted with `E_MIN_ADA` by the ValueAndMint
+ * output-descriptor scan (decision 0005).
  *
  * Funding is at the floor rather than at `FUNDED_OUTPUT_LOVELACE` on
  * purpose: these items are sized in bytes, and a fixed lovelace amount would
  * make the item's own length depend on how wide that amount happens to encode.
  * The floor, `coins_per_utxo_byte * (160 + targetItemBytes)`, is computable up
  * front precisely because the total length is what this builder pins, so
- * funding changes no measured length -- every carriage measurement over these
- * items measures the same number of bytes it did before the wiring.
+ * funding changes no measured length.
  */
 export const makeMinAdaFundedExactSizeOutputItem = (
   targetItemBytes: number,

@@ -1,4 +1,4 @@
-import "./workflow.q51-w-o4-resumable-workflow.js";
+import "./workflow.resumable-workflow.js";
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import {

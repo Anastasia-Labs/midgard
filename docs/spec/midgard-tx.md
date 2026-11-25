@@ -652,7 +652,7 @@ one-byte boundary controls; these are fixture-bound measurements.
 #### Erratum E2 — whole-field walks and witness-set authentication
 
 The current measurement input is the
-`fraud_proofs/q1x_spend_input_cardinality.test` entries of
+`fraud_proofs/spend_input_cardinality.test` entries of
 [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json), judged by
 [`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs). They
 measure double-spend and missing-signature step-04 and no-input step-02 at one
@@ -733,7 +733,7 @@ FieldPreimageCertificateV1 {
   tx_id: ByteArray,                  -- the L2 tx's id (32 B)
   field_index: Int,                  -- 0..8
   field_hash: ByteArray,             -- the §4 flat field commitment (32 B),
-                                     --   mint-welded to chunk_digests (#606)
+                                     --   mint-welded to chunk_digests
   total_length: Int,                 -- preimage byte length (ragged-last + offset math)
   chunk_digests: List<ByteArray>,    -- blake2b-256 per chunk, in order;
                                      --   length = ceil(total_length / K)
@@ -879,8 +879,7 @@ both of them fail-closed or answer-preserving:
   count, never an inflated one. Closing that gap would cost one chunk hash on
   the cheapest path in the format, against the "no chunk hash spent"
   guarantee above; an authenticated `item_count` field on the certificate is
-  the way to close it if a later ticket decides the guarantee is worth
-  spending.
+  the way to close it, should the guarantee be judged worth spending.
 
 ### 8.7 Publisher, funding, reuse, cleanup
 
@@ -922,7 +921,7 @@ for the door and every accessor built on it.
 
 ### 8.9 Relationship to adjacent machinery
 
-The MPF proof-chunk carriage (issue #545 idiom) remains a parallel
+The MPF proof-chunk carriage remains a parallel
 convention with separate types; MPF trie roots, DA payload framing, and the
 `mpf-chunked-verify` validators are not field commitments and are untouched
 by this document. The profile retains
@@ -1238,8 +1237,7 @@ both readers.
    from each, the maximum-Cardano ordered-collection boundary constants, and the
    field-access, field-item and carriage channels. Their **terminal-fold proof
    structures** are the known exception: those are still mirrored by hand into
-   Aiken struct literals that a name-keyed constant rebinder cannot reach, and
-   issue #590 tracks bringing them to the same standard. This item states the
+   Aiken struct literals that a name-keyed constant rebinder cannot reach. This item states the
    standard, not a claim that every value in the tree already meets it.
 
    The standard is not a style preference. A hand-maintained seed makes the two
@@ -2271,9 +2269,7 @@ discharge them at compile time (§12.4, "The two sides are two types").
 
 ### 12.7 Canonical decodability of a committed field preimage
 
-**Normative.** Owner ruling, 2026-08-11 ([#593 Ruling
-2](https://github.com/Anastasia-Labs/midgard/issues/593#issuecomment-5261103820));
-executed as #596. It adds a fault kind and changes nothing else — in
+**\*Normative.** Owner ruling, 2026-08-11. It adds a fault kind and changes nothing else — in
 particular it does not change §8.8's doors, §12.1's statement type, or any
 verdict the validation machine renders.
 
@@ -2372,7 +2368,7 @@ per-field rule.
 owner ruling of 2026-08-13 took the first of the two mechanisms this section
 had named — a sibling fault kind stated over `(field_index, preimage)` — and
 §12.8 is it; the second, the machine rendering `reject_invalid_field_type`
-from a non-aborting reader, was not taken. Executed as #601. Nothing in this
+from a non-aborting reader, was not taken. Nothing in this
 section moves: its verdict stays a function of the bytes alone and stays
 `grammatical` for both shapes above, which is exactly what §12.8 requires of
 it, because §12.8 convicts only bytes this section calls grammatical and
@@ -2628,8 +2624,7 @@ above; source registration alone does not establish release acceptance.
 
 **Normative.** Owner ruling, 2026-08-13, taking the first — option (a) — of
 the two closure mechanisms §12.7's residue paragraph named: a sibling fault
-kind stated over `(field_index, preimage)`. Executed as
-[#601](https://github.com/Anastasia-Labs/midgard/issues/601). It adds a fault
+kind stated over `(field_index, preimage)`. It adds a fault
 kind and changes
 nothing else — in particular it does not change §8.8's doors, §12.1's
 statement type, §12.7's verdict or its family, or any verdict the validation
@@ -2979,8 +2974,8 @@ above; source registration alone does not establish release acceptance.
 
 ## 13. Dispute-side rejection reason
 
-Normative for the dispute machine's rejection channel and for the #640 forced-
-leaf verdict format. §12 says what a challenger claims about a transaction's
+Normative for the dispute machine's rejection channel and for the forced-leaf
+verdict format. §12 says what a challenger claims about a transaction's
 bytes; this section says what an **operator's rejection** of a forced
 transaction commits to.
 

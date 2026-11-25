@@ -348,7 +348,7 @@ economics and timing are deployment-profile and availability `ParametersV1`
 values: the DA bond, the slash penalty, the pool floor, the minimum top-up, the
 challenge record lovelace, the maximum timeout fee, the challenge window, the
 slash grace and the withdrawal delay. The
-[F04 decision record](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
+[economics decision record](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
 (§2.6) owns the pool amounts and timing; the maximum timeout fee stays a
 deploy-time value of the manifest's `availabilityChallenge` section. They bind a
 deployment through its validator hashes, deployment profile digest and

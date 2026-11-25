@@ -148,7 +148,7 @@ export const EVENTS_ORPHAN_RECOVERY = "l1_events_orphan_recovery";
 export const EVENTS_INGESTION_FAILED = "l1_events_ingestion_failed";
 /** The sink is waiting for its write gate (a recovery is running). */
 export const EVENTS_INGESTION_WAITING = "l1_events_ingestion_waiting";
-/** A ticket hook failed; the detail names the hook. */
+/** A driver hook failed; the detail names the hook. */
 export const EVENTS_HOOK_FAILED = "l1_events_hook_failed";
 /**
  * A projected event that does not decode into the node's row: left out of

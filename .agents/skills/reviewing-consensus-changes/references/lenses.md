@@ -83,15 +83,14 @@ Ask:
 
 Under Plutus V3 a validator that receives too few parameters reduces to a
 lambda value, and the ledger reads "no error" as success. Ten validation-trace
-semantic resolvers shipped that way after #592 added a parameter that the SDK
-did not apply: a challenger could defeat any honest block (#605, found by the
-symmetric-soundness emulator test; fixed in #609, commit `ac54d01a1`).
+semantic resolvers shipped that way after a parameter was added that the SDK
+did not apply: a challenger could defeat any honest block (found by the
+symmetric-soundness emulator test; fixed in `ac54d01a1`).
 `applyBlueprintParams` refuses too few and too many parameters
 `[runtime: applyBlueprintParams]`.
 
 Blind spot: a site that deploys `compiledCode` bare never reaches that guard.
-#610 (open) tracks that class; `f26292930` and `9d84bf552` closed the known
-bare loaders, and on 2026-11-23 `demo/*/src` held 43 `compiledCode`
+`f26292930` and `9d84bf552` closed the known bare loaders, and on 2026-11-23 `demo/*/src` held 43 `compiledCode`
 reads.
 
 Ask:
@@ -114,7 +113,7 @@ Every `expect` over `Data` is a decoder, and its domain is the set of values
 it accepts. Stock Aiken v1.1.22 named generated decoders by the local type
 name only, so two same-named types in different modules shared one decoder,
 and the shipped blueprint had under-strict decoders on the adjudication path
-(#521; `MintRedeemer` alone is declared in 12 modules). The fork that
+(`MintRedeemer` alone is declared in 12 modules). The fork that
 `demo/flake.lock` pins fixes it, and every script, the pre-commit hook and CI
 run only that compiler, through `scripts/aiken`
 `[script: scripts/lib/aiken.mjs]` `[hook: pre-commit]`. Blind spot: a
@@ -185,7 +184,7 @@ block-authenticated commitment.
 The real defect of that shape: a field-preimage certificate could be minted
 over a fabricated witness set, because the consuming door selected the
 certificate by token name without comparing its field hash to the anchored
-commitment. `d14c3e9aa` (#606) welded `field_hash` into the mint-verified
+commitment. `d14c3e9aa` welded `field_hash` into the mint-verified
 datum and added the equality at the door. The decision record states the rule:
 "Token naming or an anchored witness-set hash without that comparison cannot
 substitute for content authentication"
@@ -248,15 +247,15 @@ Ask:
 
 ### 8. Gates that cannot fail
 
-A gate that cannot fail looks exactly like a healthy one. #519 confirmed 24 of
-them in one sweep. Recurring shapes:
+A gate that cannot fail looks exactly like a healthy one. One sweep confirmed
+24 of them. Recurring shapes:
 
-- a zero-collection Aiken selector that exits 0 (#523;
-  `[script: onchain/aiken/scripts/run-focused-check.mjs]` and
-  `guard-focused-selector.mjs` now fail closed on zero);
+- a zero-collection Aiken selector that exits 0
+  (`[script: onchain/aiken/scripts/run-focused-check.mjs]` and
+  `guard-focused-selector.mjs` fail closed on zero);
 - an Aiken `test ... fail` over an `and { }`, which passes as soon as any one
   conjunct is false, including the one the test meant to exercise (fixed in
-  `7d01f2b71`, #485);
+  `7d01f2b71`);
 - a runtime gate whose condition is always met in production: the watcher's
   predecessor-ledger gate checked `replayContext === undefined`, which a
   launch-scope family always set (`1b53eafd8`);
@@ -365,11 +364,10 @@ and find each one on the new path `[review]`.
 
 History:
 
-- The first #575 rebind moved the Q1x families onto the authenticated field
-  door. It re-derived the witness-set hash but dropped the MPF anchoring the
+- The first rebind onto the authenticated field door re-derived the witness-set hash but dropped the MPF anchoring the
   old path had; review reproduced an end-to-end forgery, and `2fec6b0fb`
   restored the anchor.
-- `c07ac1326` (#424, 2026-04-07), an off-chain PR about queuing block
+- `c07ac1326` (2026-04-07), an off-chain PR about queuing block
   submission, deleted the state queue's `end_time` equality; it stayed gone
   until `66d2d5d54` (2026-07-29).
 - `3e3090aa1` (2026-08-31) removed the link-removal arm's operator check on a
@@ -378,7 +376,7 @@ History:
   [invariants-state-queue.md](invariants-state-queue.md) SQ5; the relaxation
   awaits an owner ruling in #643.
 
-The counter-example is also instructive: `d14c3e9aa` (#606) deleted
+The counter-example is also instructive: `d14c3e9aa` deleted
 `carriage_reaches_the_anchor` rather than keep a guard that could no longer
 fail once the certificate mint welded the field hash.
 

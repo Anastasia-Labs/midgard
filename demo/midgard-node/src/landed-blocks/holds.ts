@@ -4,9 +4,9 @@
  * wait (on DA peers, the follower, the rebase, this node's own commit path)
  * and a local fault of a foreign block's import (within the follower
  * runner's bound) are retried on the driver's backoff; a verdict on the
- * view (an invalid block, a base or journal mismatch), a failure that is
- * not transient, and a missing schema are `notRetried`: the next follower
- * change re-reads them.
+ * view (an invalid block, a base or journal mismatch) and a failure that
+ * is not transient are `notRetried`: the next follower change re-reads
+ * them.
  */
 import {
   type DriverHold,
@@ -165,15 +165,6 @@ export const CONFIRMED_LEDGER_BASE_MISMATCH = "confirmed_ledger_base_mismatch";
 export const LANDED_BLOCK_REBASE_PENDING = "landed_block_rebase_pending";
 /** The rebase failed; the follower-change driver retries it on its backoff. */
 export const LANDED_BLOCK_REBASE_FAILED = "landed_block_rebase_failed";
-/**
- * The follower's admission tables (`l1_event_keys`,
- * `node_l1_forced_order_fields`) are missing from the node database, so the
- * own-journal disposition cannot tell whether a journal's event left the
- * chain: the rebase is held until the database is recreated, which creates
- * the schema.
- */
-export const LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING =
-  "landed_block_follower_schema_missing";
 /** The liveness source a failed rebase raises its reason under. */
 export const LANDED_BLOCK_REBASE_SOURCE = "landed_block_rebase";
 
@@ -181,7 +172,6 @@ const PRIORITY = [
   LANDED_BLOCK_ORIGIN_AFTER_FRONTIER,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
-  LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
   LANDED_BLOCK_VERIFIER_UNAVAILABLE,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,

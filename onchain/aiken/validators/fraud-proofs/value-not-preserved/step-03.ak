@@ -5,7 +5,7 @@
 //// for a token claim, its mint field — are folded **whole** through the §8.8
 //// door, subtracting outflow and adding mint. An ADA claim instead subtracts
 //// the committed fee and must carry no mint carriage (ADA is structurally
-//// unmintable, structural-na-q24). See
+//// unmintable, structural-na-ada-minted). See
 //// `midgard/fraud_proofs/value_not_preserved/step_03`.
 
 use aiken/crypto.{ScriptHash}
@@ -116,7 +116,7 @@ validator main(
         //    equation.
         let final_delta = when state.claimed_asset is {
           // ADA: subtract the root-committed fee. No mint term exists
-          // (structural-na-q24), so no mint carriage may be supplied.
+          // (structural-na-ada-minted), so no mint carriage may be supplied.
           AdaAsset -> {
             expect None = mint_carriage
             delta_after_outputs - state.committed_fee

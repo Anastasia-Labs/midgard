@@ -5,5 +5,5 @@ import "effect";
 import "vitest";
 import "../src/index.js";
 import "./da-attestation-rotation.make-fixture.js";
-import "./da-attestation-rotation.q62-da-redeemer-constructor-abi.js";
-import "./da-attestation-rotation.q63c-rescue-builder.js";
+import "./da-attestation-rotation.da-redeemer-constructor-abi.js";
+import "./da-attestation-rotation.rescue-builder.js";

@@ -14,7 +14,7 @@ The `user-events/` module builds the L1 transactions for the
 (Shared helpers live in `user-events/internals.ts`, re-exported via
 `user-events/index.ts`.)
 
-## Forced transactions in P1
+## Forced transactions on the public testnet
 
 A forced transaction is submitted as an L1 transaction order. It has two
 different validity intervals:
@@ -26,12 +26,12 @@ different validity intervals:
 The missing L2 upper bound lets a forced order remain valid while waiting for
 inclusion, including catch-up. A native script's `before`/`InvalidHereafter`
 branch cannot be satisfied by that interval. Use normal L2 submission for funds
-that require an expiry branch or a Plutus script; P1 forced inclusion does not
+that require an expiry branch or a Plutus script; forced inclusion does not
 provide an exit for those locks.
 
 The tx-order mint and shared `screenMidgardForcedTxAdmission` predicate require:
 
-| Material                      | P1 rule                                                                                                   |
+| Material                      | Rule                                                                                                      |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Spend inputs                  | At least one; fixed-width input encoding.                                                                 |
 | Witness scripts and redeemers | Native witness scripts only; no redeemers.                                                                |

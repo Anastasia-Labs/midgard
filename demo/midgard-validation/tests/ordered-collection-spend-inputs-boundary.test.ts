@@ -18,7 +18,7 @@ import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundar
 // pinned byte-for-byte by
 // `onchain/aiken/lib/midgard/validation-machine-tests/`
 // (`maximum_spend_input_field_terminal_fixture_v1`), so this object is the
-// TypeScript half of the cross-language agreement for C20-0.
+// TypeScript half of the cross-language agreement for the spend-input maximum.
 const MAXIMUM_SPEND_INPUT_ACCEPTED_COUNT = 434;
 const MAXIMUM_SPEND_INPUT_ACCEPTED_SIGNED_BYTES = 16_379;
 const MAXIMUM_SPEND_INPUT_ADJACENT_COUNT = 435;

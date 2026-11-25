@@ -47,11 +47,11 @@ The commit arm refuses a backdated `block_time`, an L2 block ending
 before it, a disagreeing `block_slot` and a re-commit of a
 header at a later time `[aiken-test: state-queue-commit.test/]`.
 
-Provenance: `18c3c56ba` (#400) and `bdded5380` set the bound. `c07ac1326`
-("Queue Block Submission in `midgard-node`", #424, 2026-04-07), an off-chain
+Provenance: `18c3c56ba` and `bdded5380` set the bound. `c07ac1326`
+("Queue Block Submission in `midgard-node`", 2026-04-07), an off-chain
 PR, deleted the on-chain equality without replacement
 (`git log -S'output_end_time == inclusive_tx_upper_bound'`). `66d2d5d54`
-(2026-07-29) restored it. `df2f149b5` then found the Q60 tests had been
+(2026-07-29) restored it. `df2f149b5` then found the tests of this bound had been
 selected with an `-m` filter that collected nothing, and `b02b25cd1` killed a
 surviving interval mutant. `94bce78c1` moved the bound from the header's
 `end_time` to the node's `block_time` and added R2 and R3.
@@ -69,7 +69,7 @@ same derivation at commit and at every reader.
 Enforced: the commit arm and every reader in `validators/state-queue.ak` and
 `lib/midgard/state-queue.ak` `[review]`.
 
-Provenance: `ab96b2457` (PR #437, "Fix output_header_hash calculation in
+Provenance: `ab96b2457` ("Fix output_header_hash calculation in
 state queue policy") replaced a derivation that applied `un_b_data` to a
 constructor.
 
@@ -88,7 +88,7 @@ Enforced: `validators/state-queue.ak`
 `[aiken-test: state-queue/]` (`q49_l295_previous_header_control_and_independent_mutations`, `q49_l295_confirmed_genesis_control_and_independent_mutations`, `q49_l295_confirmed_ordinary_control_and_independent_mutations`); sentinel refusal in `lib/midgard/state-queue.test.ak`
 `[aiken-test: midgard/state-queue.test/]`.
 
-Provenance: #313, #314, and the `66d2d5d54` watcher-checkpoint hardening.
+Provenance: the `66d2d5d54` watcher-checkpoint hardening.
 
 Recurrence: 3.
 
@@ -107,7 +107,7 @@ DA status, roots, settlement with `header_carries_l2_material`, Idle lock)
 `[aiken-test: state-queue-merge.test/]`. Off-chain readiness refusals:
 `demo/midgard-node/tests/merge-readiness.test.ts`.
 
-Provenance: #314; `bf79ece94` (no settlement for empty trees); `668673e9f`
+Provenance: `bf79ece94` (no settlement for empty trees); `668673e9f`
 (merge trusted the redeemer's roots without equating them to the header);
 `090436fc3` (merge could race a terminal fraud proof; the completed-fraud
 marker, SQ8, closes it).
@@ -181,8 +181,8 @@ handler in `validators/state-queue-removal.test.ak`,
 `bad_state_{active,retired}_slash_rejects_*` refusals); SDK side
 `demo/midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts`.
 
-Provenance: `573a536fc` (#603). #643 item 1 (OPEN) records that the prover
-signature binding from #603 was removed; the handler-level
+Provenance: `573a536fc`. #643 item 1 (OPEN) records that the prover
+signature binding from `573a536fc` was removed; the handler-level
 `bad_state_reward_routing_does_not_require_the_prover_signature` pins the
 current behaviour.
 
@@ -198,7 +198,7 @@ proof token and burns exactly one computation-thread token.
 
 Enforced: `validators/fraud-proof.ak` (spend always fails; mint shape) `[aiken-test: fraud-proof/]`.
 
-Provenance: #603.
+Provenance: `573a536fc`.
 
 ## SQ8. The completed-fraud marker is written once and blocks progress
 
@@ -238,7 +238,7 @@ Recurrence: 2.
 ## SQ10. Every state-queue element output carries no reference script
 
 Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is #693, `dd830b918`).
+restacked tree, base `77244f439`; provenance is `dd830b918`).
 
 Rule: every block node and the confirmed-state root is created with
 `reference_script == None`, and every arm that continues one pins `None`
@@ -275,7 +275,7 @@ each beside its honest control, all fail:
   user (Apply, Open, Close) as listed under DA6 in
   [invariants-da.md](invariants-da.md).
 
-Provenance: #693 (`dd830b918`), orchestrator ruling P2. The hole was
+Provenance: `dd830b918`. The hole was
 pre-existing since
 `090436fc3`, which added the `None` requirement to the fraud record while the
 commit arm and the DA core left the script free. Review action: a new arm
@@ -283,8 +283,7 @@ that creates or continues an element must call the predicate `[review]`.
 
 ## SQ11. Every queued node holds the lovelace floor, and a committed header has a bounded width
 
-Status: PARTIAL (tests and mutation runs read on the #693 worktree, not yet
-committed; no provenance commit to cite).
+Status: PARTIAL (tests and mutation runs read; no provenance commit to cite).
 
 Rule: every state-queue node, from creation until it leaves the queue, holds
 at least `state_queue_node_min_lovelace_v1` (5 ADA), and that floor covers the
@@ -333,8 +332,7 @@ SDK codec test `demo/midgard-sdk/tests/state-queue-node-min-lovelace.test.ts`
 measures the largest admissible node against the floor with CML min-UTxO and
 pins the SDK constant at `5_000_000n`.
 
-Provenance: #693, orchestrator ruling P3 (T688R4P0N1); the root-anchor
-allowance is the #693 review fix for a permanent commit halt (T693R1consensus1).
+Provenance: the root-anchor allowance fixes a permanent commit halt.
 The gap was pre-existing (base `59b633d1d`): the commit arm and the fraud
 removal discarded both lovelace values. Review action: a new arm that creates
 a node must require the floor; a new arm that continues a node must pin its
@@ -376,9 +374,9 @@ marker identity pinned by
 `attestation_timeout_append_fence_pins_boundary_and_marker_identity`
 `[aiken-test: state-queue-removal.test/]`.
 
-Provenance: `3e3090aa1` (2026-08-31, the Q61 starvation fence) added the fence
-with all four arms. #688 (`f8c91dae8`) kept the `Challenged` refusal when it
-replaced the status shapes (decision C7). #692 recorded this entry. Spec
+Provenance: `3e3090aa1` (2026-08-31, the starvation fence) added the fence
+with all four arms. `f8c91dae8` kept the `Challenged` refusal when it
+replaced the status shapes. Spec
 #685 §4.4 says append is allowed on `Challenged`; that wording is wrong, and
 the code is authoritative. Review
 action: a change to the DA status type must give every new status an explicit
@@ -450,8 +448,6 @@ Enforced:
   are pruned unslashed with that operator's node and bond intact, slashing
   them is refused, and the convicted block's removal slashes its own
   operator and pays the prover.
-
-Provenance: owner ruling R6 (pd-design rev 3 §6.9 B), lane SQ.
 
 Recurrence: 0.
 

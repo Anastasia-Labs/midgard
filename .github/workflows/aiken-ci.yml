@@ -167,7 +167,7 @@ jobs:
         if: ${{ !cancelled() && steps.compiler.outcome == 'success' }}
         run: |
           # The pinned fork is the formatting authority as well as the build
-          # and check authority (owner ruling A).
+          # and check authority.
           git ls-files -z '*.ak' | xargs -0 ../../scripts/aiken fmt
           # The formatter emits trailing spaces for monadic let/expect syntax.
           # Normalize only that formatter artifact before comparing sources.

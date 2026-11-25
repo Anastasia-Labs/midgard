@@ -1,4 +1,4 @@
-import "./canonical-evidence-source.q03-canonical-evidence-builders.js";
+import "./canonical-evidence-source.canonical-evidence-builders.js";
 
 import { describe, expect, it, vi } from "vitest";
 

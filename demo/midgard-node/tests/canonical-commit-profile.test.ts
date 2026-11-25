@@ -10,6 +10,7 @@ import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { emptySql } from "./helpers/empty-sql.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
@@ -210,15 +211,6 @@ const fakeLucid = {
   api: {},
   switchToOperatorsMainWallet: Effect.void,
 } as never;
-const fakeSql = Object.assign(
-  ((..._args: readonly unknown[]) =>
-    Effect.succeed([])) as unknown as SqlClient.SqlClient,
-  {
-    array: vi.fn((values: readonly unknown[]) => values),
-    in: vi.fn((values: readonly unknown[]) => values),
-    withTransaction: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
-  },
-) as unknown as SqlClient.SqlClient;
 
 /** The commit path gates its SQL writes on history authority; these unit
  * runs stand in for a database fixture with no acquired owner. */
@@ -226,7 +218,7 @@ const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
   Effect.runPromise(
     effect.pipe(
       Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
+      Effect.provideService(SqlClient.SqlClient, emptySql),
     ) as Effect.Effect<A, unknown, never>,
   );
 

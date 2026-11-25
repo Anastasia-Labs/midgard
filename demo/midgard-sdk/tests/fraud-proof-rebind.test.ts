@@ -1,16 +1,15 @@
 /**
- * Mutation negatives for the #604 re-derivation — one per rebound family.
+ * Mutation negatives for the rebound step datums — one per rebound family.
  *
- * `tests/fault-proof.test.ts` pins what the new shapes ARE; this file pins what
- * they are NOT, which is the half a re-derivation can silently get wrong. The
- * cross-family sweep is the load-bearing one: every rebound step datum must
- * *refuse* the retired per-field collection commitment it used to carry, so a
- * module that was missed by the sweep fails here rather than at a validator.
+ * `tests/fault-proof.test.ts` pins what the shapes ARE; this file pins what
+ * they are NOT. The cross-family sweep is the load-bearing one: every rebound
+ * step datum must *refuse* a per-field collection commitment, so a module the
+ * sweep missed fails here rather than at a validator.
  *
  * Each negative asserts that its mutation genuinely landed — a differing
  * encoding, or a constructor that throws — before concluding anything from the
  * refusal. A mutation that quietly failed to apply would otherwise read as a
- * passing rejection, which is the vacuity class #579's review found five times.
+ * passing rejection.
  */
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
@@ -19,11 +18,11 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "../src/index.js";
 
 /**
- * Per-family mutation negatives for the #604 re-derivation. Each asserts that
+ * Per-family mutation negatives for the rebound step datums. Each asserts that
  * the mutated value genuinely DIFFERS from the honest one before asserting the
  * refusal, so a mutation that failed to land cannot pass as a rejection.
  */
-describe("#604 per-family mutation negatives", () => {
+describe("per-family mutation negatives", () => {
   const honestOpening = {
     BodyFieldOpening: {
       native_tx_compact_cbor: "a1b2c3",

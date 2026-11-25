@@ -4,21 +4,19 @@
  * Rebinds the Aiken constants produced by the four genuine signed-Cardano
  * ordered-collection boundary suites:
  *
- *   * C20-7 — field 4/7, the coupled signer/vkey-witness maximum
+ *   * field 4/7, the coupled signer/vkey-witness maximum
  *     (`tests/ordered-collection-signer-witness-boundary.test.ts`);
- *   * C20-6 — field 3/6, the observer/native-script maximum
+ *   * field 3/6, the observer/native-script maximum
  *     (`tests/ordered-collection-observer-native-script-boundary.test.ts`);
  *   * the field-8 spend-redeemer maximum
  *     (`tests/ordered-collection-redeemer-boundary.test.ts`);
  *   * the field-2 inline-datum blob maximum
  *     (`tests/blob-chunk-boundary.test.ts`).
  *
- * All four were hand-mirrored families before #588: the suites search for the
- * exact transaction that sits on the Cardano envelope, and the Aiken modules then
- * assert against its bytes — but nothing carried those bytes across. Greening the
- * Aiken side after a codec change meant a human copying ~30 kB of hex out of a
- * terminal, which is how cross-language drift is born, and which #586 is the live
- * proof of.
+ * The suites search for the exact transaction that sits on the Cardano envelope,
+ * and the Aiken modules assert against its bytes. This generator carries those
+ * bytes across, so no one copies ~30 kB of hex out of a terminal after a codec
+ * change.
  *
  * **Why this generator runs the suites instead of recomputing the boundary.**
  * The boundary is not a value that can be recomputed from a short declaration: it

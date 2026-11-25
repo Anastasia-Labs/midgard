@@ -22,7 +22,7 @@ import { exerciseMidgardRetainedDaBoundary } from "./helpers/retained-da-boundar
 // pinned byte-for-byte by
 // `onchain/aiken/lib/midgard/validation-machine-tests/`
 // (`maximum_reference_input_field_terminal_fixture_v1`), so this object is the
-// TypeScript half of the cross-language agreement for C20-1.
+// TypeScript half of the cross-language agreement for the reference-input maximum.
 const MAXIMUM_REFERENCE_INPUT_ACCEPTED_COUNT = 433;
 const MAXIMUM_REFERENCE_INPUT_ACCEPTED_SIGNED_BYTES = 16_380;
 const MAXIMUM_REFERENCE_INPUT_ADJACENT_COUNT = 434;

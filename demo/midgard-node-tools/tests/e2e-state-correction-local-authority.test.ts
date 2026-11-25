@@ -5,5 +5,5 @@ import "vitest";
 import "../src/commands/e2e-release-finality-policy.js";
 import "../src/commands/e2e-state-correction-local-authority.js";
 import "./e2e-state-correction-local-authority.make-source.js";
-import "./e2e-state-correction-local-authority.q57-local-kupmios-authority.js";
+import "./e2e-state-correction-local-authority.local-kupmios-authority.js";
 import "./e2e-state-correction-local-authority.economic-source.js";

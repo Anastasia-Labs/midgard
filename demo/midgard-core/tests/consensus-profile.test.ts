@@ -83,10 +83,10 @@ describe("canonical V1 consensus profile", () => {
   // repository measure a DIFFERENT transaction shape and must never be bound
   // here:
   //
-  //   14,676 - the retired single-transaction envelope model, whose
-  //            "direct" route sourced the validator from a reference input and
-  //            embedded no script witness at all (13,998 on the counted-shape
-  //            basis it modelled before #597).
+  //   14,676 - the single-transaction envelope model, whose "direct"
+  //            route sources the validator from a reference input and
+  //            embeds no script witness at all (13,998 on its
+  //            counted-shape basis).
   //   13,282 - the single-transaction semantic-proof frontier, the same
   //            by-reference basis measured on a complete signed transaction.
   //
@@ -95,8 +95,8 @@ describe("canonical V1 consensus profile", () => {
   // redeemer. The frontier is still measured end-to-end through
   // the production submitter's five-stage lifecycle, whose dispute-thread
   // continuation, prepare-selected step, and protocol framing the two
-  // single-transaction models above omit; the re-pinned reliable frontier
-  // (13,522) now sits between them. Binding either number here would replace
+  // single-transaction models above omit; the reliable frontier (13,522)
+  // sits between them. Binding either number here would replace
   // an end-to-end measurement with a single-transaction model.
   it("pins the direct complete-item carriage frontier in both directions", () => {
     const reserve =
@@ -105,8 +105,8 @@ describe("canonical V1 consensus profile", () => {
     const frontier =
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
 
-    // The owner-signed cost steer intentionally retained the 56 bytes freed by
-    // claim-registry removal instead of widening the direct route.
+    // The owner-set cost steer keeps the 56 bytes the absent claim-registry
+    // witness frees as headroom instead of widening the direct route.
     expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     ).toBe(budget - 56);
@@ -118,13 +118,11 @@ describe("canonical V1 consensus profile", () => {
     ).toBe(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
     );
-    // Observation, not authentication, is the stage that governs the bound
-    // since Option B made the canonical-decode item semantic
-    // transition-only: the item preimage left the authenticate redeemer, so
-    // authenticate became item-size-independent (2,600 bytes at every
-    // measured item) and the observe door became the stage that grows with
-    // the item. Re-pinned at the #617 wave sign-off from the #622 measured
-    // table, under the owner's 2026-08-22 ruling (b).
+    // Observation, not authentication, is the stage that governs the bound:
+    // the canonical-decode item semantic is transition-only, so the item
+    // preimage rides the observe door, authenticate is item-size-independent
+    // (2,600 bytes at every measured item) and the observe door grows with
+    // the item.
     expect(
       MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
     ).toBeGreaterThan(

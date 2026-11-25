@@ -127,12 +127,11 @@ const falsifyTerminalVerdict = (
 const buildAcceptedForcedTrace =
   async (): Promise<DeterministicValidationMachineTrace> => {
     const spent = outRefFromByte(0x31);
-    // RE-AUTHORED, NOT SUPPRESSED: this trace has to be
-    // genuinely accepted, and since the ValueAndMint output-descriptor step
-    // began convicting under-funded outputs with `E_MIN_ADA` a 10-lovelace
-    // output can no longer be. The rejected counterpart below keeps its
-    // 10-lovelace output deliberately: it is convicted at `inputSets`, well
-    // before ValueAndMint, and that is the rejection this fixture is about.
+    // This trace has to be genuinely accepted, so its output clears the
+    // minimum-Ada floor the ValueAndMint output-descriptor step enforces with
+    // `E_MIN_ADA`. The rejected counterpart below keeps a 10-lovelace output
+    // deliberately: it is convicted at `inputSets`, before ValueAndMint, and
+    // that is the rejection this fixture is about.
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const transaction = makeNativeTx({
       version: 1n,

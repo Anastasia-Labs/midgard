@@ -1,4 +1,4 @@
-import "./prepare-input-no-idx.q13-input-no-idx-canonical-evidence.js";
+import "./prepare-input-no-idx.input-no-idx-canonical-evidence.js";
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

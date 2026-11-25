@@ -128,7 +128,7 @@ export const aikenFixtures = {
     modules: { "selftest/probe": "test selftest_probe() {\n  1 + 1 == 3\n}\n" },
     declared: [{ module: "selftest/probe", selector: "selftest_probe" }],
   },
-  // The exact V-1 shape: a selector that matches nothing. `aiken check` exits 0
+  // A selector that matches nothing. `aiken check` exits 0
   // and reports 0 collected tests, so only the derivation can fail it closed.
   "zero-collection": {
     modules: { "selftest/probe": "test selftest_other() {\n  True\n}\n" },

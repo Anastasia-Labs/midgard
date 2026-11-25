@@ -41,7 +41,7 @@ import {
   historyCommitment,
   historyOpening,
   presentEventWitness,
-} from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
+} from "./fabricated-deposit.fabricated-deposit-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-deposit proof plan", () => {

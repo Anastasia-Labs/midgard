@@ -16,7 +16,7 @@ authentic proof inputs, construct and submit the complete proof within L1 limits
 resume after interruption, remove the fraudulent commitment, and verify the
 result before block maturity.
 
-## P0 — Publication on the release identity
+## Publication on the release identity
 
 Run the publication and lifecycle gates on the release identity for the split
 resolvers ([installed validation-dispute workflow](validation-trace-dispute-installed-workflow.md),
@@ -25,7 +25,7 @@ resolvers ([installed validation-dispute workflow](validation-trace-dispute-inst
 build, applied scripts, complete signed publication transactions, and matching
 lifecycle scenarios under L1 limits.
 
-## P1 — Preserve complete watcher coverage
+## Preserve complete watcher coverage
 
 The watcher installs the complete catalogue. Keep that invariant as categories
 change, and verify deployment-bound admission, public retained-DA/L1
@@ -35,7 +35,7 @@ acceptance. A source installation count is not evidence of a live deployment.
 Completion: every enabled category is admitted with the release manifest and
 reference scripts; startup fails closed for missing identity or readiness.
 
-## P2 — Van Rossem emulator closure
+## Van Rossem emulator closure
 
 Lucid Evolution lifecycle tests are the transaction-fit acceptance surface. The
 shared emulator harness must use Van Rossem's complete-transaction limits:
@@ -61,7 +61,7 @@ narrowing those shapes.
 Completion: all catalogue lifecycle tests pass with the shared Van Rossem
 limits and no category-specific size or ExUnit override. Complete the frozen-tree classification sweep and independent review below.
 
-## P3 — Correction and economics
+## Correction and economics
 
 - Reconcile the technical specification's DOUBLE-WITHDRAW formula with the
   implemented requirement that both withdrawal leaves are payable; see the
@@ -78,12 +78,12 @@ limits and no category-specific size or ExUnit override. Complete the frozen-tre
 Completion: one command corrects any faulty queue position, pays the authenticated
 prover exactly once, and leaves the node and L1 views reconciled.
 
-## P4 — DA and public challenger surface
+## DA and public challenger surface
 
 - Expose stable retained payload, proof artifact, membership witness, field
   opening, and verifier-version schemas to an unprivileged challenger.
 - Accept the availability-challenge remedy for data withheld after attestation
-  live, with its scripts published and manifest roles deployed (P0).
+  live, with its scripts published and manifest roles deployed (see Publication on the release identity).
 
 - Keep all proof evidence available for at least maturity plus execution/retry
   margin.
@@ -92,7 +92,7 @@ prover exactly once, and leaves the node and L1 views reconciled.
 Completion: a challenger with no node database access can reproduce every
 proof input and complete a supported challenge.
 
-## P5 — Acceptance
+## Acceptance
 
 1. Run watcher-driven detect → prove → remove across independent local
    processes and real sockets.

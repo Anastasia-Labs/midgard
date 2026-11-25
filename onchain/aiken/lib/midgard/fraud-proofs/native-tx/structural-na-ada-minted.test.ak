@@ -72,25 +72,25 @@ const ada_mint_field_preimage_cbor: ByteArray = #"81458240a14005"
 const real_mint_field_preimage_cbor: ByteArray =
   #"81582382581c01010101010101010101010101010101010101010101010101010101a1410105"
 
-test q24_ada_mint_entry_serialises_to_the_expected_violating_cbor() {
+test ada_mint_entry_serialises_to_the_expected_violating_cbor() {
   and {
     cbor.serialise(mint_data(ada_policy_id, #"", 5)) == ada_mint_preimage_cbor,
     cbor.serialise(mint_data(real_policy_id, #"01", 5)) == real_mint_preimage_cbor,
   }
 }
 
-test q24_ada_policy_mint_entry_rejected_by_preimage_encoder() fail {
+test ada_policy_mint_entry_rejected_by_preimage_encoder() fail {
   encode_mint_preimage(mint_data(ada_policy_id, #"", 5)) != #""
 }
 
-test q24_ada_policy_mint_entry_rejected_by_compact_item_encoder() fail {
+test ada_policy_mint_entry_rejected_by_compact_item_encoder() fail {
   list.length(mint_policy_items(mint_data(ada_policy_id, #"", 5))) == 1
 }
 
 /// The violating bytes carry their own honest flat commitment, so the hash
 /// check passes and the canonical walk is what refuses them -- on the
 /// zero-length policy id, exactly the rejection this closure claims.
-test q24_ada_policy_mint_preimage_bytes_rejected_by_canonical_verifier() fail {
+test ada_policy_mint_preimage_bytes_rejected_by_canonical_verifier() fail {
   verify_canonical_mint_preimage_cbor(
     ada_mint_field_preimage_cbor,
     native_tx_field_access_v1.field_commitment(ada_mint_field_preimage_cbor),
@@ -98,18 +98,18 @@ test q24_ada_policy_mint_preimage_bytes_rejected_by_canonical_verifier() fail {
 }
 
 /// The retired raw-map preimage form is not a field-5 preimage at all now.
-test q24_retired_raw_map_mint_preimage_is_refused() fail {
+test retired_raw_map_mint_preimage_is_refused() fail {
   verify_canonical_mint_preimage_cbor(
     real_mint_preimage_cbor,
     native_tx_field_access_v1.field_commitment(real_mint_preimage_cbor),
   )
 }
 
-test q24_twenty_seven_byte_policy_id_rejected_by_preimage_encoder() fail {
+test twenty_seven_byte_policy_id_rejected_by_preimage_encoder() fail {
   encode_mint_preimage(mint_data(short_policy_id, #"01", 5)) != #""
 }
 
-test q24_positive_control_28_byte_policy_encodes_and_verifies() {
+test positive_control_28_byte_policy_encodes_and_verifies() {
   let mint = mint_data(real_policy_id, #"01", 5)
   let items = mint_policy_items(mint)
   and {
@@ -122,7 +122,7 @@ test q24_positive_control_28_byte_policy_encodes_and_verifies() {
   }
 }
 
-test q24_positive_control_empty_mint_encodes_and_verifies() {
+test positive_control_empty_mint_encodes_and_verifies() {
   let empty_mint: Data = builtin.list_data([])
   and {
     encode_mint_preimage(empty_mint) == #"80",

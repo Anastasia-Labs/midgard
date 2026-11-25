@@ -1,7 +1,6 @@
 # Public submit ingress: redesign for high throughput
 
-**Status:** Active. D1–D7 and D9 are implemented (#871–#876, #878–#883,
-#885–#888); the P1–P3 release gates and the optional D8 are outstanding.
+**Status:** Active. D1–D7 and D9 are implemented; the P1–P3 release gates and the optional D8 are outstanding.
 
 **Last reviewed:** 2026-11-23 (outstanding gates, measurements and the D
 labels the source cites, against issues #870, #877, #884 and #889 and

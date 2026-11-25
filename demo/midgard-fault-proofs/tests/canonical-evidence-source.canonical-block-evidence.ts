@@ -24,7 +24,7 @@ import {
   rejectionCode,
   StubDaSource,
   validBlock,
-} from "./canonical-evidence-source.q03-provenance-admission.js";
+} from "./canonical-evidence-source.provenance-admission.js";
 import {
   authenticatedHeaderObservation,
   h28,

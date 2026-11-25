@@ -25,10 +25,10 @@ Enforced: `governed_threshold_floor` and `valid_datum`
 `da_params_governor_spend_rejects_continued_datum_below_floor`; all
 fail).
 
-Provenance: `989753337` (2026-08-07, Q63) introduced the floor. The review of
+Provenance: `989753337` (2026-08-07) introduced the floor. The review of
 that work (`535e2e836`, `9b3cca8db`) found that every test called the private
 `valid_datum` directly, so deleting the handler's call left all of them green;
-tests now drive the real spend and mint handlers. `ac67670d1` (#602) settled
+the tests drive the real spend and mint handlers. `ac67670d1` settled
 the `ceil(2n/3)` floor with `n >= 1`.
 
 Recurrence: 3. Review action: a test of a private predicate does not prove
@@ -47,8 +47,7 @@ Enforced: `validators/da-attestation.ak`
 `da_attestation_apply_rejects_stale_params_reference_input`,
 `da_attestation_apply_rejects_old_committee_quorum`; all fail).
 
-Provenance: `b6a414310` (2026-08-07, Q62: non-retroactive committee
-rotation).
+Provenance: `b6a414310` (2026-08-07, non-retroactive committee rotation).
 
 ## DA3. A stranded attestation can always be rescued
 
@@ -64,7 +63,7 @@ Enforced: `RescueStrandedAttestation` (`validators/da-attestation.ak`)
 `da_attestation_rescue_rejects_replayed_mint_binding`,
 `da_attestation_rescue_control_threshold_change_refunds_quorum_attestation`, `da_attestation_rescue_rejects_refund_short_of_attestation_value`, `da_attestation_rescue_rejects_redirected_beneficiary`).
 
-Provenance: `b6a414310` (Q63c, partial-attestation rescue). Rotation without
+Provenance: `b6a414310` (partial-attestation rescue). Rotation without
 a rescue path strands funds, so DA2 and DA3 change together.
 
 Recurrence: 2.
@@ -87,13 +86,14 @@ close and timeout: `tx.fee > 0`, `0 <= c <= max_timeout_fee_lovelace`)
 `q58_timeout_rejects_challenger_fee_one_above_the_cap`,
 `..._on_an_empty_pool`, `q58_timeout_rejects_zero_fee_on_an_empty_pool`; all fail).
 
-Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave); #693
-moved the timeout cap onto `c` (decision D4).
+Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave); `dd830b918`
+moved the timeout cap onto `c`
+([DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
 
 ## DA5. An attestation applies only while the pooled bond backs it, and its value returns to its beneficiary
 
 Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`).
+restacked tree, base `77244f439`; provenance is `f8c91dae8`).
 
 Rule: `ApplyToStateQueue` reads the authentic DA bond pool (payment credential
 `Script(da_bond_pool_policy_id)`, NFT quantity 1, inline datum) and requires
@@ -112,14 +112,14 @@ passes at exactly one bond; `..._rejects_pool_backing_below_one_bond`,
 The two index-distinctness checks are implied by the token and datum shapes
 and cannot fail alone; they are defence in depth.
 
-Provenance: #688 (`f8c91dae8`; spec #685, decision C3; the refund index is
-an amendment that closed the submitter taking the attestation's lovelace).
+Provenance: `f8c91dae8` (spec #685 and the
+[DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md);
+the refund index closes the submitter taking the attestation's lovelace).
 
 ## DA6. A node's DA status binds one commitment, and every challenge step presents its preimage
 
 Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`, and #693,
-`dd830b918`).
+restacked tree, base `77244f439`; provenance is `f8c91dae8` and `dd830b918`).
 
 Rule: apply writes `Attested{commitment_hash_v1(burned commitment)}`, with the
 commitment canonical and naming this deployment and header. An open decodes
@@ -153,13 +153,13 @@ and at the core (`da_core_apply_rejects_node_output_reference_script`,
 `da_core_open_...` and `da_core_close_...` in
 `lib/midgard/state-queue.test.ak`, beside their control); all fail.
 
-Provenance: #688 (`f8c91dae8`; decisions C1, C4, C5, G6); #693
-(`dd830b918`; ruling P2) added the reference-script pin.
+Provenance: `f8c91dae8`; `dd830b918` added the reference-script pin (both in
+the [DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
 
 ## DA7. A challenge record is authentic only at the availability address holding its token
 
 Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is #688, `f8c91dae8`).
+restacked tree, base `77244f439`; provenance is `f8c91dae8`).
 
 Rule: open pins the record output exactly (availability address, no reference
 script, `challenge_record_lovelace` plus the one minted DACH, inline datum
@@ -188,12 +188,13 @@ output) are implied by the address, value and token shapes each role must
 have, and none can fail alone: with any one removed, every test stays green,
 including the `q58_*_aliased_*` tests, whose refusals are overdetermined. They are defence in depth, as in DA5.
 
-Provenance: #688 (`f8c91dae8`; decisions C4, C6, G6).
+Provenance: `f8c91dae8`
+([DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
 
 ## DA8. A lost challenge charges the pool, up to one bond, in the timeout transaction
 
 Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is #693, `dd830b918`).
+restacked tree, base `77244f439`; provenance is `dd830b918`).
 
 Rule: `TimeoutChallenge` spends the authentic DA bond pool at
 `pool_input_index` (payment credential `Script(da_bond_pool_policy_id)`, NFT
@@ -289,9 +290,9 @@ so a timely challenger always meets a full bond `[review]`. Review action: a
 change that lets a timeout remove a non-head block, or lets Apply run against
 less than one bond, breaks this bound.
 
-Provenance: #693 (`dd830b918`; decisions D1-D4, G2, G3, G4, B4); the
-one-bond-per-episode bound is ruling P7. The interim rule it replaces, from
-#688 (`f8c91dae8`), refunded the challenger and took nothing from the pool.
+Provenance: `dd830b918`; the one-bond-per-episode bound is the
+[DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)'s
+liability rule.
 Blind spot: Slash never reads the availability mint redeemer; against a
 Close in its place it relies on Close's input and output counts and its node
 transition, so relaxing Close (for example, batching it) reopens a drain

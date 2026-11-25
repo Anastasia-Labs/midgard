@@ -114,7 +114,7 @@ export const rejectionCode = async (
 };
 
 describe("provenance admission", () => {
-  it("exports the W20 evidence API from both package roots", () => {
+  it("exports the evidence API from both package roots", () => {
     expect(SDK.admitEvidenceProvenance).toBeTypeOf("function");
     expect(SDK.assertSecurityGradeEvidence).toBeTypeOf("function");
     expect(SDK.admitAuthenticatedL1Observation).toBeTypeOf("function");

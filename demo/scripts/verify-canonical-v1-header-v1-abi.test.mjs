@@ -71,9 +71,8 @@ const makeSdkSchema = (source = contract) => ({
   ],
 });
 
-// #519 V-8: every other case in this file builds both "projections" out of the
-// contract under test, so the suite could only ever prove that the contract
-// agrees with itself. This case consumes the two projections it does NOT own —
+// Every other case in this file builds both "projections" out of the contract
+// under test, so they prove only that the contract agrees with itself. This case consumes the two projections it does NOT own —
 // the blueprint the Aiken compiler generated and the Data schema the built SDK
 // exports at runtime. It fails closed when either artifact is absent: a missing build must
 // redden the suite, not silently delete its only real comparison.

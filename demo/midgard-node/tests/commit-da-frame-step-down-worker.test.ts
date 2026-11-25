@@ -32,10 +32,10 @@ import {
 import {
   deploymentIdentity,
   fakeSelectedEventPlan,
-  fakeSql,
   nodeConfig,
   workerInput,
 } from "./helpers/commit-da-frame-worker-fixture.js";
+import { emptySql } from "./helpers/empty-sql.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
 // The worker reads its candidates and the native owner, its base ledger
@@ -293,7 +293,7 @@ const runWorker = async (
       Effect.provideService(MidgardContracts, {} as never),
       Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
       Effect.provideService(FollowerWriteFixture, true),
-      Effect.provideService(SqlClient.SqlClient, fakeSql),
+      Effect.provideService(SqlClient.SqlClient, emptySql),
       Effect.provide(Logger.remove(Logger.defaultLogger)),
       withoutFollowerJournal,
     ) as unknown as Effect.Effect<WorkerOutput, unknown, never>,

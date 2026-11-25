@@ -349,7 +349,7 @@ export const simPorts = (
       Effect.map((plan) => {
         if (plan.kind === "blocked")
           return {
-            reason: plan.reason ?? LANDED_BLOCK_REBASE_PENDING,
+            reason: LANDED_BLOCK_REBASE_PENDING,
             detail: plan.detail,
           };
         if (plan.kind === "none") return undefined;

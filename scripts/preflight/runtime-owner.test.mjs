@@ -220,7 +220,7 @@ test("Node CI covers every package build, typecheck and full suite", () => {
   );
   assert.ok(
     jobs["da-e2e"].steps.some(
-      (step) => step.env?.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1",
+      (step) => step.env?.MIDGARD_RUN_DA_JOINED_E2E === "1",
     ),
   );
 });

@@ -38,7 +38,6 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import * as Leases from "../src/database/stateQueueMutationLeases.columns.js";
-import { LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING } from "../src/landed-blocks/holds.js";
 import {
   disposeJournals,
   type OwnJournalDisposition,
@@ -133,7 +132,6 @@ const summary = (disposition: OwnJournalDisposition) => ({
   dispose: disposition.dispose,
   dead: disposition.dead.map((headerHash) => headerHash.toString("hex")),
   deadCommits: [...disposition.deadCommits],
-  ...(disposition.held === undefined ? {} : { held: disposition.held }),
 });
 
 /** The rebase's journal step: the disposition, then the disposal. */
@@ -170,29 +168,6 @@ const writeBlock = (block: ReturnType<typeof followerBlock>) =>
       sql,
     ) => sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
       VALUES (${block.slot}, ${block.hash}, ${block.height}, NULL, 0)`,
-  );
-
-/** The schema change was rolled back, carrying what ran under it. */
-class RolledBack<A> {
-  constructor(readonly value: A) {}
-}
-
-/** Runs `work` with `table` renamed away, then rolls the rename back. */
-const withoutTable = <A, E, R>(table: string, work: Effect.Effect<A, E, R>) =>
-  Effect.flatMap(SqlClient.SqlClient, (sql) =>
-    sql
-      .withTransaction(
-        Effect.gen(function* () {
-          yield* sql`ALTER TABLE ${sql(table)} RENAME TO ${sql(`${table}_hidden`)}`;
-          return yield* Effect.fail(new RolledBack(yield* work));
-        }),
-      )
-      .pipe(
-        Effect.catchIf(
-          (error): error is RolledBack<A> => error instanceof RolledBack,
-          (rolledBack) => Effect.succeed(rolledBack.value),
-        ),
-      ),
   );
 
 describe("own block journals under whichever-lands-wins", () => {
@@ -375,42 +350,6 @@ describe("own block journals under whichever-lands-wins", () => {
             record[Journals.Columns.HEADER_HASH].toString("hex"),
           ),
         ).toEqual(Option.some(C));
-      }),
-    ));
-
-  it("holds the disposition under a named reason while a follower block table is missing, and reads it once present", () =>
-    inNode(
-      Effect.gen(function* () {
-        yield* journal(C, G);
-        for (const table of ["l1_blocks", "l1_follower_cursor"]) {
-          const { disposition, plan } = yield* withoutTable(
-            table,
-            Effect.all({
-              disposition: ownJournalDisposition,
-              plan: rebasePlan(),
-            }),
-          );
-          const detail = `the own-journal disposition cannot read commit anchors: ${table} missing`;
-          expect(summary(disposition)).toEqual({
-            dispose: [],
-            dead: [],
-            deadCommits: [],
-            held: { reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING, detail },
-          });
-          expect(plan).toEqual({
-            kind: "blocked",
-            reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-            detail,
-          });
-        }
-        // Both present: the disposition is read, nothing held or due.
-        expect(summary(yield* ownJournalDisposition)).toEqual({
-          dispose: [],
-          dead: [],
-          deadCommits: [],
-        });
-        expect((yield* rebasePlan()).kind).toBe("none");
-        expect(yield* statusOf(C)).toBe(S.Unlanded);
       }),
     ));
 });

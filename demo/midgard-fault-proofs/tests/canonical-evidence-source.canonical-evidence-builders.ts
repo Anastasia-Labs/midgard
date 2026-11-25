@@ -1,4 +1,4 @@
-import "./canonical-evidence-source.q03-canonical-block-evidence.js";
+import "./canonical-evidence-source.canonical-block-evidence.js";
 
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +20,7 @@ import {
   evidenceFor,
   rejectionCode,
   validBlock,
-} from "./canonical-evidence-source.q03-provenance-admission.js";
+} from "./canonical-evidence-source.provenance-admission.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,

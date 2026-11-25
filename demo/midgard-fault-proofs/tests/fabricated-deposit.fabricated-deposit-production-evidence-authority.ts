@@ -1,4 +1,4 @@
-import "./fabricated-deposit.q39-fabricated-deposit-proof-plan.js";
+import "./fabricated-deposit.fabricated-deposit-proof-plan.js";
 
 import { createHash } from "node:crypto";
 
@@ -42,7 +42,7 @@ import {
   depositEventUtxoFixture,
   historyLucid,
   historyOpening,
-} from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
+} from "./fabricated-deposit.fabricated-deposit-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-deposit production evidence authority", () => {

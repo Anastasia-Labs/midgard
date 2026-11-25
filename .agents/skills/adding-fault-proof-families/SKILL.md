@@ -43,7 +43,7 @@ Decide before writing code. The authority is decision
 | Reordering, renumbering or removing a catalogue category                                                                                          | Stop. The order and IDs are append-only; deployment identity and thread asset names derive from them (core `catalogue-roles.protocol-categories.ts`). Ask the owner.                                                                          |
 | A second direct family for a reason and source kind that already has one                                                                          | Stop. At most one direct category per source kind (0002). Ask the owner.                                                                                                                                                                      |
 | A new `RejectionReason` constructor                                                                                                               | Stop. This is a forced-leaf format revision of `rejection-reason-v1.ak`, `midgard-sdk/src/rejection-reason.ts` and `docs/spec/midgard-tx.md` §13.1 ([catalogue](../../../docs/fault-proofs/rejection-reason-catalogue-v1.md)). Ask the owner. |
-| A new `FamilyApplicationRequirement` value beside `replayContext`                                                                                 | Stop. Issue #668 capped the set; growing it "needs a new design discussion".                                                                                                                                                                  |
+| A new `FamilyApplicationRequirement` value beside `replayContext`                                                                                 | Stop. The set is capped; growing it needs a new design discussion with the owner.                                                                                                                                                             |
 | A family that only fits with raised transaction limits or inline scripts                                                                          | Stop. Split the family instead (0002, "Alternatives and consequences"). The hard rules below apply.                                                                                                                                           |
 
 ## Hard rules
@@ -98,7 +98,7 @@ is stated next to it.
    parameters only through `applyBlueprintParams`
    (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`), which
    refuses a wrong arity (under-application compiles to an always-succeeds
-   script, #609) and a wrong shape (`assertParameterShapes`).
+   script) and a wrong shape (`assertParameterShapes`).
    [runtime: applyBlueprintParams]
    Blind spot: the lint `midgard/apply-params-through-blueprint` misses a
    call through a namespace re-export or a computed name, and nothing flags a

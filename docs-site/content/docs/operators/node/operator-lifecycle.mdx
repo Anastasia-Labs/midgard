@@ -32,9 +32,9 @@ There is no rekey. A new key is a new operator: it registers a new bond.
 
 ## Curated public-testnet participation
 
-P1 public Preprod admits only the operator keys in the deployed operator
+The public Preprod testnet admits only the operator keys in the deployed operator
 allow-list. Possessing a funded wallet does not authorize another key to
-register. The fixed P1 operator set has no rekey operation: a replacement key
+register. The fixed operator set has no rekey operation: a replacement key
 requires the program's next deployment, rather than changing a local config.
 
 Under `--l1 node`, `operator-status` and the lifecycle verbs read protocol state
@@ -57,7 +57,7 @@ recovery; reconcile its recorded L1 transaction.
 The public profile differs from the short-lived testnet examples below:
 `preprod-public` requires a 100,000 ADA bond, with a 25,000 ADA slashing penalty,
 a 75,000 ADA fraud-prover reward and a 10,000 ADA inactivity penalty. Its
-1,000,000-strike threshold makes automatic ejection out of reach in P1;
+1,000,000-strike threshold makes automatic ejection out of reach on the public testnet;
 inactivity strikes hand over shifts. Use the actual deployment profile and
 manifest when calculating funding and waiting periods.
 

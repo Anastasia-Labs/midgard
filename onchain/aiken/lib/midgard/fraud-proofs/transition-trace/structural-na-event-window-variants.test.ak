@@ -471,7 +471,7 @@ fn out_of_window_forced_is_valid(inclusion_time: Int) -> Bool {
 /// Variant 2 of 6 — omitted due **withdrawal**. Published at the inclusive
 /// `end_time` boundary, so the order is due, and the empty counted
 /// `withdrawals_root` omits it.
-test q47_omitted_due_withdrawal_accepts() {
+test omitted_due_withdrawal_accepts() {
   omitted_due_withdrawal_is_valid(
     base_header().end_time,
     transition_trace.WithdrawalsRootDomain,
@@ -481,32 +481,32 @@ test q47_omitted_due_withdrawal_accepts() {
 
 /// Variant 5 of 6 — out-of-window **withdrawal**. Published one tick after
 /// the authenticated `end_time`, yet committed by the block.
-test q47_out_of_window_withdrawal_accepts() {
+test out_of_window_withdrawal_accepts() {
   out_of_window_withdrawal_is_valid(base_header().end_time + 1)
 }
 
 /// Variant 3 of 6 — omitted due **forced** transaction, at the same inclusive
 /// `end_time` boundary.
-test q47_omitted_due_forced_accepts() {
+test omitted_due_forced_accepts() {
   omitted_due_forced_is_valid(base_header().end_time)
 }
 
 /// Variant 6 of 6 — out-of-window **forced** transaction, published one tick
 /// after the authenticated `end_time`.
-test q47_out_of_window_forced_accepts() {
+test out_of_window_forced_accepts() {
   out_of_window_forced_is_valid(base_header().end_time + 1)
 }
 
 /// Adjacent valid-block negative: a withdrawal published *inside* the window
 /// is correctly committed, so the out-of-window fault must not hold. The only
 /// change from the accepting vector is the publication time.
-test q47_in_window_withdrawal_rejects() {
+test in_window_withdrawal_rejects() {
   !out_of_window_withdrawal_is_valid(base_header().end_time)
 }
 
 /// Adjacent valid-block negative: a forced order published inside the window
 /// is correctly committed, so the out-of-window fault must not hold.
-test q47_in_window_forced_rejects() {
+test in_window_forced_rejects() {
   !out_of_window_forced_is_valid(base_header().end_time)
 }
 
@@ -514,7 +514,7 @@ test q47_in_window_forced_rejects() {
 /// `WithdrawalsRootDomain`. Substituting `DepositsRootDomain` — with the same
 /// empty root and zero count, so only the domain differs — must not prove a
 /// withdrawal omission.
-test q47_wrong_domain_rejects() {
+test wrong_domain_rejects() {
   !omitted_due_withdrawal_is_valid(
     base_header().end_time,
     transition_trace.DepositsRootDomain,
@@ -524,7 +524,7 @@ test q47_wrong_domain_rejects() {
 
 /// Control: the non-membership key must equal the authenticated L1 event id.
 /// A different `WithdrawalId` proves nothing about the referenced order.
-test q47_wrong_event_id_rejects() fail {
+test wrong_event_id_rejects() fail {
   !omitted_due_withdrawal_is_valid(
     base_header().end_time,
     transition_trace.WithdrawalsRootDomain,

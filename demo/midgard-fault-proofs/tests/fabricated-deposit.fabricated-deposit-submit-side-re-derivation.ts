@@ -1,4 +1,4 @@
-import "./fabricated-deposit.q39-fabricated-deposit-production-evidence-authority.js";
+import "./fabricated-deposit.fabricated-deposit-production-evidence-authority.js";
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
@@ -44,7 +44,7 @@ import {
   historyOpening,
   mmStep03State,
   presentEventWitness,
-} from "./fabricated-deposit.q39-fabricated-deposit-evidence-admission.js";
+} from "./fabricated-deposit.fabricated-deposit-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-deposit submit-side re-derivation", () => {

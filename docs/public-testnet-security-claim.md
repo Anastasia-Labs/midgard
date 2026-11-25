@@ -1,6 +1,6 @@
-# P1 public testnet security claim
+# Public testnet security claim
 
-P1 is the planned stage-0 public Preprod deployment of Midgard. It uses curated
+The first public testnet is the planned stage-0 public Preprod deployment of Midgard. It uses curated
 operators; fault provers and DA challengers are permissionless, and every
 watcher submits the proofs it finds with its own key. This document describes
 that limited security model; the release manifest and deployed profile identify
@@ -11,12 +11,12 @@ an actual instance.
 Users can submit normal L2 transactions through the node API. Deposits,
 withdrawal requests and supported native-only forced transactions enter through
 L1. Normal L2 transactions can execute Plutus. The operator set is curated for
-P1 and fixed for its life; registration admits only allow-listed operator keys.
+this testnet and fixed for its life; registration admits only allow-listed operator keys.
 Any key can initiate the enabled fraud proofs and availability challenges.
 
 Users rely on curated operators for block production and for correctness outside
 the enabled proof catalogue. A dishonest operator can commit some invalid states
-that P1 cannot prove, including fabricated or substituted forced transactions
+that this testnet cannot prove, including fabricated or substituted forced transactions
 and a wrong Plutus verdict that depends on a step too large to prove on L1. By
 substituting a valid forced transaction's content, a dishonest operator can
 censor it. A rejection assigned to a valid forced transaction is challengeable:
@@ -76,7 +76,7 @@ dispute game, `validationTraceDispute`, and excludes no category. The catalogue
 and excluded categories of an instance are published with its release
 manifest.
 
-## Other P1 limitations
+## Other limitations
 
 - DA payloads carry neither validation-trace states nor the UTxO set.
 - A watcher that reaches a proof after that proof's latest safe start still
@@ -85,7 +85,7 @@ manifest.
   Any other challenger may still prove the fault while the challenge window is
   open.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
-  shifts during catch-up and slow its progress. The public P1 ejection threshold
+  shifts during catch-up and slow its progress. The public ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.
 - L2 Plutus scripts are evaluated with Cardano's protocol-version-11 budget
   rules and the pinned PlutusV3 cost model. The node's evaluation endpoint
@@ -113,8 +113,8 @@ manifest.
   available. The public profile configures 120-day payload retention.
 - Escape hatch and settlement claims are unsupported.
 
-P1 is a testnet. A later protocol phase requires a separately announced
-regenesis; P1 state will not automatically carry over. A sunset notice must
+This is a testnet. A later protocol phase requires a separately announced
+regenesis; testnet state will not automatically carry over. A sunset notice must
 identify the actual schedule and user actions. A planned date does not establish
 that a release or migration has happened.
 

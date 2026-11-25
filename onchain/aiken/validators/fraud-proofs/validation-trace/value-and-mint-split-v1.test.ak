@@ -338,11 +338,10 @@ fn descriptor_min_ada_floor() -> Int {
 /// A ledger output descriptor with `lovelace` lovelace and `asset_count`
 /// (zero or one) copies of the asset `(h_28_a, "beef", 7)`.
 ///
-/// RE-AUTHORED, NOT SUPPRESSED. `lovelace` became a parameter
-/// when the ValueAndMint output-descriptor step began convicting an
-/// under-funded output with `E_MIN_ADA`: the stage-three output fold now has
-/// to fund the floor, while the stage-two RESOLVED-INPUT replay fixtures keep
-/// their original 3-lovelace descriptor. That asymmetry is the rule, not an
+/// `lovelace` is a parameter because the ValueAndMint output-descriptor step
+/// convicts an under-funded output with `E_MIN_ADA`: the stage-three output
+/// fold funds the floor, while the stage-two RESOLVED-INPUT replay fixtures
+/// keep a 3-lovelace descriptor. That asymmetry is the rule, not an
 /// oversight -- the wiring gates outputs a transaction PRODUCES (MIN-ADA-TX),
 /// not inputs it resolves from prior state, whose under-funding is the
 /// separate MIN-ADA-UTXO shape.

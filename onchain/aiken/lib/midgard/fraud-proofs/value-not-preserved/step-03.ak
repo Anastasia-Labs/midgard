@@ -26,7 +26,7 @@
 //// that is fraudulent anyway.
 ////
 //// An ADA claim opens no mint field at all: ADA is structurally unmintable
-//// (structural-na-q24 — a mint policy id is 28 bytes, the ADA policy is
+//// (structural-na-ada-minted — a mint policy id is 28 bytes, the ADA policy is
 //// empty), so the ADA conservation equation has no mint term and the step
 //// refuses a mint carriage rather than ignoring one.
 
@@ -62,7 +62,7 @@ pub type Datum =
 /// contribution restricted to the claimed unit. The output bytes decode under
 /// the canonical output decoder, whose value decoding already enforces
 /// non-negative lovelace and strictly positive asset quantities
-/// (structural-na-q25), so output contributions can only be outflow.
+/// (structural-na-negative-output-value), so output contributions can only be outflow.
 pub fn output_claimed_quantity_v1(
   output_item_cbor: ByteArray,
   claimed_asset: ClaimedAssetV1,
@@ -98,7 +98,7 @@ fn sum_matching_units(
 /// One field-5 item's claimed-asset quantity — the machine's stage-four
 /// contribution restricted to the claimed unit. Quantities may be negative
 /// (burns), exactly as the machine folds them. Callable only for a token
-/// claim; an ADA claim has no mint term (structural-na-q24).
+/// claim; an ADA claim has no mint term (structural-na-ada-minted).
 pub fn mint_item_claimed_quantity_v1(
   mint_item_cbor: ByteArray,
   claimed_asset: ClaimedAssetV1,

@@ -48,13 +48,9 @@ pub fn value_output_descriptor_min_ada_floor() -> Int {
   )
 }
 
-/// RE-AUTHORED, NOT SUPPRESSED. This fixture used to fund its
-/// output with 3 lovelace, which was fine while the min-Ada floor was unwired
-/// arithmetic. Now that the ValueAndMint output-descriptor step convicts an
-/// under-funded output with `E_MIN_ADA`, a 3-lovelace output can no longer take
-/// the advancing step at all -- so the fixture funds the exact floor, and the
-/// under-funded leg became its own reject vector below rather than being
-/// deleted.
+/// The ValueAndMint output-descriptor step convicts an under-funded output
+/// with `E_MIN_ADA`, so the advancing fixture funds the exact floor; the
+/// under-funded leg is its own reject vector below.
 pub fn value_output_descriptor_fixture_at(
   output_lovelace: Int,
 ) -> ValueOutputDescriptorFixture {

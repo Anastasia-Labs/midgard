@@ -64,7 +64,7 @@ manifest and profile identify the contracts and parameters of an actual
 instance; a development branch or a passing test does not establish release
 readiness.
 
-The initial public testnet, P1, uses curated operators and permissionless fault
+The initial public testnet uses curated operators and permissionless fault
 provers and DA challengers. Users can submit normal
 L2 transactions, deposits, withdrawals, and native-only forced transactions.
 Forced transactions allow inline datums and refuse output reference scripts,
@@ -79,7 +79,8 @@ Plutus witnesses, redeemers, auxiliary data, and an L2 validity upper bound.
   from Midgard's integration or use of it. Report it to its maintainer.
 - Legacy and reference code that no deployment runs, unless a deployed
   component reaches it.
-- A documented P1 limitation in itself (see [P1 limitations](#p1-limitations)).
+- A documented public testnet limitation in itself (see
+  [Public testnet limitations](#public-testnet-limitations)).
   A new bypass, loss, freeze, honest-operator conviction or liveness failure
   remains in scope.
 
@@ -90,7 +91,7 @@ retrieved from peers are untrusted. Authentication must bind evidence to the
 correct deployment, committed roots, transaction, verdict, and proof stage
 before that evidence can authorize a state change.
 
-Curated operators are part of the P1 trust model; fault provers and DA
+Curated operators are part of the public testnet's trust model; fault provers and DA
 challengers are permissionless. Operator permissions must still be enforced at
 the protocol entry points. A key's presence on the operator allow-list does not
 authenticate unrelated data or permit a caller to substitute another
@@ -142,12 +143,12 @@ internal services, secrets outside images and redacted logs/errors/diagnostics.
 These are required controls. This policy does not establish that a candidate
 branch has passed the corresponding startup, load, redaction or incident drills.
 
-## P1 limitations
+## Public testnet limitations
 
-P1 does not provide fault-proof coverage of every invalid state. Curated
+The public testnet does not provide fault-proof coverage of every invalid state. Curated
 operator trust remains necessary for fabricated or substituted forced
 transactions, the other open gaps the
-[P1 security claim](docs/public-testnet-security-claim.md) names, and a wrong
+[public testnet security claim](docs/public-testnet-security-claim.md) names, and a wrong
 Plutus verdict that depends on an execution step too large to prove in a
 single L1 transaction. Other Plutus verdicts are challengeable through the
 interactive validation dispute game. DA payloads carry neither validation-trace
@@ -157,7 +158,7 @@ automatically; a watcher that reaches a proof after its latest safe start
 still runs it until the block matures, and raises a late-start alert. At
 maturity it holds the objective visibly, and no command re-drives it. Strikes
 rotate shifts; the public profile sets the ejection threshold out of reach for
-P1 operation.
+testnet operation.
 
 A forced exit cannot execute Plutus or satisfy a native script's expiry branch,
 and its L1 order carries a closed validity range of at most ten minutes. A

@@ -283,21 +283,21 @@ fn no_input_step_02_at(count: Int) -> Bool {
   )
 }
 
-test q1x_f6_no_input_step_02_control_at_one_spend_input() {
+test no_input_step_02_control_at_one_spend_input() {
   no_input_step_02_control(minimal_spend_input_count)
 }
 
-test q1x_f6_no_input_step_02_at_one_spend_input() {
+test no_input_step_02_at_one_spend_input() {
   no_input_step_02_at(minimal_spend_input_count)
 }
 
-test q1x_f6_no_input_step_02_control_at_the_admissible_maximum() {
+test no_input_step_02_control_at_the_admissible_maximum() {
   no_input_step_02_control(admissible_spend_input_count)
 }
 
 /// The reading #551 says could not be taken at all. It is taken here, and the
 /// step selects the *last* of 296 inputs.
-test q1x_f6_no_input_step_02_at_the_admissible_maximum() {
+test no_input_step_02_at_the_admissible_maximum() {
   no_input_step_02_at(admissible_spend_input_count)
 }
 
@@ -353,20 +353,20 @@ fn double_spend_step_04_at(count: Int) -> Bool {
   )
 }
 
-test q1x_f6_double_spend_step_04_control_at_one_spend_input() {
+test double_spend_step_04_control_at_one_spend_input() {
   double_spend_step_04_control(minimal_spend_input_count)
 }
 
-test q1x_f6_double_spend_step_04_at_one_spend_input() {
+test double_spend_step_04_at_one_spend_input() {
   double_spend_step_04_at(minimal_spend_input_count)
 }
 
-test q1x_f6_double_spend_step_04_control_at_the_admissible_maximum() {
+test double_spend_step_04_control_at_the_admissible_maximum() {
   double_spend_step_04_control(admissible_spend_input_count)
 }
 
 /// The other reading #551 says could not be taken at all.
-test q1x_f6_double_spend_step_04_at_the_admissible_maximum() {
+test double_spend_step_04_at_the_admissible_maximum() {
   double_spend_step_04_at(admissible_spend_input_count)
 }
 
@@ -548,21 +548,21 @@ fn missing_signature_step_04_at(count: Int) -> Bool {
   }
 }
 
-test q1x_f6_missing_signature_step_04_control_at_one_address_witness() {
+test missing_signature_step_04_control_at_one_address_witness() {
   missing_signature_step_04_control(minimal_address_witness_count)
 }
 
-test q1x_f6_missing_signature_step_04_at_one_address_witness() {
+test missing_signature_step_04_at_one_address_witness() {
   missing_signature_step_04_at(minimal_address_witness_count)
 }
 
-test q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum() {
+test missing_signature_step_04_control_at_the_admissible_maximum() {
   missing_signature_step_04_control(admissible_address_witness_count)
 }
 
 /// The field-7 walk at the format's own widest admissible field 7: 318 address
 /// witnesses, every one visited, the absence claim true.
-test q1x_f6_missing_signature_step_04_at_the_admissible_maximum() {
+test missing_signature_step_04_at_the_admissible_maximum() {
   missing_signature_step_04_at(admissible_address_witness_count)
 }
 
@@ -581,7 +581,7 @@ test q1x_f6_missing_signature_step_04_at_the_admissible_maximum() {
 /// preimage is the 11,843 bytes §5.1 and §5.3 predict for them — inside the
 /// §8.3 tier-1 redeemer bound, so the reading above is of tier-1 carriage and
 /// not of some silently-promoted tier.
-test q1x_f6_fixture_sits_at_the_admissible_cardinality() {
+test fixture_sits_at_the_admissible_cardinality() {
   let block = cardinality_block(admissible_spend_input_count)
   let preimage_bytes = built_preimage_bytes(spend_inputs_opening(block))
   and {
@@ -597,7 +597,7 @@ test q1x_f6_fixture_sits_at_the_admissible_cardinality() {
 /// the committed collection does not hash to field 0's commitment, so the step
 /// refuses. The measured rows are therefore readings of a validator that checks
 /// something.
-test q1x_f6_step_at_the_admissible_maximum_refuses_a_tampered_preimage() fail {
+test step_at_the_admissible_maximum_refuses_a_tampered_preimage() fail {
   let count = admissible_spend_input_count
   let block = cardinality_block(count)
   expect Some(double_spent_input) = list.at(block.tx.body.inputs, count - 1)
@@ -650,7 +650,7 @@ test q1x_f6_step_at_the_admissible_maximum_refuses_a_tampered_preimage() fail {
 /// That is what makes the ledger's `deltaAttribution` checkable rather than a
 /// story: a control-subtraction that attributes a cardinality-dependent cost to
 /// that function is measuring its own compilation, not the validator.
-test q1x_f6_compact_structure_length_is_cardinality_independent() {
+test compact_structure_length_is_cardinality_independent() {
   let low = cardinality_block(minimal_spend_input_count)
   let high = cardinality_block(admissible_spend_input_count)
   and {
@@ -664,7 +664,7 @@ test q1x_f6_compact_structure_length_is_cardinality_independent() {
 /// present, so the absence claim fails and the step refuses. Without this the
 /// two step-04 readings could be readings of a walk over an empty or
 /// unauthenticated collection.
-test q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature() fail {
+test step_04_at_the_admissible_maximum_refuses_a_present_signature() fail {
   let count = admissible_address_witness_count
   let block = address_cardinality_block(count)
   expect Some(present) = list.at(
@@ -725,7 +725,7 @@ test q1x_f6_step_04_at_the_admissible_maximum_refuses_a_present_signature() fail
 /// is published as a walk-cost reading rather than as a reachable
 /// configuration; this selector is what §8.3 cites by name so that fact cannot
 /// go unnoticed.
-test q1x_f6_address_witness_fixture_sits_at_the_admissible_cardinality() {
+test address_witness_fixture_sits_at_the_admissible_cardinality() {
   let block = address_cardinality_block(admissible_address_witness_count)
   let preimage_bytes = built_witness_preimage_bytes(
     fixture.inline_witness_opening(

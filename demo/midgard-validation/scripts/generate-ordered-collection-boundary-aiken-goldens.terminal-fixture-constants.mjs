@@ -225,7 +225,7 @@ export const terminalItemCount = (preimageHex, published) => {
   return count;
 };
 
-// The Cardano transaction-size ceiling is one number shared by both C20 families
+// The Cardano transaction-size ceiling is one number shared by both witness families
 // and spelled once in Aiken. Binding it from one suite while the other agrees is
 // what keeps that single spelling honest.
 if (
@@ -233,7 +233,7 @@ if (
   observerScript.cardanoMaxTransactionBytes
 ) {
   throw new Error(
-    "the two C20 boundary suites disagree about the Cardano transaction-size ceiling",
+    "the two witness boundary suites disagree about the Cardano transaction-size ceiling",
   );
 }
 

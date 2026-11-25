@@ -19,8 +19,7 @@ Enforced: `validators/payout.ak` (input and output datum)
 `[aiken-test: payout/]` (`payout_add_funds_rejects_datum_mutation`,
 fail).
 
-Provenance: #420 ("Reserve and Payout — Large Datum attack — Locking
-Funds"): an accumulating payout had no datum restriction, so an attacker
+Provenance: an accumulating payout had no datum restriction, so an attacker
 could inject a large datum and the payout could never complete.
 
 ## UE2. A payout starts only for a finalized, valid withdrawal
@@ -44,8 +43,7 @@ observer (`validators/payout.ak`)
 (`payout_mint_requires_retirement_withdrawal`,
 `payout_mint_binds_retiring_order_input`).
 
-Provenance: #418 ("Reserve and Payout Incomplete Specification — No
-Initialization"); first prototype `b2691d77d`; rewritten in `090436fc3`.
+Provenance: first prototype `b2691d77d`; rewritten in `090436fc3`.
 
 Recurrence: 2.
 
@@ -63,7 +61,7 @@ pays exactly the target to the datum's address and datum)
 `[aiken-test: payout/]` (no positive contribution, overfunding, second
 reserve input, underfunded target, surplus, continuing output; all fail).
 
-Provenance: #418 found no binding between the payout and the withdrawal's
+Provenance: an audit found no binding between the payout and the withdrawal's
 value, datum or address: one 1 ADA withdrawal could draw any amount from the
 reserve, and the destination could be changed at mint.
 
@@ -121,7 +119,7 @@ Enforced: `withdrawal_is_funded`
 `[aiken-test: midgard/event-history/funding.test/]`
 (`withdrawal_funding_checks_initial_payout_refund_and_target`).
 
-Provenance: the #627 ruling on the on-chain source of `coins_per_utxo_byte`.
+Provenance: an owner ruling on the on-chain source of `coins_per_utxo_byte`.
 
 ## UE7. Slashing transactions pay exactly the penalty as fee
 

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { availableParallelism, cpus, hostname } from "node:os";
 import { resolve } from "node:path";
@@ -40,14 +39,6 @@ import {
 
 const quick = process.env.BENCH_QUICK === "1";
 const assertProductionGate = process.env.BENCH_ASSERT_PHASE2_SCRIPT === "1";
-const assertChunk128CandidateGate =
-  process.env.BENCH_ASSERT_PHASE2_SCRIPT_CHUNK128 === "1";
-if (assertProductionGate && assertChunk128CandidateGate) {
-  throw new Error(
-    "BENCH_ASSERT_PHASE2_SCRIPT and BENCH_ASSERT_PHASE2_SCRIPT_CHUNK128 are mutually exclusive",
-  );
-}
-const assertGate = assertProductionGate || assertChunk128CandidateGate;
 const batchSize = Number(
   process.env.BENCH_PHASE2_SCRIPT_BATCH_SIZE ?? (quick ? 32 : 256),
 );
@@ -63,12 +54,6 @@ const outputPath = resolve(
     "tests/benchmarks/output/validation-script-heavy.json",
 );
 const workerEntry = pathToFileURL(resolve("dist/validation.js"));
-const chunkAbExperimentId =
-  process.env.BENCH_PHASE2_CHUNK_AB_EXPERIMENT_ID ?? "";
-const corpusPath = resolve(process.env.BENCH_PHASE2_CORPUS_PATH ?? "");
-const corpusManifestPath = resolve(
-  process.env.BENCH_PHASE2_CORPUS_MANIFEST_PATH ?? "",
-);
 const phaseAConfig = {
   expectedNetworkId: 0n,
   minFeeA: 0n,
@@ -97,72 +82,6 @@ const requirePositiveSafeInteger = (value: number, label: string): void => {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive safe integer, got ${value}`);
   }
-};
-
-const readChunkAbCorpusBinding = (): {
-  readonly corpusPath: string;
-  readonly corpusManifestPath: string;
-  readonly corpusSha256: string;
-  readonly corpusRowCount: number;
-} => {
-  if (!/^cab_\d{8}t\d{6}z$/u.test(chunkAbExperimentId)) {
-    throw new Error(
-      "BENCH_PHASE2_CHUNK_AB_EXPERIMENT_ID must be cab_YYYYMMDDtHHMMSSz",
-    );
-  }
-  if (
-    process.env.BENCH_PHASE2_CORPUS_PATH === undefined ||
-    process.env.BENCH_PHASE2_CORPUS_MANIFEST_PATH === undefined
-  ) {
-    throw new Error(
-      "chunk-128 candidate gate requires BENCH_PHASE2_CORPUS_PATH and BENCH_PHASE2_CORPUS_MANIFEST_PATH",
-    );
-  }
-  const manifest = JSON.parse(fs.readFileSync(corpusManifestPath, "utf8")) as {
-    readonly files?: {
-      readonly corpus?: {
-        readonly sha256?: unknown;
-        readonly rowCount?: unknown;
-      };
-    };
-  };
-  const corpusSha256 = manifest.files?.corpus?.sha256;
-  const corpusRowCount = manifest.files?.corpus?.rowCount;
-  if (
-    typeof corpusSha256 !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(corpusSha256)
-  ) {
-    throw new Error("corpus manifest must contain an exact lowercase SHA-256");
-  }
-  if (!Number.isSafeInteger(corpusRowCount) || Number(corpusRowCount) < 1) {
-    throw new Error("corpus manifest rowCount must be a positive safe integer");
-  }
-  const corpusBytes = fs.readFileSync(corpusPath);
-  const actualSha256 = createHash("sha256").update(corpusBytes).digest("hex");
-  if (actualSha256 !== corpusSha256) {
-    throw new Error(
-      `corpus SHA-256 mismatch: expected ${corpusSha256}, got ${actualSha256}`,
-    );
-  }
-  const newlineCount = corpusBytes.reduce(
-    (count, byte) => count + (byte === 0x0a ? 1 : 0),
-    0,
-  );
-  const actualRowCount =
-    corpusBytes.length === 0
-      ? 0
-      : newlineCount + (corpusBytes[corpusBytes.length - 1] === 0x0a ? 0 : 1);
-  if (actualRowCount !== corpusRowCount) {
-    throw new Error(
-      `corpus row count mismatch: expected ${String(corpusRowCount)}, got ${actualRowCount.toString()}`,
-    );
-  }
-  return {
-    corpusPath,
-    corpusManifestPath,
-    corpusSha256,
-    corpusRowCount: Number(corpusRowCount),
-  };
 };
 
 const normalizePhaseB = (result: PhaseBResultWithPatch) => ({
@@ -268,7 +187,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
       expect(fs.existsSync(workerEntry)).toBe(true);
       const cpuTopology = await readPhase2CpuTopology();
       const pinnedEightCore = cpuTopology.pinnedEightCore && poolSize === 6;
-      const containerIdentity = assertGate
+      const containerIdentity = assertProductionGate
         ? await readPhase2ContainerIdentity(
             expectedNodeImage,
             cpuTopology.logicalCpuIds,
@@ -280,22 +199,18 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         /^sha256:[0-9a-f]{64}$/u.test(expectedNodeImageId) &&
         containerIdentity.imageId === expectedNodeImageId &&
         process.version === "v22.22.2";
-      const assertedChunkSize = assertChunk128CandidateGate ? 128 : 64;
       if (
-        assertGate &&
+        assertProductionGate &&
         (!pinnedEightCore ||
           batchSize !== 256 ||
-          chunkSize !== assertedChunkSize ||
+          chunkSize !== 64 ||
           durationMs < 300_000 ||
           !containerIdentityProved)
       ) {
         throw new Error(
-          `${assertChunk128CandidateGate ? "BENCH_ASSERT_PHASE2_SCRIPT_CHUNK128" : "BENCH_ASSERT_PHASE2_SCRIPT"} requires a proved node:22.22.2 AutoRemove container whose immutable image ID exactly matches BENCH_PHASE2_NODE_IMAGE_ID, eight pinned physical cores, six workers, batch size 256, chunk size ${assertedChunkSize.toString()}, and at least 300000ms`,
+          `BENCH_ASSERT_PHASE2_SCRIPT requires a proved node:22.22.2 AutoRemove container whose immutable image ID exactly matches BENCH_PHASE2_NODE_IMAGE_ID, eight pinned physical cores, six workers, batch size 256, chunk size 64, and at least 300000ms`,
         );
       }
-      const chunkAbCorpusBinding = assertChunk128CandidateGate
-        ? readChunkAbCorpusBinding()
-        : undefined;
       const { queued, preState } = buildCorpus();
       const inlinePhaseA = await Effect.runPromise(
         runPhaseAValidation(queued, phaseAConfig),
@@ -369,16 +284,10 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         batchSize,
         poolSize,
         chunkSize,
-        gateMode: assertChunk128CandidateGate
-          ? "chunk128_candidate"
-          : "production_default_chunk64",
         everyTransactionHasPlutusSpend: true,
         everyTransactionIsPlutusV3: true,
         verdictMatchesInline: true,
         statePatchMatchesInline: true,
-        chunkAbExperimentId:
-          chunkAbCorpusBinding === undefined ? undefined : chunkAbExperimentId,
-        ...chunkAbCorpusBinding,
         durationMsRequested: durationMs,
         durationMsObserved,
         accepted,
@@ -386,11 +295,11 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
         batches,
         eventLoopDelayP99Ms,
         gateAsserted:
-          assertGate &&
+          assertProductionGate &&
           containerIdentityProved &&
           pinnedEightCore &&
           batchSize === 256 &&
-          chunkSize === assertedChunkSize &&
+          chunkSize === 64 &&
           durationMsObserved >= 300_000 &&
           accepted > 0 &&
           batches > 0 &&
@@ -401,7 +310,7 @@ describe("Phase 2 script-heavy UPLC worker benchmark", () => {
       console.log(JSON.stringify(report));
 
       expect(rejected).toBe(0);
-      if (assertGate) {
+      if (assertProductionGate) {
         expect(durationMsObserved).toBeGreaterThanOrEqual(300_000);
         expect(eventLoopDelayP99Ms).toBeLessThan(50);
         expect(report.gateAsserted).toBe(true);

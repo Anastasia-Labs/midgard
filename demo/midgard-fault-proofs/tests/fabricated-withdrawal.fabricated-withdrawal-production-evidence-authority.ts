@@ -33,7 +33,7 @@ import {
   rootHistoryUtxo,
   withdrawalEventDatum,
   withdrawalEventUtxoFixture,
-} from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
+} from "./fabricated-withdrawal.fabricated-withdrawal-evidence-admission.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-withdrawal production evidence authority", () => {

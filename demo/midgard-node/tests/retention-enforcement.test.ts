@@ -20,7 +20,7 @@ import "../src/services/lucid.js";
 import "../src/services/config.make-config.js";
 import "./helpers/finalized-deployment-manifest.js";
 import "./helpers/retention-l1-view.js";
-import "./retention-enforcement.q54-executable-retention-deadline-alert.js";
+import "./retention-enforcement.executable-retention-deadline-alert.js";
 import "./retention-enforcement.terminal-merge.js";
 import "./retention-enforcement.registration.js";
 import "./retention-enforcement.finality-hold.js";

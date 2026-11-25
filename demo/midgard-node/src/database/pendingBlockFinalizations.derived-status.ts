@@ -58,11 +58,6 @@ export const liveJournalSql = (sql: SqlClient.SqlClient, dead: DeadHeaders) =>
 export type DeadJournals = Readonly<{
   /** Dead journal header (hex) to why its block can no longer land. */
   causes: ReadonlyMap<string, string>;
-  /**
-   * The follower tables whose absence leaves the set unread: no anchor or
-   * commit status can be read, so no journal is dead.
-   */
-  missing: readonly string[];
 }>;
 
 /** `dead`'s headers. */
@@ -111,26 +106,10 @@ export const deadJournals: Effect.Effect<
   Database
 > = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const [tables] = yield* sql<{
-    blocks: boolean;
-    cursor: boolean;
-    intents: boolean;
-  }>`SELECT to_regclass('l1_blocks') IS NOT NULL AS blocks,
-    to_regclass('l1_follower_cursor') IS NOT NULL AS cursor,
-    to_regclass('l1_intents') IS NOT NULL
-      AND to_regclass('l1_output_assets') IS NOT NULL AS intents`;
-  const missing = [
-    ...(tables?.blocks === true ? [] : ["l1_blocks"]),
-    ...(tables?.cursor === true ? [] : ["l1_follower_cursor"]),
-  ];
-  if (missing.length > 0) return { causes: new Map(), missing };
-  const intentPruned =
-    tables?.intents === true
-      ? sql`(p.intended_tx_hash IS NOT NULL AND NOT EXISTS (
-          SELECT 1 FROM l1_intents intent
-          WHERE intent.tx_hash = p.intended_tx_hash)
-        AND NOT ${liveQueueNodeHeader(sql, "p.header_hash")})`
-      : sql`FALSE`;
+  const intentPruned = sql`(p.intended_tx_hash IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM l1_intents intent
+      WHERE intent.tx_hash = p.intended_tx_hash)
+    AND NOT ${liveQueueNodeHeader(sql, "p.header_hash")})`;
   const rows = yield* sql<{
     header_hash: Buffer;
     base_tail_header_hash: Buffer;
@@ -188,5 +167,5 @@ export const deadJournals: Effect.Effect<
                 : undefined;
     if (cause !== undefined) causes.set(header, cause);
   }
-  return { causes, missing: [] };
+  return { causes };
 }).pipe(sqlErrorToDatabaseError(tableName, "Failed to read dead own journals"));

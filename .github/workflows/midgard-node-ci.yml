@@ -471,12 +471,11 @@ jobs:
       - name: Check DA attestation capacity signatures
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:da-attestation-capacity-v1
-      # The C20-6, C20-7 and field-8 maximum constant families in
+      # The field-6, field-7 and field-8 maximum constant families in
       # `native-tx-v1.test.ak` and `native-tx.max-redeemers.test.ak` are produced by
       # the three ordered-collection boundary suites, which is why this gate runs
       # them again rather than recomputing anything: the genuine signed-Cardano
-      # boundary is only findable under vitest. Without it, those constants are
-      # hand-mirrored twins again the moment the boundary moves (#588).
+      # boundary is only findable under vitest.
       - name: Check ordered-collection boundary Aiken constants
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:ordered-collection-boundary-aiken
@@ -1445,7 +1444,7 @@ jobs:
           prebuild: lucid-midgard midgard-core midgard-sdk midgard-validation midgard-fault-proofs midgard-watcher midgard-node midgard-node-tools
       - name: Verify canonical V1 retained multi-peer DA paths
         env:
-          MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"
+          MIDGARD_RUN_DA_JOINED_E2E: "1"
           NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm --dir demo/midgard-node run test:da-canonical-v1-e2e
 

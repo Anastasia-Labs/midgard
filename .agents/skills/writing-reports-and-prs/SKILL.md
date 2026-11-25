@@ -71,8 +71,8 @@ Shape (see [references/pr-template.md](references/pr-template.md)): `##
 Summary` bullets of what changed and for whom, an optional `## Why` when the
 motivation is not obvious from the summary, then `## Verification` with the
 evidence ledger and a "Not checked" list. The Summary/Verification shape is
-what this repository's best merged PRs already use (#466, #468; read with
-`gh pr view <n> -R Anastasia-Labs/midgard`, 2026-09-25). `[review]`
+what this repository's best merged PRs use (merges `55afdc546` and
+`2b1e61f42`). `[review]`
 
 - **Title**: the same imperative-sentence style as a commit subject
   (committing-safely rule 9, below). `[review]`
@@ -129,6 +129,6 @@ code; every environment you lacked appears under "Not checked"; every number
 has a date. The completion criterion: no sentence claims more than an
 evidence line shows.
 
-For a real before-and-after rewrite (commit `43d36379f` and PR #456), read
+For a real before-and-after rewrite (commits `43d36379f` and `8bae9403a`), read
 [references/examples.md](references/examples.md) when you want to see what
 the rules change in practice.

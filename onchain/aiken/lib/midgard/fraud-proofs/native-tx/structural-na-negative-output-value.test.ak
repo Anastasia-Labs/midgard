@@ -66,48 +66,48 @@ fn as_data(bytes: ByteArray) -> Data {
 
 // --- negative lovelace -------------------------------------------------------
 
-test q25_negative_lovelace_rejected_by_raw_cbor_output_decoder() fail {
+test negative_lovelace_rejected_by_raw_cbor_output_decoder() fail {
   decode_midgard_tx_output_cbor(negative_lovelace_output).value.lovelace < 0
 }
 
-test q25_negative_lovelace_rejected_by_data_output_decoder() fail {
+test negative_lovelace_rejected_by_data_output_decoder() fail {
   decode_midgard_tx_output_data(as_data(negative_lovelace_output)).value.lovelace < 0
 }
 
-test q25_negative_lovelace_rejected_by_ledger_output_v1() {
+test negative_lovelace_rejected_by_ledger_output_v1() {
   ledger_output_v1.decode_canonical_output(negative_lovelace_output) == None
 }
 
-test q25_negative_lovelace_rejected_by_canonical_value_encoder() fail {
+test negative_lovelace_rejected_by_canonical_value_encoder() fail {
   encode_midgard_value(MidgardValue { lovelace: -1, assets: [] }) != #""
 }
 
 // --- zero / negative asset quantity ------------------------------------------
 
-test q25_zero_asset_quantity_rejected_by_raw_cbor_output_decoder() fail {
+test zero_asset_quantity_rejected_by_raw_cbor_output_decoder() fail {
   decode_midgard_tx_output_cbor(zero_quantity_output).value.lovelace == 0
 }
 
-test q25_zero_asset_quantity_rejected_by_data_output_decoder() fail {
+test zero_asset_quantity_rejected_by_data_output_decoder() fail {
   decode_midgard_tx_output_data(as_data(zero_quantity_output)).value.lovelace == 0
 }
 
-test q25_negative_asset_quantity_rejected_by_raw_cbor_output_decoder() fail {
+test negative_asset_quantity_rejected_by_raw_cbor_output_decoder() fail {
   decode_midgard_tx_output_cbor(negative_quantity_output).value.lovelace == 0
 }
 
-test q25_negative_asset_quantity_rejected_by_data_output_decoder() fail {
+test negative_asset_quantity_rejected_by_data_output_decoder() fail {
   decode_midgard_tx_output_data(as_data(negative_quantity_output)).value.lovelace == 0
 }
 
-test q25_nonpositive_asset_quantities_rejected_by_ledger_output_v1() {
+test nonpositive_asset_quantities_rejected_by_ledger_output_v1() {
   and {
     ledger_output_v1.decode_canonical_output(zero_quantity_output) == None,
     ledger_output_v1.decode_canonical_output(negative_quantity_output) == None,
   }
 }
 
-test q25_negative_asset_quantity_rejected_by_canonical_value_encoder() fail {
+test negative_asset_quantity_rejected_by_canonical_value_encoder() fail {
   encode_midgard_value(
     MidgardValue {
       lovelace: 0,
@@ -120,7 +120,7 @@ test q25_negative_asset_quantity_rejected_by_canonical_value_encoder() fail {
 
 // --- adjacent positive controls ----------------------------------------------
 
-test q25_positive_control_zero_lovelace_output_decodes() {
+test positive_control_zero_lovelace_output_decodes() {
   let output = decode_midgard_tx_output_cbor(zero_lovelace_output)
   and {
     output.value.lovelace == 0,
@@ -132,7 +132,7 @@ test q25_positive_control_zero_lovelace_output_decodes() {
   }
 }
 
-test q25_positive_control_positive_asset_quantity_output_decodes() {
+test positive_control_positive_asset_quantity_output_decodes() {
   let output = decode_midgard_tx_output_cbor(positive_quantity_output)
   and {
     output.value.lovelace == 0,
@@ -146,7 +146,7 @@ test q25_positive_control_positive_asset_quantity_output_decodes() {
   }
 }
 
-test q25_positive_control_reencodes_to_the_same_bytes() {
+test positive_control_reencodes_to_the_same_bytes() {
   let output: MidgardTxOutput = decode_midgard_tx_output_cbor(
     positive_quantity_output,
   )

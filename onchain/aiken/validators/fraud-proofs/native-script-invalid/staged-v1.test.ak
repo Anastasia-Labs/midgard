@@ -21,13 +21,13 @@ use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, NativeCardanoScript, NativeTxWitnessSetCompact,
 }
+use midgard/native_script_max_fixture_chunk_0 as chunk_0
+use midgard/native_script_max_fixture_chunk_1 as chunk_1
+use midgard/native_script_max_fixture_chunk_2 as chunk_2
 use midgard/native_tx_field_access_v1.{
   Certified, FieldPreimageCertificateV1, field_preimage_certificate_asset_name,
 }
 use midgard/native_tx_script_pushdown_v1 as pushdown
-use midgard/q34_max_fixture_chunk_0 as chunk_0
-use midgard/q34_max_fixture_chunk_1 as chunk_1
-use midgard/q34_max_fixture_chunk_2 as chunk_2
 use midgard/validation_machine/machine_types.{SignerAboveLastProof}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
@@ -492,7 +492,7 @@ fn finalize_max_script_scan(payload: ByteArray) -> Bool {
   )
 }
 
-test q34_staged_step_03_starts_exact_318_witness_frontier_in_16_item_batch() {
+test staged_step_03_starts_exact_318_witness_frontier_in_16_item_batch() {
   step_03_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -519,7 +519,7 @@ test q34_staged_step_03_starts_exact_318_witness_frontier_in_16_item_batch() {
   )
 }
 
-test q34_staged_step_03_rejects_wrong_successor() fail {
+test staged_step_03_rejects_wrong_successor() fail {
   step_03_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -546,7 +546,7 @@ test q34_staged_step_03_rejects_wrong_successor() fail {
   )
 }
 
-test q34_staged_step_03_rejects_signer_batch_above_16() fail {
+test staged_step_03_rejects_signer_batch_above_16() fail {
   step_03_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -573,7 +573,7 @@ test q34_staged_step_03_rejects_signer_batch_above_16() fail {
   )
 }
 
-test q34_staged_step_04_exact_318_witness_resumes_in_16_item_batch() {
+test staged_step_04_exact_318_witness_resumes_in_16_item_batch() {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -598,7 +598,7 @@ test q34_staged_step_04_exact_318_witness_resumes_in_16_item_batch() {
   )
 }
 
-test q34_staged_step_04_rejects_mutated_checkpoint() fail {
+test staged_step_04_rejects_mutated_checkpoint() fail {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -623,7 +623,7 @@ test q34_staged_step_04_rejects_mutated_checkpoint() fail {
   )
 }
 
-test q34_staged_step_04_rejects_signer_batch_above_16() fail {
+test staged_step_04_rejects_signer_batch_above_16() fail {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -648,7 +648,7 @@ test q34_staged_step_04_rejects_signer_batch_above_16() fail {
   )
 }
 
-test q34_staged_step_04_exact_318_witness_penultimate_fit() {
+test staged_step_04_exact_318_witness_penultimate_fit() {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -673,7 +673,7 @@ test q34_staged_step_04_exact_318_witness_penultimate_fit() {
   )
 }
 
-test q34_staged_step_04_exact_318_witness_terminal_fit() {
+test staged_step_04_exact_318_witness_terminal_fit() {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -698,7 +698,7 @@ test q34_staged_step_04_exact_318_witness_terminal_fit() {
   )
 }
 
-test q34_staged_step_05_exact_318_signer_frontier_fit() {
+test staged_step_05_exact_318_signer_frontier_fit() {
   step_05_validator.main.spend(
     fixture.computation_thread_policy_id,
     fixture.fraud_proof_policy_id,
@@ -724,11 +724,11 @@ test q34_staged_step_05_exact_318_signer_frontier_fit() {
   )
 }
 
-test q34_staged_step_05_max_32_node_native_script_starts_in_16_node_batch() {
+test staged_step_05_max_32_node_native_script_starts_in_16_node_batch() {
   start_max_script_scan(max_unsatisfied_script_payload())
 }
 
-test q34_staged_step_05_rejects_node_batch_above_16() fail {
+test staged_step_05_rejects_node_batch_above_16() fail {
   let payload = max_unsatisfied_script_payload()
   let ready = max_script_state(payload, step_05.ScriptReady)
   step_05_validator.main.spend(
@@ -755,15 +755,15 @@ test q34_staged_step_05_rejects_node_batch_above_16() fail {
   )
 }
 
-test q34_staged_step_05_max_32_node_native_script_finalizes_after_16_node_batches() {
+test staged_step_05_max_32_node_native_script_finalizes_after_16_node_batches() {
   finalize_max_script_scan(max_unsatisfied_script_payload())
 }
 
-test q34_staged_step_05_rejects_max_32_node_satisfied_script_after_16_node_batches() fail {
+test staged_step_05_rejects_max_32_node_satisfied_script_after_16_node_batches() fail {
   finalize_max_script_scan(max_satisfied_script_payload())
 }
 
-test q34_staged_step_03_preserves_prover_cancellation() {
+test staged_step_03_preserves_prover_cancellation() {
   step_03_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -782,7 +782,7 @@ test q34_staged_step_03_preserves_prover_cancellation() {
   )
 }
 
-test q34_staged_step_04_preserves_prover_cancellation() {
+test staged_step_04_preserves_prover_cancellation() {
   step_04_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -799,7 +799,7 @@ test q34_staged_step_04_preserves_prover_cancellation() {
   )
 }
 
-test q34_staged_step_05_preserves_prover_cancellation() {
+test staged_step_05_preserves_prover_cancellation() {
   step_05_validator.main.spend(
     fixture.computation_thread_policy_id,
     fixture.fraud_proof_policy_id,

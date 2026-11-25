@@ -42,8 +42,6 @@ import {
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
-import type { DriverHold } from "../l1-events/driver.js";
-import { LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING } from "./holds.js";
 
 const Journals = PendingBlockFinalizationsDB;
 const Member = Journals.MemberColumns;
@@ -62,26 +60,11 @@ export type OwnJournalDisposition = Readonly<{
   dead: PendingBlockFinalizationsDB.DeadHeaders;
   /** The signed commits (hex) of every dead journal. */
   deadCommits: ReadonlySet<string>;
-  /**
-   * Set when the dead set cannot be read (the follower's tables are
-   * missing): the rebase does not run while it is.
-   */
-  held?: DriverHold;
 }>;
 
 /** The dead journals and those the rebase disposes of. */
 export const ownJournalDisposition = Effect.gen(function* () {
   const dead = yield* Journals.deadJournals;
-  if (dead.missing.length > 0)
-    return {
-      dispose: [],
-      dead: [],
-      deadCommits: new Set(),
-      held: {
-        reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-        detail: `the own-journal disposition cannot read commit anchors: ${dead.missing.join(", ")} missing`,
-      },
-    } satisfies OwnJournalDisposition;
   const headers = Journals.deadHeadersOf(dead);
   if (headers.length === 0)
     return {

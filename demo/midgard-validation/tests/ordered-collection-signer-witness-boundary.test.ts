@@ -207,7 +207,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
         chunkHex: signerField.terminalFoldVector.chunkProof.chunkHex,
       },
     }).toEqual(maximumRequiredSignerTerminalFoldVector);
-    // This suite is the producer for the C20-7 constant family in
+    // This suite is the producer for the field-7 constant family in
     // `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak` (and for the
     // signer-field terminal fixture in `validation-machine-tests/`). Publishing
     // the vector here — after every assertion above has already checked it — is

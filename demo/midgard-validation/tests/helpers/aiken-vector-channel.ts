@@ -6,16 +6,15 @@ import { isAbsolute, join } from "node:path";
  *
  * These suites *are* the producers for several Aiken constant families: the
  * genuine signed-Cardano boundary they search for is expensive to find and is
- * found here, and the Aiken modules then assert against its bytes. Until #588
- * the only way those bytes reached Aiken was a human copying them, which is how
- * `native-tx-v1.test.ak`'s C20-6/C20-7 constants and
- * `native-tx.max-redeemers.test.ak`'s whole constant block came to be
- * hand-mirrored.
+ * found here, and the Aiken modules then assert against its bytes
+ * (`native-tx-v1.test.ak`'s field-6 and field-7 constants and
+ * `native-tx.max-redeemers.test.ak`'s constant block). This channel carries
+ * those bytes across.
  *
  * Two modes, deliberately different in kind:
  *
  *   * `MIDGARD_PRINT_AIKEN_VECTOR=1` prints the vector for a human reading a
- *     terminal. This is the pre-existing channel and is unchanged.
+ *     terminal.
  *   * `MIDGARD_WRITE_AIKEN_VECTOR=<absolute directory>` writes `<name>.json`
  *     into that directory. This is the machine channel:
  *     `scripts/generate-ordered-collection-boundary-aiken-goldens.mjs` runs these

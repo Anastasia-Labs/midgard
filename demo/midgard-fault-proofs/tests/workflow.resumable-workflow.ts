@@ -1,5 +1,5 @@
 import "./workflow.provisional-completion.js";
-import "./workflow.q55-w-o6-deterministic-violation-classification.js";
+import "./workflow.deterministic-violation-classification.js";
 
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it, vi } from "vitest";

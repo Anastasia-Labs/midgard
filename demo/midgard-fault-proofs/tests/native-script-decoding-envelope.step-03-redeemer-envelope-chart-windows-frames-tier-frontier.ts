@@ -23,7 +23,7 @@ import {
   L1_ENVELOPE_BYTES,
   proofFromCbor,
   STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-} from "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages-q4.js";
+} from "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages.js";
 import { h32 } from "./support/emulator/header-fixtures.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {

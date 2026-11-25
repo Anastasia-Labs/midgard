@@ -39,7 +39,6 @@ import {
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_DA_REFETCH_PENDING,
   LANDED_BLOCK_EVENT_UNKNOWN,
-  LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_LOCAL_FAULT,
@@ -404,20 +403,11 @@ describe("own landed blocks", () => {
     );
   }, 120_000);
 
-  it("retries a rebase blocked on landed processing, and not one blocked on a missing schema", () => {
+  it("retries a rebase blocked on landed processing", () => {
     const pending = blockedRebaseHold({ kind: "blocked", detail: "d" });
     expect([pending.reason, isRetriedHold(pending)]).toEqual([
       LANDED_BLOCK_REBASE_PENDING,
       true,
-    ]);
-    const schema = blockedRebaseHold({
-      kind: "blocked",
-      detail: "d",
-      reason: LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-    });
-    expect([schema.reason, isRetriedHold(schema)]).toEqual([
-      LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
-      false,
     ]);
   });
 

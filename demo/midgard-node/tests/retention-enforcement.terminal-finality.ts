@@ -14,7 +14,7 @@ import {
   deploymentManifest,
   NOW,
   seedPayload,
-} from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
+} from "./retention-enforcement.executable-retention-deadline-alert.js";
 import {
   remainingHashes,
   seedPublished,

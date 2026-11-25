@@ -8,8 +8,8 @@ description: Two-pass adversarial review of Midgard consensus-critical code, for
 Consensus defects in Midgard survive ordinary review because each part looks
 correct on its own. Ten fraud-proof resolvers shipped as `always-succeeds`
 scripts while every Aiken guard in them was right: the SDK applied one
-parameter too few (#605, fixed in #609). One evidence sweep found 24 gates
-that could not fail (#519). And a finding can look real and be wrong: "`tx_id`
+parameter too few (fixed in `ac54d01a1`). One evidence sweep found 24 gates
+that could not fail. And a finding can look real and be wrong: "`tx_id`
 does not commit `witness_set_hash`" is not a defect, because the split
 between the two commitments is deliberate (see the anchoring lens). This skill
 is the process that catches the first two kinds without fixing the third.

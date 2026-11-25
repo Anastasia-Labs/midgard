@@ -40,6 +40,6 @@ import "./support/submit-init/transaction-material.js";
 import "./support/emulator/blueprints.js";
 import "./support/emulator/header-fixtures.js";
 import "./support/emulator/native-tx.js";
-import "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages-q4.js";
+import "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages.js";
 import "./native-script-decoding-envelope.step-02-redeemer-envelope-chart-the-escalation-capable-check-2-3.js";
 import "./native-script-decoding-envelope.step-03-redeemer-envelope-chart-windows-frames-tier-frontier.js";

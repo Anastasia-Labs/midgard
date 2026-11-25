@@ -27,5 +27,5 @@ import "../src/prepare-input-no-idx.prepare-input-no-idx-from-transactions.js";
 import "../src/prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
 import "./helpers/canonical-block-evidence-fixture.js";
 import "./prepare-input-no-idx.make-native-tx.js";
-import "./prepare-input-no-idx.q13-input-no-idx-canonical-evidence.js";
-import "./prepare-input-no-idx.q13-input-no-idx-q03-evidence-gates.js";
+import "./prepare-input-no-idx.input-no-idx-canonical-evidence.js";
+import "./prepare-input-no-idx.input-no-idx-evidence-gates.js";

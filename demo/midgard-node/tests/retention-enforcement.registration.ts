@@ -32,7 +32,7 @@ import {
   NOW,
   REQUIRED_RETENTION_MS,
   seedPayload,
-} from "./retention-enforcement.q54-executable-retention-deadline-alert.js";
+} from "./retention-enforcement.executable-retention-deadline-alert.js";
 import {
   countRows,
   NOT_FINAL,

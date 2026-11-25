@@ -45,7 +45,7 @@ import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-pay
 import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 
-const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";
+const enabled = process.env.MIDGARD_RUN_DA_JOINED_E2E === "1";
 const DEPLOYMENT = "c7".repeat(28);
 const RETENTION_DAYS = DA_TRANSPORT_LIMITS.minimumRetentionDays;
 // A dedicated, non-committee Noise identity for the public retained-DA
@@ -222,7 +222,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       );
 
       await committeeNodes[2]!.stop();
-      const interrupted = await runReconciler("phase5-joined-before-restart");
+      const interrupted = await runReconciler("joined-before-restart");
       const interruptedState = await publicationState(fixture.headerHash);
       expect(interrupted).toMatchObject({
         manifestLoaded: true,
@@ -272,7 +272,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       ) {
         await delay(10);
         recovered = await runReconciler(
-          "phase5-joined-after-restart-" + attempt.toString(),
+          "joined-after-restart-" + attempt.toString(),
         );
         recoveryAttempts += recovered.attempted;
       }

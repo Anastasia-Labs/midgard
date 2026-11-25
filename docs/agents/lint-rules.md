@@ -50,7 +50,7 @@ every stale site and adds none (`--check` only reports).
 - **Never apply parameters outside the blueprint shape guard.**
   `applyParamsToScript` and `apply_params_to_script` are called only in
   `demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`; everything else
-  goes through `applyBlueprintParams` (#609). Renaming either on import or in a
+  goes through `applyBlueprintParams`. Renaming either on import or in a
   destructuring is flagged too. Blind spot: a call through a namespace re-export
   or a computed name passes. [eslint: midgard/apply-params-through-blueprint]
 - **An exact fee must not leave a change output.** `setMinFee` plus Lucid's

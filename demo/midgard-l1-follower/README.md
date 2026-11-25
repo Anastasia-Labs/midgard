@@ -11,7 +11,7 @@ This package owns:
 - the follower schema as namespaced schema sets, each created whole on an
   empty database and each table headed
   `-- class: <A|B|C|D-t|D-x>; retention: <rule>`;
-- the sequential block writer: qualification, facts, the role's S3
+- the sequential block writer: qualification, facts, the role's
   derivations and the cursor advance in one transaction per block;
 - a raw CBOR block decoder that keeps the exact byte slices of each body,
   witness set, datum and redeemer (no dependency on the N2C transport);
@@ -95,7 +95,7 @@ While another process holds it, `start()` returns `{ kind: "store_locked",
 detail }`, never throws and never exits. The caller retries with backoff;
 `followChain` (below) reports it as `l1_follower_waiting` with cause
 `store_locked`, a transient reason. This is the committee's
-active/passive pair (C2): the passive member's follower waits, and takes over
+active/passive pair: the passive member's follower waits, and takes over
 within one retry once the active process dies, because its lock dies with its
 session or process.
 
@@ -220,7 +220,7 @@ midgard-l1-follower reset --to-origin --postgres <connection string>
 midgard-l1-follower reset --to-origin --sqlite <database file>
 ```
 
-The recovery for R1, R2, R5 and `origin_mismatch` (§7.5): the next start
+The recovery for R1, R2, R5 and `origin_mismatch`: the next start
 initializes at the configured `l1Origin` and replays from it. It needs only
 the connection; it reads which tables to clear from the catalog. In one
 transaction it:
@@ -231,7 +231,7 @@ transaction it:
 - never deletes a class B row (own signed material), a class C row, the
   schema ledger, the catalog or the writer row. Class C rows (`l1_scripts`,
   foreign payloads) are immutable and content-addressed, so they are correct
-  for any chain and are kept while referenced (§7): the next `prune()`
+  for any chain and are kept while referenced: the next `prune()`
   removes the `l1_scripts` rows no retained output references, and a role's
   own retention removes its class C rows;
 - raises the next generation above every generation the store used, and
@@ -253,7 +253,7 @@ is `resetToOrigin(backend)`, which returns
 ### The tracked-set record
 
 The facts are complete from the origin only for the tracked set they were
-applied under (§5.3). The store records the role's protocol tracked set
+applied under. The store records the role's protocol tracked set
 (`FactStoreOptions.trackedSet`: addresses, payment credentials and policies,
 as sorted lowercase hex) in the bookkeeping table `l1_follower_tracked_set`,
 which reset keeps. `initialize` writes it. Own wallets
@@ -368,7 +368,7 @@ connection (a restart, a failover, an idle reaper, `pg_terminate_backend`)
 never reaches the process as an uncaught exception. The pool discards the
 client; a transaction on it rejects, which the follow loop backs off from.
 
-### Views (§8.1)
+### Views
 
 A view is `(generation, point, height)`. `viewValid(view)` is true while no
 rewind happened since it was read, or its point is still stored. To guard a
@@ -377,7 +377,7 @@ it (on Postgres it takes `FOR SHARE` on the cursor row, so no rewind commits
 between the check and the write; on SQLite the writer's `BEGIN IMMEDIATE`
 does). Intents bind to views too: `recordIntentIn` takes the planner's view
 (`builtAt`) and records a stale one with a `stale_at_write` event, and
-`decideSubmitIn` is a role's own send decision (S6), taken with the view
+`decideSubmitIn` is a role's own send decision, taken with the view
 check in one transaction. Another process learns
 of rewinds, and of resets, with `listenForGenerations(pool, (generation) =>
 …, onConnectionLost?)`, which returns an async `stop()`. If Postgres drops
@@ -423,7 +423,7 @@ or phase-2-failed. `encodeOutRef` / `decodeOutRef` use the
 34-byte form (tx hash, then a big-endian u16 index); `outRefKey` is the hex
 form used for maps.
 
-### Heads (§9)
+### Heads
 
 ```ts
 depth(tipHeight, pointHeight): number          // tip − point + 1; the tip is depth 1
@@ -483,7 +483,7 @@ recreated (dropped and created empty), never altered. The bookkeeping tables
 any schema set and are not in the catalog. Only tests use
 the lint, so it is kept out of the runtime entry point.
 
-### Wallet seed (§5.3 step 4)
+### Wallet seed
 
 ```ts
 seedWallets(store, ledger: WalletLedger, addresses: Buffer[]): Promise<WalletSeedResult>
@@ -699,7 +699,7 @@ forkCorpus(k, { prune? }): NamedScenario[] // every shape and variant at depths 
 An episode with `prune` prunes the store to completion (in budget-2 steps)
 after its old branch's last block and again after its rollback: the
 rollback rewinds over pruned rows, and its cursor drop leaves rows pruned
-before within k of the new cursor (the E7 case). The corpus adds every shape
+before within k of the new cursor. The corpus adds every shape
 pruned around a depth-k rollback and the chain of every shape pruned;
 `{ prune: false }` leaves prune cases out.
 
@@ -710,7 +710,7 @@ episode's checkpoints match the simulator's own ledger model, and every
 plugged projection's `check`. Once the store has pruned
 (`prunedThroughSlot` above the origin), "equals" becomes two checks against
 the unpruned rebuild: every row the store holds is a row of the rebuild, and
-every row the rebuild holds that plan §11 retention keeps at
+every row the rebuild holds that retention keeps at
 `prunedThroughSlot` is in the store (`retainedQueries`, `diffPruned`;
 live and recently spent outputs, rows a projection's `retentionPins` pin,
 checkpoint blocks, D-t rows by their retention rule). Until then the check is
@@ -727,7 +727,7 @@ rows only at the cursor), the fresh replay tracks and seeds where the store
 did, and once the seeder is ready the store's live rows at every wallet must
 be exactly the ledger's UTxOs there (no phantom, none missing).
 
-A role ticket adds cases by passing a `FollowerProjection`: its tracked set,
+A role adds cases by passing a `FollowerProjection`: its tracked set,
 D-t tables, schemas, derivations and retention pins, optional `traffic`
 (transactions the simulator mixes into blocks, so the role's own outputs
 appear on both branches) and an optional `check` run after every event. Role

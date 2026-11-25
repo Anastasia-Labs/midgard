@@ -1,4 +1,4 @@
-# P1 threat model
+# Public testnet threat model
 
 This describes the intended stage-0 public
 Preprod deployment; it does not establish deployment or acceptance completion.
@@ -7,8 +7,9 @@ See [SECURITY.md](../SECURITY.md) for private vulnerability reporting.
 
 ## System, assets and deployment boundary
 
-Midgard is an optimistic rollup on Cardano. P1 is the stage-0 Preprod deployment
-of the [P1 model](public_testnet_readiness.md#the-p1-model), with curated
+Midgard is an optimistic rollup on Cardano. The first public testnet is the stage-0
+Preprod deployment of the
+[launch model](public_testnet_readiness.md#the-launch-model), with curated
 operators and permissionless fraud provers and DA challengers. The proposed release profile is
 `preprod-public`; an emulator or testing profile cannot establish public release
 readiness. An instance is identified by its approved genesis, authenticated
@@ -24,12 +25,12 @@ The covered boundary includes Aiken validators, SDK and Lucid builders, native
 ledger and follower processes, node and workers, committee transport/storage,
 watcher and proof tooling, operator CLI, public/admin HTTP, deployment and
 release tooling. Legacy/reference code and third-party services are not claimed
-to be deployed P1 controls. A vulnerability in their integration or dependency
+to be deployed testnet controls. A vulnerability in their integration or dependency
 use is still reportable; no blanket dependency or trusted-role exclusion applies.
 
 ## Roles and assumptions
 
-| Role or source                    | P1 authority and trust                                                 | Inputs remain untrusted / required boundary                                                                                                                                        |
+| Role or source                    | Authority and trust                                                    | Inputs remain untrusted / required boundary                                                                                                                                        |
 | --------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Permissionless user               | Own transaction signatures and owned funds                             | Transaction CBOR, witnesses, datums, scripts, event shape, payload size and timing are adversarial; bounded total admission and truthful verdicts are required.                    |
 | Curated operator                  | Production liveness and verdicts outside enabled proof coverage        | Operator membership does not authenticate arbitrary roots, deposits, forced inputs, replay evidence or another deployment. Enabled proof and value-conservation rules still apply. |
@@ -128,7 +129,7 @@ commands or approve malicious software according to the compromised role. Report
 unexpected effects even if a trusted role is required. Deployment operations
 must establish key custody and incident handling. Restore procedures must
 preserve identity and durable obligations;
-changing the fixed P1 operator allow-list requires another deployment, not a
+changing the fixed operator allow-list requires another deployment, not a
 runtime edit.
 
 A suspected active compromise should trigger private security contact, preservation
@@ -139,9 +140,9 @@ DA must not be deleted and durable stores must not be reset during triage. The
 node and watcher ship alert rules with runbooks; each deployment must still
 establish alert delivery, incident ownership and drills.
 
-## P1 stage-0 limitations
+## Stage-0 limitations
 
-- Curated operators, fixed for P1's life; permissionless fraud provers and DA
+- Curated operators, fixed for the testnet's life; permissionless fraud provers and DA
   challengers. Watchers submit the proofs they find automatically. A watcher
   that reaches a proof after its latest safe start still runs it until the
   block matures, and raises a late-start alert; at maturity it holds the
@@ -149,7 +150,7 @@ establish alert delivery, incident ownership and drills.
 - Native-only forced transactions. No reference-script outputs, Plutus witnesses,
   redeemers, auxiliary data or L2 validity upper bound; canonical and noncanonical inline datums
   remain permitted at L1 admission. Funds needing Plutus or
-  a native script expiry branch have no forced exit in P1.
+  a native script expiry branch have no forced exit on this testnet.
 - DA payloads carry no validation-trace states. The nine trace-relative
   families prove their faults directly, and the public profile enables all
   nine; it excludes no category. Plutus verdicts are
@@ -162,7 +163,7 @@ establish alert delivery, incident ownership and drills.
   curated-operator trust. A wrongful forced rejection is challengeable under
   every rejection reason.
 - Strikes are permissionless and rotate operator shifts. They can still rotate
-  shifts during catch-up and slow its progress. The public P1 ejection threshold
+  shifts during catch-up and slow its progress. The public ejection threshold
   is set out of reach, so strikes do not provide an operator ejection mechanism.
 - No authenticated bootstrap snapshot is supplied. New parties must replay
   from genesis and join while the required payload history is available. The
@@ -176,12 +177,12 @@ establish alert delivery, incident ownership and drills.
   the node's transaction status API reports its own diagnostic rejection codes.
 - Escape hatch and settlement claims are unsupported. Split cadence, hourly
   commitments, further DA trim, permissionless operators and full proof
-  coverage are P2.
-- P2 requires a separately announced regenesis; a future date is a plan, not a
+  coverage come with the regenesis.
+- The regenesis must be separately announced; a future date is a plan, not a
   guarantee that this candidate is deployed or complete.
 
 Documented limits are not blanket finding exclusions. New bypasses, unexpected
 honest conviction, loss/freeze, user/environment-triggerable liveness failures,
-unbounded work or secret disclosure remain reportable. Disabled P1 families do
+unbounded work or secret disclosure remain reportable. Disabled families do
 not create a claim that every invalid state can be proven. A finding in code kept
-for P2 should identify current reachability and future relevance separately.
+for the regenesis should identify current reachability and future relevance separately.

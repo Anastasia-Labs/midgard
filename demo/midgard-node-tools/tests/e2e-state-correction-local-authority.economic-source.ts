@@ -1,4 +1,4 @@
-import "./e2e-state-correction-local-authority.q57-local-kupmios-authority.js";
+import "./e2e-state-correction-local-authority.local-kupmios-authority.js";
 
 import type {
   WebSocketFactory,

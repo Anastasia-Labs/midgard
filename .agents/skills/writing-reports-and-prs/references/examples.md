@@ -4,7 +4,7 @@ Both examples are real. The "after" versions use only facts on the record
 (the diff, the issue comment, the PR's check list); nothing in them is
 invented.
 
-## Commit `43d36379f` (#676): "green" hid a red suite and 108 skipped tests
+## Commit `43d36379f`: "green" hid a red suite and 108 skipped tests
 
 Before (the committed body's verification sentence):
 
@@ -42,7 +42,7 @@ Not checked: the 28 live and run-directory journey files, which skip
 without MIDGARD_WATCHER_JOURNEY_RUN_DIR; no devnet was up.
 ```
 
-## PR #456: a one-line body on a nine-file type change
+## Merge `8bae9403a`: a one-line body on a nine-file type change
 
 Before (title "Update operator redeemer types and associated transactions",
 merged 2026-07-28 into `tx-validation`):

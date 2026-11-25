@@ -561,7 +561,7 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
 - `l1_events_ingestion_waiting`: event ingestion waits for its write gate
   while a recovery runs. Wait.
 - `l1_events_ingestion_failed`: ingestion refused or failed; the detail
-  names why. `l1_events_hook_failed`: a ticket hook failed; the detail names
+  names why. `l1_events_hook_failed`: a driver hook failed; the detail names
   the hook. A transient failure is retried on the driver's backoff, any
   other on the next follower change; read the detail.
 - `l1_events_orphan_recovery`: orphaned admissions wait for the recovery
@@ -648,10 +648,7 @@ first hold by priority is the reason, the rest are in its detail):
   ledger store (a ledger the store cannot give is `landed_block_local_fault`).
   A local fault; processing stops until the journal is repaired (no timer
   retries it): restore the node database from a backup that holds the block's
-  journal (plan §7.5, R5). Report it with the detail.
-- `landed_block_follower_schema_missing`: the follower's admission tables
-  are missing from the node database; no timer retries it. Recreate the
-  database empty; the node creates the schema when it starts.
+  journal. Report it with the detail.
 - `landed_block_event_unknown`: a foreign block names an event the follower
   does not know at the view, and the follower's facts do not cover the
   range the block's events could be admitted in (the prune passed the
@@ -737,7 +734,7 @@ reason=landed_block_origin_after_frontier`); a restart on the same store
 - `mpf_closure_missing`: the rebase's native restore found no root of the
   processed landed chain retained in the native MPF store. Stop the node,
   install at `LEDGER_MPF_DB_PATH` a native MPF store that retains the root,
-  and restart (plan §7.5, R6).
+  and restart.
 - `native_mpf_restore_read_transient`: reading the native MPF store's
   retained roots failed; retried, escalated after ten minutes. Check the
   store's disk.

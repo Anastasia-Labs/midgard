@@ -11,7 +11,7 @@
  * `forced_order_carriage_pending` and `forced_order_ingestion_failed`; and landed-block processing's, from
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
  * `landed_block_own_journal_mismatch`,
- * `landed_block_follower_schema_missing`, `landed_block_event_unknown`,
+ * `landed_block_event_unknown`,
  * `landed_block_forced_order_pending`, `landed_block_da_refetch_pending`,
  * `landed_block_awaiting_da`,
  * `landed_block_rebase_failed`, `landed_block_local_fault`,

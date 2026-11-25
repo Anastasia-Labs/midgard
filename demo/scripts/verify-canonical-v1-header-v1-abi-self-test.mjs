@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
-// Behavioral self-test for the Header ABI gate (V-8, issue #531). The gate is
-// the only path that compares the pinned contract against BOTH real
-// projections — the blueprint the Aiken compiler generated and the Data schema
-// the built SDK exports — and until now nothing invoked it, so nothing proved
-// it could fail. The gate is tested by behavior, not by reading its source:
+// Behavioral self-test for the Header ABI gate. The gate is the only path that
+// compares the pinned contract against BOTH real projections — the blueprint
+// the Aiken compiler generated and the Data schema the built SDK exports — and
+// this test proves it can fail. The gate is tested by behavior, not by reading its source:
 // each hostile mutation is written to a throwaway copy of ONE input, the real
 // gate is invoked against that copy through the matching `--*-under-test=`
 // hook, and the run must exit non-zero carrying the expected diagnostic. The

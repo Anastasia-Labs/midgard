@@ -39,7 +39,7 @@ import {
   historyOpening,
   l1AddressOf,
   presentEventWitness,
-} from "./fabricated-withdrawal.q40-fabricated-withdrawal-evidence-admission.js";
+} from "./fabricated-withdrawal.fabricated-withdrawal-evidence-admission.js";
 import { h28 } from "./helpers/canonical-block-evidence-fixture.js";
 
 describe("fabricated-withdrawal proof plan", () => {

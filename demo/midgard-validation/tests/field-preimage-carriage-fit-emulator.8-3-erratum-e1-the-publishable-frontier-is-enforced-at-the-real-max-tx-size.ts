@@ -1,4 +1,4 @@
-import "./field-preimage-carriage-fit-emulator.8-3-phase-4-exit-measurement-the-tier-2-raw-utx-o-bound.js";
+import "./field-preimage-carriage-fit-emulator.8-3-exit-measurement-the-tier-2-raw-utx-o-bound.js";
 
 import {
   healMidgardFieldCarriage,

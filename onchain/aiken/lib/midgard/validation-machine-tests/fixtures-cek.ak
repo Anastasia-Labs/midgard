@@ -860,7 +860,7 @@ pub fn verify_terminal_duplicate_control_v1(
 }
 
 /// One honest active core step (a `ComputeApplication` over two leaf terms)
-/// and its exact successor. Shared by the replay test below and the R5 item 1
+/// and its exact successor. Shared by the replay test below and the
 /// route-agreement controls at the end of this module.
 pub fn cek_active_core_step_fixture() -> Pair<
   validation_trace_v1.ValidationMachineStateV1,

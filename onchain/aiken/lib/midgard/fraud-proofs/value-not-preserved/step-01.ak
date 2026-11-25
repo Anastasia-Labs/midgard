@@ -24,9 +24,10 @@
 ////
 ////   * **ADA claim**: `Σ spent-input lovelace − Σ output lovelace − fee == 0`
 ////     is conservation. ADA is unmintable (a mint policy id is 28 bytes, the
-////     ADA policy is empty — structural-na-q24) and output lovelace is
-////     non-negative by canonical decoding (structural-na-q25), so the ADA
-////     case needs no mint reading at all.
+////     ADA policy is empty — structural-na-ada-minted) and output lovelace is
+////     non-negative by canonical decoding
+////     (structural-na-negative-output-value), so the ADA case needs no mint
+////     reading at all.
 ////   * **Token claim** for unit `u`:
 ////     `Σ spent-input qty_u + mint_u − Σ output qty_u == 0` is conservation.
 ////
@@ -101,8 +102,8 @@ pub fn fraud_category_is_value_not_preserved_v1(
 pub type ClaimedAssetV1 {
   /// The distinguished lovelace claim. Its conservation equation folds
   /// descriptor/output lovelace and the committed fee, and — by
-  /// structural-na-q24/q25 — needs neither the mint field nor a negative
-  /// output guard.
+  /// structural-na-ada-minted and structural-na-negative-output-value —
+  /// needs neither the mint field nor a negative output guard.
   AdaAsset
   /// One native-asset unit. `policy_id` is 28 bytes and `asset_name` at most
   /// 32, exactly the domain `ledger_output_commitment_v1.asset_leaf_hash` and

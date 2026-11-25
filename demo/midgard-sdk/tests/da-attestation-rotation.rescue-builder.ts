@@ -6,6 +6,7 @@ import {
   DaAttestationDatum,
   incompleteRescueStrandedDaAttestationTxProgram,
 } from "../src/index.js";
+import { fixtureDatum } from "./da-attestation-rotation.da-redeemer-constructor-abi.js";
 import {
   expectBuildFailure,
   GOVERNED_COMMITTEE_HASH,
@@ -14,9 +15,8 @@ import {
   ROTATED_COMMITTEE_HASH,
   run,
 } from "./da-attestation-rotation.make-fixture.js";
-import { fixtureDatum } from "./da-attestation-rotation.q62-da-redeemer-constructor-abi.js";
 
-describe("Q63c rescue builder", () => {
+describe("rescue builder", () => {
   it("rescue 1 — assembles the burn and the full-value refund", async () => {
     const fixture = makeFixture();
     const { lucid, record } = makeRecordingLucid();

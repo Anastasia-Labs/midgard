@@ -1023,7 +1023,7 @@
     }
   },
   "midgard/no-own-package-barrel": {
-    "midgard-fault-proofs/tests/canonical-evidence-source.q03-provenance-admission.ts": {
+    "midgard-fault-proofs/tests/canonical-evidence-source.provenance-admission.ts": {
       "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
       "sites": ["import * as FaultProofs from \"../src/index.js\";"]
     },
@@ -1035,7 +1035,7 @@
       "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
       "sites": ["const exports = await import(\"../src/index.js\");"]
     },
-    "midgard-fault-proofs/tests/prepare-input-no-idx.q13-input-no-idx-q03-evidence-gates.ts": {
+    "midgard-fault-proofs/tests/prepare-input-no-idx.input-no-idx-evidence-gates.ts": {
       "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
       "sites": ["import * as FaultProofs from \"../src/index.js\";"]
     },

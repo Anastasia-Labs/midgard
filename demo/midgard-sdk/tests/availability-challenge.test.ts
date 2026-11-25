@@ -5,5 +5,5 @@ import "vitest";
 import "../src/availability-challenge.js";
 import "../src/da-availability-state.js";
 import "./availability-challenge.publication-transaction-bytes.js";
-import "./availability-challenge.q58-canonical-da-availability-commitment-v1.js";
+import "./availability-challenge.canonical-da-availability-commitment-v1.js";
 import "./availability-challenge.availability-redeemer-field-order.js";

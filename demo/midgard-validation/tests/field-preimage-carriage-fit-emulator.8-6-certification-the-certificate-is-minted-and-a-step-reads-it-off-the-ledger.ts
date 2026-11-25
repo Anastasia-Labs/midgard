@@ -27,7 +27,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   resolveCertificateFromLedger,
   standInCertificatePolicy,
-} from "./field-preimage-carriage-fit-emulator.8-6-phase-4-exit-measurement-certificate-min-ada-and-the-one-transaction-question.js";
+} from "./field-preimage-carriage-fit-emulator.8-6-exit-measurement-certificate-min-ada-and-the-one-transaction-question.js";
 import {
   FIELD_INDEX,
   fieldPreimage,

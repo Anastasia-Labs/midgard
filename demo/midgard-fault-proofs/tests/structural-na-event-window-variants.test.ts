@@ -5,7 +5,7 @@
  * have no standalone proof family: all six violation variants are constructors
  * of the shared `transitionTrace` family. The on-chain half of the disposition
  * lives in
- * `onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak`.
+ * `onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-event-window-variants.test.ak`.
  *
  * These are the off-chain twins of those eight Aiken selectors. Each one
  * encodes a `TransitionFault` through the deployed SDK schema and asserts the
