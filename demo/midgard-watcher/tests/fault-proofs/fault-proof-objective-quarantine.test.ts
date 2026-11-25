@@ -185,6 +185,7 @@ const setup = async (cause: () => unknown) => {
   const queue = () =>
     openWatcherJournalDatabase({
       journalRoot: fixture.journalRoot,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     })
       .rows("fault_proof_objectives")

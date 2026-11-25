@@ -69,8 +69,6 @@ export const registerSigningTests = () => {
       ready: false,
       deployment: {
         hubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
-        storeHubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
-        storeMatchesConfigured: true,
       },
       scanner: { status: "not_started" },
       reasons: ["state queue scanner has not completed a tick"],
@@ -94,8 +92,6 @@ export const registerSigningTests = () => {
       ready: true,
       deployment: {
         hubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
-        storeHubOraclePolicyId: configWithDaHash.hubOraclePolicyId,
-        storeMatchesConfigured: true,
       },
       peer: {
         localPeerId: "committee-peer",

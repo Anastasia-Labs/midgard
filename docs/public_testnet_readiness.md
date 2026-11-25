@@ -192,12 +192,15 @@ Every contract item merges before the validator freeze.
   ([decision record](midgard/decisions/da-committee-bond-pool.md)). An attestation applies only while one bonded pool holds at least
   one DA bond; a timeout slashes the pool, and a top-up after a slash is manual
   (owner, 2026-11-04, `964ce21b9`).
-- **Store identity.** In progress. The node's database binds to its
-  deployment before any startup write (`e3ebd17ee`); the L1 follower store
-  refuses another origin. Open: bind every Postgres, MPF and DA store with a
-  marker holding the network, one-shot outref, policy ids and schema
-  version, failing before serving on a mismatch. Wiping local state
-  requires a fresh on-chain deployment.
+- **Store identity.** Done. Every persistent store binds to the deployment's
+  single identity (`hubOraclePolicyId`) or is content-addressed and anchored
+  to a bound store, checked once at startup and failing closed on mismatch:
+  node Postgres (`node_deployment`, `e3ebd17ee`), node MPF LevelDB (startup
+  root check against committed Postgres state), L1 follower (origin and
+  one-shot spend), DA committee Postgres (`committee_deployment`), and
+  watcher journals and replayed ledger (`watcher_journal_schema` and
+  policy-id-scoped SQLite store). Wiping local state requires a fresh on-chain
+  deployment.
 - **Fee and collateral.** Open. Audit fee and collateral selection across
   protocol transactions: pure-ADA inputs owned by the intended wallet, above
   configured minimums, never protocol or reference-script UTxOs. Fix only what

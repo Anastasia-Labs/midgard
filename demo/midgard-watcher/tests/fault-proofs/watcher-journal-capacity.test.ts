@@ -34,6 +34,7 @@ const atCapacity = async (): Promise<string> => {
   const journalRoot = await journalDirectory("midgard-journal-capacity");
   openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId: DEPLOYMENT,
     authenticationKey: TEST_JOURNAL_KEY,
   }).transaction((tx) => {
     for (let index = 0; index < MAX_OPEN_OBJECTIVES; index += 1) {

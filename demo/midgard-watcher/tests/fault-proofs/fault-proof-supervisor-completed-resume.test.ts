@@ -39,9 +39,11 @@ describe("fault-proof supervisor over a yielded objective", () => {
     const root = await mkdtemp("/var/tmp/midgard-fault-supervisor-yielded-");
     directories.push(root);
     const { old: decision } = await classifiedDoubleSpend();
-    recordObjectives(root, [
-      { category: "doubleSpend", headerHash: decision.headerHash },
-    ]);
+    recordObjectives(
+      root,
+      [{ category: "doubleSpend", headerHash: decision.headerHash }],
+      deploymentIdentity.hubOraclePolicyId,
+    );
     const run = vi.fn(async (_job: { mode: "run" | "resume" }) => ({
       kind: "pending",
       resumeOnObservation: true,

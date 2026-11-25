@@ -115,11 +115,9 @@ export const openWatcherFaultProofQueueJournal = async (input: {
   readonly hubOraclePolicyId: string;
   readonly authenticationKey: Uint8Array;
 }): Promise<WatcherFaultProofQueueJournal> => {
-  if (!HEX_28.test(input.hubOraclePolicyId)) {
-    throw new Error("fault-proof queue journal authority is invalid");
-  }
   const database = openWatcherJournalDatabase({
     journalRoot: input.journalRoot,
+    hubOraclePolicyId: input.hubOraclePolicyId,
     authenticationKey: input.authenticationKey,
   });
   // Startup admits every row once; a foreign or altered row fails closed.

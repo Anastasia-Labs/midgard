@@ -13,6 +13,7 @@ import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fa
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
+  isWatcherJournalConfigurationError,
   isWatcherJournalIntegrityError,
   openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
@@ -127,22 +128,23 @@ describe("production fault decision journal", () => {
     ).toEqual([first.decision]);
   });
 
-  it("refuses on restart a row written for another hub-oracle policy id", async () => {
+  it("refuses on restart a journal bound to another hub-oracle policy id", async () => {
     const root = await directory();
     const journal = await unsafeOpenWatcherFaultDecisionJournalForTest(
       journalInput(root),
     );
-    const first =
-      await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
+    await journal.unsafeAppendDecisionEnvelopeForTest(faultDecision());
     closeWatcherJournalDatabase(root);
+    const other = "12".repeat(28);
     const failure = await openWatcherFaultDecisionJournal({
       ...journalInput(root),
-      hubOraclePolicyId: "12".repeat(28),
+      hubOraclePolicyId: other,
     }).catch((error: unknown) => error);
-    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
+    expect(isWatcherJournalConfigurationError(failure)).toBe(true);
     expect(String(failure)).toContain(
-      `row ${String(first.decision.decisionDigest)} body is not a decision: persisted production decision identity is invalid`,
+      `the journals belong to deployment ${DEPLOYMENT}, not ${other}`,
     );
+    expect(watcherJournalIntegrityFailure(root)).toBeNull();
   });
 
   it("admits out-ref detection identifiers without relaxing violation identifiers", async () => {
@@ -298,6 +300,7 @@ describe("production fault decision journal", () => {
     const root = await directory();
     openWatcherJournalDatabase({
       journalRoot: root,
+      hubOraclePolicyId: DEPLOYMENT,
       authenticationKey: TEST_JOURNAL_KEY,
     }).transaction((tx) =>
       tx.put("fault_decisions", {

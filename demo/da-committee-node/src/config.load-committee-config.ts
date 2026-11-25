@@ -47,9 +47,6 @@ export const loadCommitteeConfig = async (
   const deploymentManifestSha256 = createHash("sha256")
     .update(deploymentManifestRaw)
     .digest("hex");
-  const contractDeploymentInfoSha256 = createHash("sha256")
-    .update(contractDeploymentInfoRaw)
-    .digest("hex");
   const {
     consensusProfile,
     network: contractDeploymentNetwork,
@@ -127,8 +124,6 @@ export const loadCommitteeConfig = async (
     cardanoL1Source,
     deploymentFingerprint,
     deploymentManifestSha256,
-    contractDeploymentInfoSha256,
-    deploymentManifestRaw,
     deploymentManifest,
     contractDeploymentInfo,
     availabilityChallenge: manifestAvailabilityChallenge,

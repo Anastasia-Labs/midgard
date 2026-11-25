@@ -57,9 +57,15 @@ export {
  * locking and its WAL.
  */
 
+const POLICY_ID = /^[0-9a-f]{56}$/u;
+
 const opened = new Map<
   string,
-  Readonly<{ keyId: string; database: WatcherJournalDatabase }>
+  Readonly<{
+    keyId: string;
+    hubOraclePolicyId: string;
+    database: WatcherJournalDatabase;
+  }>
 >();
 
 /** Each root's last failed open, while no open has succeeded since. */
@@ -72,15 +78,21 @@ export const watcherJournalUnavailable = (journalRoot: string): string | null =>
 
 /**
  * The process's one connection to the journals under `journalRoot`. The
- * first open creates or checks the schema and verifies every journal in
- * full; later opens share that connection and must present the same key. A
- * failed open throws an integrity error (latched), a configuration error, or
- * `WatcherJournalUnavailableError`, which the next open retries.
+ * first open creates or checks the schema, binds or checks `hubOraclePolicyId`
+ * and verifies every journal in full; later opens share that connection and
+ * must present the same key and deployment. A failed open throws an integrity
+ * error (latched), a configuration error, or `WatcherJournalUnavailableError`,
+ * which the next open retries.
  */
 export const openWatcherJournalDatabase = (input: {
   readonly journalRoot: string;
+  readonly hubOraclePolicyId: string;
   readonly authenticationKey: Uint8Array;
 }): WatcherJournalDatabase => {
+  if (!POLICY_ID.test(input.hubOraclePolicyId))
+    throw new WatcherJournalConfigurationError(
+      "the journal hub-oracle policy id is not 28-byte lowercase hex",
+    );
   if (input.authenticationKey.byteLength !== 32)
     throw new WatcherJournalConfigurationError(
       "the journal authentication key is not 32 bytes",
@@ -92,6 +104,10 @@ export const openWatcherJournalDatabase = (input: {
   const { guard, refuse } = watcherJournalRefusal(root);
   const existing = opened.get(root);
   if (existing !== undefined) {
+    if (existing.hubOraclePolicyId !== input.hubOraclePolicyId)
+      throw new WatcherJournalConfigurationError(
+        "the journals are already open under another deployment",
+      );
     if (existing.keyId !== keyId)
       throw new WatcherJournalConfigurationError(
         "the journals are already open under another key",
@@ -102,6 +118,7 @@ export const openWatcherJournalDatabase = (input: {
   try {
     database = guard(createWatcherJournalDatabase)(
       root,
+      input.hubOraclePolicyId,
       input.authenticationKey,
       refuse,
     );
@@ -130,7 +147,11 @@ export const openWatcherJournalDatabase = (input: {
       database.close();
     },
   });
-  opened.set(root, { keyId, database: shared });
+  opened.set(root, {
+    keyId,
+    hubOraclePolicyId: input.hubOraclePolicyId,
+    database: shared,
+  });
   return shared;
 };
 

@@ -10,7 +10,6 @@ import {
 import {
   closeWatcherJournalDatabase,
   isWatcherJournalConfigurationError,
-  isWatcherJournalIntegrityError,
   openWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
   watcherJournalIntegrityFailure,
@@ -197,25 +196,27 @@ describe("production fault-proof queue journal", () => {
     expect(watcherJournalIntegrityFailure(input.journalRoot)).toBeNull();
   });
 
-  it("refuses a row written for another deployment on restart", async () => {
+  it("refuses on restart a journal bound to another deployment without latching corruption", async () => {
     const { input, journal } = await opened();
     await journal.register(identity, "1000");
     closeWatcherJournalDatabase(input.journalRoot);
+    const other = "12".repeat(28);
     const failure = await openWatcherFaultProofQueueJournal({
       ...input,
-      hubOraclePolicyId: "12".repeat(28),
+      hubOraclePolicyId: other,
     }).catch((error: unknown) => error);
-    expect(isWatcherJournalIntegrityError(failure)).toBe(true);
-    expect(String(failure)).toContain("differs from its job identity");
-    // The refusal is latched: every later use of the journals throws it.
-    expect(watcherJournalIntegrityFailure(input.journalRoot)).toContain(
-      "differs from its job identity",
+    expect(isWatcherJournalConfigurationError(failure)).toBe(true);
+    expect(String(failure)).toContain(
+      `the journals belong to deployment ${hubOraclePolicyId}, not ${other}`,
     );
-    expect(() =>
+    expect(watcherJournalIntegrityFailure(input.journalRoot)).toBeNull();
+    // Reopening under the bound deployment still works.
+    expect(
       openWatcherJournalDatabase({
         journalRoot: input.journalRoot,
+        hubOraclePolicyId,
         authenticationKey,
-      }).head("fault_proof_queue"),
-    ).toThrow("differs from its job identity");
+      }).head("fault_proof_queue").liveRows,
+    ).toBe(1);
   });
 });

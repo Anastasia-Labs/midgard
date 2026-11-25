@@ -82,10 +82,11 @@ const restartOver = async (count: number, marked: boolean, k = K) => {
     category: "doubleSpend" as const,
     headerHash,
   }));
-  recordObjectives(journalRoot, objectives);
+  recordObjectives(journalRoot, objectives, hubOraclePolicyId);
   if (marked) {
     const database = openWatcherJournalDatabase({
       journalRoot,
+      hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     });
     for (const objective of objectives)

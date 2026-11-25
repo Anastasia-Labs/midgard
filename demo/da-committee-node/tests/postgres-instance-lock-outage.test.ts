@@ -285,20 +285,14 @@ describe("committee node startup against a Postgres store that is not ready yet"
     const database = await databases.create();
     const store = await PostgresCommitteeStore.open(database.url);
     cleanups.push(() => store.close());
-    const deployment = (hubOraclePolicyId: string) => ({
-      hubOraclePolicyId,
-      manifestSha256: "aa".repeat(32),
-      contractDeploymentInfoSha256: "bb".repeat(32),
-      manifestRaw: "{}",
-    });
-    await store.initDeployment(deployment("cc".repeat(28)));
+    await store.initDeployment("cc".repeat(28));
     let attempts = 0;
     const reasons: string[] = [];
     await expect(
       retryStartup({
         attempt: async () => {
           attempts += 1;
-          await store.initDeployment(deployment("dd".repeat(28)));
+          await store.initDeployment("dd".repeat(28));
         },
         onFailure: (reason) => reasons.push(reason),
         write: () => undefined,

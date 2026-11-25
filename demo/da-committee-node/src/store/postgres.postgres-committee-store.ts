@@ -218,75 +218,45 @@ export class PostgresCommitteeStore implements CommitteeStore {
     }
   }
 
-  async initDeployment(args: {
-    readonly hubOraclePolicyId: string;
-    readonly manifestSha256: string;
-    readonly contractDeploymentInfoSha256: string;
-    readonly manifestRaw: string;
-  }): Promise<void> {
+  async initDeployment(hubOraclePolicyId: string): Promise<void> {
     return this.withClient(async (client) => {
       const result = await client.query<{
         readonly hub_oracle_policy_id: string;
-      }>("SELECT hub_oracle_policy_id FROM committee_deployment WHERE id = 1");
-      const existing = result.rows[0];
-      if (
-        existing !== undefined &&
-        existing.hub_oracle_policy_id !== args.hubOraclePolicyId
-      ) {
+      }>(
+        `WITH inserted AS (
+           INSERT INTO committee_deployment (id, hub_oracle_policy_id)
+           VALUES (1, $1)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING hub_oracle_policy_id
+         )
+         SELECT hub_oracle_policy_id FROM inserted
+         UNION ALL
+         SELECT hub_oracle_policy_id FROM committee_deployment WHERE id = 1`,
+        [hubOraclePolicyId],
+      );
+      const recorded =
+        result.rows[0]?.hub_oracle_policy_id ??
+        (
+          await client.query<{ readonly hub_oracle_policy_id: string }>(
+            "SELECT hub_oracle_policy_id FROM committee_deployment WHERE id = 1",
+          )
+        ).rows[0]?.hub_oracle_policy_id;
+      if (recorded !== hubOraclePolicyId) {
         throw new Error(
-          `stale_deployment_state_requires_fresh_redeploy: stored hubOraclePolicyId=${existing.hub_oracle_policy_id}, configured hubOraclePolicyId=${args.hubOraclePolicyId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
+          `stale_deployment_state_requires_fresh_redeploy: stored hubOraclePolicyId=${recorded ?? "missing"}, configured hubOraclePolicyId=${hubOraclePolicyId}; refusing to reuse stale committee node state; perform an explicit fresh redeploy/reset before deleting local committee node state.`,
         );
       }
-      await client.query(
-        `INSERT INTO committee_deployment (
-         id,
-         hub_oracle_policy_id,
-         manifest_sha256,
-         contract_deployment_info_sha256,
-         manifest_raw,
-         updated_at
-       )
-       VALUES (1, $1, $2, $3, $4, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         hub_oracle_policy_id = EXCLUDED.hub_oracle_policy_id,
-         manifest_sha256 = EXCLUDED.manifest_sha256,
-         contract_deployment_info_sha256 = EXCLUDED.contract_deployment_info_sha256,
-         manifest_raw = EXCLUDED.manifest_raw,
-         updated_at = NOW()`,
-        [
-          args.hubOraclePolicyId,
-          args.manifestSha256,
-          args.contractDeploymentInfoSha256,
-          args.manifestRaw,
-        ],
-      );
     });
   }
 
   async getDeployment(): Promise<CommitteeDeploymentRecord | undefined> {
     const result = await this.pool.query<{
       readonly hub_oracle_policy_id: string;
-      readonly manifest_sha256: string;
-      readonly contract_deployment_info_sha256: string;
-      readonly manifest_raw: string;
-    }>(
-      `SELECT hub_oracle_policy_id,
-              manifest_sha256,
-              contract_deployment_info_sha256,
-              manifest_raw
-       FROM committee_deployment
-       WHERE id = 1`,
-    );
+    }>("SELECT hub_oracle_policy_id FROM committee_deployment WHERE id = 1");
     const row = result.rows[0];
-    if (row === undefined) {
-      return undefined;
-    }
-    return {
-      hubOraclePolicyId: row.hub_oracle_policy_id,
-      manifestSha256: row.manifest_sha256,
-      contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
-      manifestRaw: row.manifest_raw,
-    };
+    return row === undefined
+      ? undefined
+      : { hubOraclePolicyId: row.hub_oracle_policy_id };
   }
 
   async getL1SourceState(): Promise<L1SourceState | undefined> {

@@ -96,6 +96,7 @@ const createJournal = (
   const launchScope = exactLaunchScope(input.launchScope, input.launchScope);
   const database = openWatcherJournalDatabase({
     journalRoot: input.directory,
+    hubOraclePolicyId,
     authenticationKey: input.authenticationKey,
   });
   // The admitted rows, refreshed from the rows written since the cached
@@ -207,6 +208,7 @@ export const validateWatcherFaultDecisionJournalConfiguration = (
   try {
     openWatcherJournalDatabase({
       journalRoot: input.directory,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       authenticationKey: input.authenticationKey,
     });
   } catch (error) {

@@ -45,22 +45,12 @@ describe("openCommitteeStore", () => {
 
   it("refuses a store stamped with another deployment's hubOraclePolicyId", async () => {
     const store = await openTestCommitteeStore();
-    const deployment = {
-      hubOraclePolicyId: "11".repeat(28),
-      manifestSha256: "22".repeat(32),
-      contractDeploymentInfoSha256: "33".repeat(32),
-      manifestRaw: "{}",
-    };
-    await store.initDeployment(deployment);
-    await expect(store.getDeployment()).resolves.toEqual(deployment);
-    await expect(
-      store.initDeployment({
-        hubOraclePolicyId: "44".repeat(28),
-        manifestSha256: "55".repeat(32),
-        contractDeploymentInfoSha256: "66".repeat(32),
-        manifestRaw: "{}",
-      }),
-    ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
+    const hubOraclePolicyId = "11".repeat(28);
+    await store.initDeployment(hubOraclePolicyId);
+    await expect(store.getDeployment()).resolves.toEqual({ hubOraclePolicyId });
+    await expect(store.initDeployment("44".repeat(28))).rejects.toThrow(
+      /stale_deployment_state_requires_fresh_redeploy/u,
+    );
   });
 
   it("accepts only exact explicit-V1 DA payload records on writes", async () => {

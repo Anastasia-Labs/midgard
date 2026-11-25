@@ -140,17 +140,11 @@ export const readPostgresRetirementData = async (
   if (source.rows[0]) data.chainCursor = decodeRecord(source.rows[0].record);
   const floor = await readPostgresRetirementFloor(client);
   if (floor !== undefined) data.retirementFloor = floor;
-  const d = await client.query<Record<string, unknown>>(
-    "SELECT * FROM committee_deployment WHERE id=1",
+  const d = await client.query<{ readonly hub_oracle_policy_id: string }>(
+    "SELECT hub_oracle_policy_id FROM committee_deployment WHERE id=1",
   );
   if (d.rows[0]) {
-    const r = d.rows[0];
-    data.deployment = {
-      hubOraclePolicyId: r.hub_oracle_policy_id,
-      manifestSha256: r.manifest_sha256,
-      contractDeploymentInfoSha256: r.contract_deployment_info_sha256,
-      manifestRaw: r.manifest_raw,
-    };
+    data.deployment = { hubOraclePolicyId: d.rows[0].hub_oracle_policy_id };
   }
   return normalizeStoreData(data);
 };

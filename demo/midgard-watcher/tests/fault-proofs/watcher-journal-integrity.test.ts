@@ -143,7 +143,7 @@ describe("watcher journal integrity", () => {
   it("holds the watcher live and unready on an objective row whose MAC differs", async () => {
     const journalRoot = await journalDirectory("midgard-journal-integrity");
     const objective = { category: "doubleSpend" as const, headerHash: h28(1) };
-    recordObjectives(journalRoot, [objective]);
+    recordObjectives(journalRoot, [objective], DEPLOYMENT);
     closeWatcherJournalDatabase(journalRoot);
     const key = watcherObjectiveScope(objective.category, objective.headerHash);
     const raw = new DatabaseSync(
@@ -166,10 +166,14 @@ describe("watcher journal integrity", () => {
 
   it("holds the watcher live and unready on an authenticated objective body that does not parse", async () => {
     const journalRoot = await journalDirectory("midgard-journal-integrity");
-    recordRawObjectiveRow(journalRoot, {
-      category: "doubleSpend",
-      headerHash: "not-hex",
-    });
+    recordRawObjectiveRow(
+      journalRoot,
+      {
+        category: "doubleSpend",
+        headerHash: "not-hex",
+      },
+      DEPLOYMENT,
+    );
 
     await expectHeldUnready(journalRoot, "proof objective row is malformed");
   });
@@ -179,6 +183,7 @@ describe("watcher journal integrity", () => {
     recordRawObjectiveRow(
       journalRoot,
       { category: "doubleSpend", headerHash: h28(1) },
+      DEPLOYMENT,
       watcherObjectiveScope("doubleSpend", h28(2)),
     );
 
@@ -194,6 +199,7 @@ describe("watcher journal open failures", () => {
     const journalRoot = await journalDirectory("midgard-journal-schema");
     openWatcherJournalDatabase({
       journalRoot,
+      hubOraclePolicyId: DEPLOYMENT,
       authenticationKey: TEST_JOURNAL_KEY,
     });
     closeWatcherJournalDatabase(journalRoot);

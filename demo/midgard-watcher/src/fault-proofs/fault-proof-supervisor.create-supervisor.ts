@@ -155,6 +155,7 @@ export const createSupervisor = (input: {
   const journals = () =>
     openWatcherJournalDatabase({
       journalRoot: input.journalRoot,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       authenticationKey: input.queueAuthenticationKey,
     });
   const openDeadlines = createWatcherOpenProofDeadlines();

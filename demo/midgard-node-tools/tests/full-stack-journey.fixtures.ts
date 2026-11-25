@@ -280,7 +280,6 @@ export const completedWithdrawal = async (
             ready: true,
             deployment: {
               hubOraclePolicyId,
-              storeMatchesConfigured: true,
             },
             peer: { signerIndex: index, localPeerId: `peer-${index}` },
           },

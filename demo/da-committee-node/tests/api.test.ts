@@ -13,12 +13,6 @@ const readinessSnapshot = (
   ready,
   deployment: {
     hubOraclePolicyId: "dep",
-    storeHubOraclePolicyId: "dep",
-    storeMatchesConfigured: true,
-    manifestSha256: "aa".repeat(32),
-    storeManifestSha256: "aa".repeat(32),
-    contractDeploymentInfoSha256: "bb".repeat(32),
-    storeContractDeploymentInfoSha256: "bb".repeat(32),
   },
   contracts: {
     stateQueuePolicyId: "policy-state",
@@ -87,7 +81,6 @@ describe("committee node API", () => {
         ready: true,
         deployment: {
           hubOraclePolicyId: "dep",
-          storeHubOraclePolicyId: "dep",
         },
         scanner: { status: "ok", scannedHeaders: 1 },
         counts: { discoveredHeaders: 1, verifiedPayloads: 1 },

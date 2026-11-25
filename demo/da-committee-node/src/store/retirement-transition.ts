@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { depth, isFinal } from "@al-ft/midgard-l1-follower";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
@@ -52,23 +50,9 @@ export const assertRetirementBinding = (
     !s ||
     s.status !== "healthy" ||
     d.hubOraclePolicyId !== b.deploymentFingerprint ||
-    d.manifestSha256 !== b.manifestSha256 ||
-    s.authoritySha256 !== b.sourceAuthoritySha256 ||
-    createHash("sha256").update(d.manifestRaw).digest("hex") !==
-      b.manifestSha256
+    s.authoritySha256 !== b.sourceAuthoritySha256
   )
     throw new Error("Retirement deployment/source binding is unavailable");
-  const manifest = JSON.parse(d.manifestRaw) as {
-    da?: {
-      committeeSignersHash?: unknown;
-      transportProfile?: { retentionDays?: unknown };
-    };
-  };
-  if (
-    manifest.da?.committeeSignersHash !== b.committeeSignersHash ||
-    manifest.da.transportProfile?.retentionDays !== b.retentionDays
-  )
-    throw new Error("Retirement differs from the signed manifest");
   if (
     data.retirementFloor &&
     retirementDigest(data.retirementFloor.binding) !== retirementDigest(b)

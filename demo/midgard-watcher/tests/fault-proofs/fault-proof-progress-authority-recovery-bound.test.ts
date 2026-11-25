@@ -64,6 +64,7 @@ const restartOver = async (count: number, state: Seeded) => {
   );
   const database = openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId,
     authenticationKey: TEST_JOURNAL_KEY,
   });
   database.transaction((tx) => {
@@ -113,6 +114,7 @@ const restartOver = async (count: number, state: Seeded) => {
     database: () =>
       openWatcherJournalDatabase({
         journalRoot,
+        hubOraclePolicyId,
         authenticationKey: TEST_JOURNAL_KEY,
       }),
     admit: () =>

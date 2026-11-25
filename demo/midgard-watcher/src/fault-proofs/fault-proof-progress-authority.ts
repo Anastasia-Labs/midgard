@@ -118,6 +118,7 @@ const createProgressAuthority = (
   const database = () =>
     openWatcherJournalDatabase({
       journalRoot: input.journalRoot,
+      hubOraclePolicyId: input.hubOraclePolicyId,
       authenticationKey: input.authenticationKey,
     });
   const cleanup = createWatcherProofObjectiveCleanup({

@@ -17,7 +17,6 @@ export const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
     hubOraclePolicyId,
-    storeMatchesConfigured: true,
   },
   peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
 });

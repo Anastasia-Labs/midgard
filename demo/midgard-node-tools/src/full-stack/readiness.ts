@@ -13,7 +13,6 @@ export function committeeIsReady(
         ready?: boolean;
         deployment?: {
           hubOraclePolicyId?: string;
-          storeMatchesConfigured?: boolean;
         };
         peer?: { signerIndex?: number; localPeerId?: string };
       }
@@ -21,7 +20,6 @@ export function committeeIsReady(
   return (
     committee?.ready === true &&
     committee.deployment?.hubOraclePolicyId === expected.hubOraclePolicyId &&
-    committee.deployment.storeMatchesConfigured === true &&
     committee.peer?.signerIndex === signerIndex &&
     committee.peer.localPeerId === expected.peerIds[signerIndex]
   );

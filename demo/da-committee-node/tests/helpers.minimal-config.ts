@@ -108,8 +108,6 @@ export const minimalConfig = ({
   contractDeploymentInfoPath: deploymentInfoPath,
   deploymentFingerprint: "99".repeat(28),
   deploymentManifestSha256: "a".repeat(64),
-  contractDeploymentInfoSha256: "b".repeat(64),
-  deploymentManifestRaw: "{}",
   deploymentManifest: {},
   contractDeploymentInfo: {},
   availabilityChallenge: {

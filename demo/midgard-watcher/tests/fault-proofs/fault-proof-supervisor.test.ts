@@ -107,11 +107,15 @@ describe("production fault-proof supervisor", () => {
 
   it("recovers recorded objectives in installed category and header order", async () => {
     const root = await directory();
-    recordObjectives(root, [
-      { category: "networkId", headerHash: h28(0xbb) },
-      { category: "doubleSpend", headerHash: h28(0xcc) },
-      { category: "doubleSpend", headerHash: h28(0xaa) },
-    ]);
+    recordObjectives(
+      root,
+      [
+        { category: "networkId", headerHash: h28(0xbb) },
+        { category: "doubleSpend", headerHash: h28(0xcc) },
+        { category: "doubleSpend", headerHash: h28(0xaa) },
+      ],
+      HUB_ORACLE_POLICY_ID,
+    );
     const observed: string[] = [];
     const supervisor = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: root,
@@ -139,10 +143,14 @@ describe("production fault-proof supervisor", () => {
 
   it("rejects unknown and malformed objectives", async () => {
     const unknownRoot = await directory();
-    recordRawObjectiveRow(unknownRoot, {
-      category: "forgedFamily",
-      headerHash: h28(0xaa),
-    });
+    recordRawObjectiveRow(
+      unknownRoot,
+      {
+        category: "forgedFamily",
+        headerHash: h28(0xaa),
+      },
+      HUB_ORACLE_POLICY_ID,
+    );
     const unknown = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: unknownRoot,
       hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
@@ -153,10 +161,14 @@ describe("production fault-proof supervisor", () => {
     );
 
     const malformedRoot = await directory();
-    recordRawObjectiveRow(malformedRoot, {
-      category: "doubleSpend",
-      headerHash: "not-hex",
-    });
+    recordRawObjectiveRow(
+      malformedRoot,
+      {
+        category: "doubleSpend",
+        headerHash: "not-hex",
+      },
+      HUB_ORACLE_POLICY_ID,
+    );
     const malformed = unsafeCreateWatcherFaultProofSupervisorForTest({
       journalRoot: malformedRoot,
       hubOraclePolicyId: HUB_ORACLE_POLICY_ID,

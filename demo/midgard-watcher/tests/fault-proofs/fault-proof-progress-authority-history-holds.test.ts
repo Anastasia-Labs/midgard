@@ -87,9 +87,11 @@ afterEach(async () => {
 const journalOver = async (r: Removed) => {
   const journalRoot = await journalDirectory("watcher-history-holds");
   journalState.headers = [r.header];
-  recordObjectives(journalRoot, [
-    { category: "doubleSpend", headerHash: r.header },
-  ]);
+  recordObjectives(
+    journalRoot,
+    [{ category: "doubleSpend", headerHash: r.header }],
+    hubOraclePolicyId,
+  );
   return journalRoot;
 };
 
@@ -163,6 +165,7 @@ const objectiveRows = (journalRoot: string) =>
   listWatcherProofObjectives(
     openWatcherJournalDatabase({
       journalRoot,
+      hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     }),
     ["doubleSpend"],

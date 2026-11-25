@@ -38,6 +38,7 @@ type RowFilter = WatcherJournalRowFilter & Readonly<{ afterRevision?: number }>;
  * refusal latch. */
 export const createWatcherJournalDatabase = (
   journalRoot: string,
+  hubOraclePolicyId: string,
   authenticationKey: Uint8Array,
   refuse: WatcherJournalRefuse,
 ): Omit<WatcherJournalDatabase, "refuse"> => {
@@ -301,7 +302,12 @@ export const createWatcherJournalDatabase = (
   };
 
   try {
-    ensureWatcherJournalSchema(database, prepare, inTransaction);
+    ensureWatcherJournalSchema(
+      database,
+      prepare,
+      inTransaction,
+      hubOraclePolicyId,
+    );
     if (watcherJournalsWrittenUnderAnotherKey(prepare, codec))
       throw new WatcherJournalConfigurationError(
         "the journals were written under another authentication key",

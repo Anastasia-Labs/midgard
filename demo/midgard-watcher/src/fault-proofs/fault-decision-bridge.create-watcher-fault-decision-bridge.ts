@@ -68,6 +68,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   const unprovenFaultMerges = watcherUnprovenFaultMerges(() =>
     openWatcherJournalDatabase({
       journalRoot: input.journalDirectory,
+      hubOraclePolicyId: input.application.hubOraclePolicyId,
       authenticationKey: input.authenticationKey,
     }),
   );

@@ -262,7 +262,6 @@ const committeeReady = (signerIndex: number) => ({
   ready: true,
   deployment: {
     hubOraclePolicyId: "a".repeat(56),
-    storeMatchesConfigured: true,
   },
   peer: { signerIndex, localPeerId: `peer-${signerIndex}` },
 });

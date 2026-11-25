@@ -84,10 +84,6 @@ describe("committee readiness", () => {
           hubOraclePolicyId: "b".repeat(56),
         },
       },
-      {
-        ...foreign,
-        deployment: { ...foreign.deployment, storeMatchesConfigured: false },
-      },
       { ...foreign, peer: { signerIndex: 0, localPeerId: "peer-1" } },
       { ...foreign, peer: { signerIndex: 1, localPeerId: "peer-9" } },
     ])

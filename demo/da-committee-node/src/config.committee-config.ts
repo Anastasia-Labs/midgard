@@ -63,8 +63,6 @@ export type CommitteeConfig = {
   readonly contractDeploymentInfoPath: string;
   readonly deploymentFingerprint: string;
   readonly deploymentManifestSha256: string;
-  readonly contractDeploymentInfoSha256: string;
-  readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
   readonly availabilityChallenge: DeploymentManifestAvailabilityChallenge;

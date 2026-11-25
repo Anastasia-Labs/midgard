@@ -21,6 +21,7 @@ import {
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   decision,
+  DEPLOYMENT,
   headerFixture,
   observation,
 } from "./fault-decision-bridge.observation.js";
@@ -47,6 +48,7 @@ const merges = (journalRoot: string) =>
   watcherUnprovenFaultMerges(() =>
     openWatcherJournalDatabase({
       journalRoot,
+      hubOraclePolicyId: DEPLOYMENT,
       authenticationKey: TEST_JOURNAL_KEY,
     }),
   );

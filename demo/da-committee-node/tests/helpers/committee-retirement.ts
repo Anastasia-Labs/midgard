@@ -85,12 +85,7 @@ export const retentionFixture = async (
     maximumRecords: 512,
     maximumEncodedBytes: 8 * 1024 * 1024,
   };
-  await store.initDeployment({
-    hubOraclePolicyId: deploymentFingerprint,
-    manifestRaw,
-    manifestSha256: binding.manifestSha256,
-    contractDeploymentInfoSha256: "00".repeat(32),
-  });
+  await store.initDeployment(deploymentFingerprint);
   const state: L1SourceState = {
     schemaVersion: 1,
     sourceMode: "local_node",

@@ -24,14 +24,19 @@ import {
   journalDirectory,
   removeJournalDirectories,
   TEST_JOURNAL_KEY,
+  TEST_JOURNAL_POLICY_ID,
 } from "../support/watcher-journal-fixture.js";
 
 afterEach(removeJournalDirectories);
 
 const QUEUE = "watcher_fault_proof_queue";
-const open = (journalRoot: string): WatcherJournalDatabase =>
+const open = (
+  journalRoot: string,
+  hubOraclePolicyId: string = TEST_JOURNAL_POLICY_ID,
+): WatcherJournalDatabase =>
   openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId,
     authenticationKey: TEST_JOURNAL_KEY,
   });
 
@@ -121,6 +126,7 @@ describe("watcher journal database integrity at startup", () => {
     const failure = thrown(() =>
       openWatcherJournalDatabase({
         journalRoot: root,
+        hubOraclePolicyId: TEST_JOURNAL_POLICY_ID,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0x5a),
       }),
     );
@@ -133,6 +139,24 @@ describe("watcher journal database integrity at startup", () => {
     expect(open(root).head("fault_proof_queue").liveRows).toBe(3);
   });
 
+  it("refuses another deployment's hub-oracle policy id at open, even when empty, without latching corruption", async () => {
+    const root = await journalDirectory("midgard-journal-deployment");
+    open(root);
+    closeWatcherJournalDatabase(root);
+    const other = "22".repeat(28);
+    const failure = thrown(() => open(root, other));
+    expect(isWatcherJournalConfigurationError(failure)).toBe(true);
+    expect(String(failure)).toContain(
+      `the journals belong to deployment ${TEST_JOURNAL_POLICY_ID}, not ${other}`,
+    );
+    expect(watcherJournalIntegrityFailure(root)).toBeNull();
+    // The original deployment still opens them; a second deployment cannot share the open handle.
+    open(root);
+    const second = thrown(() => open(root, other));
+    expect(isWatcherJournalConfigurationError(second)).toBe(true);
+    expect(String(second)).toContain("already open under another deployment");
+  });
+
   it("refuses a malformed key and a second key for an open root as configuration", async () => {
     const root = await seeded();
     expect(
@@ -140,6 +164,7 @@ describe("watcher journal database integrity at startup", () => {
         thrown(() =>
           openWatcherJournalDatabase({
             journalRoot: root,
+            hubOraclePolicyId: TEST_JOURNAL_POLICY_ID,
             authenticationKey: new Uint8Array(31),
           }),
         ),
@@ -149,6 +174,7 @@ describe("watcher journal database integrity at startup", () => {
     const second = thrown(() =>
       openWatcherJournalDatabase({
         journalRoot: root,
+        hubOraclePolicyId: TEST_JOURNAL_POLICY_ID,
         authenticationKey: Uint8Array.from({ length: 32 }, () => 0x5a),
       }),
     );
@@ -163,6 +189,7 @@ describe("watcher journal database integrity at startup", () => {
           thrown(() =>
             openWatcherJournalDatabase({
               journalRoot,
+              hubOraclePolicyId: TEST_JOURNAL_POLICY_ID,
               authenticationKey: TEST_JOURNAL_KEY,
             }),
           ),

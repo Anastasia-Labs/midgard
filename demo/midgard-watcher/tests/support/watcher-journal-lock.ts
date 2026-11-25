@@ -12,9 +12,13 @@ import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
  * process would: every write the watcher begins waits out its busy timeout
  * and fails with SQLITE_BUSY. Returns the release, which is idempotent.
  */
-export const lockWatcherJournals = (journalRoot: string): (() => void) => {
+export const lockWatcherJournals = (
+  journalRoot: string,
+  hubOraclePolicyId: string = deploymentIdentity.hubOraclePolicyId,
+): (() => void) => {
   const { path } = openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId,
     authenticationKey: TEST_JOURNAL_KEY,
   });
   const holder = new DatabaseSync(path);

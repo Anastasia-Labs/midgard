@@ -67,6 +67,7 @@ const setup = async () => {
     listWatcherProofObjectives(
       openWatcherJournalDatabase({
         journalRoot: fixture.journalRoot,
+        hubOraclePolicyId,
         authenticationKey: TEST_JOURNAL_KEY,
       }),
       ["doubleSpend"],

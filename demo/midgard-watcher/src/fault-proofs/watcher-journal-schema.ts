@@ -75,8 +75,9 @@ ${rowTable(
   WATCHER_JOURNAL_TABLES.unproven_fault_merges,
   "one row per detected fault whose header merged unproven, at most 1024; the oldest goes first",
 )}
--- class: A; retention: one row, forever: the checksum of the schema text that created the file
+-- class: A; retention: one row, forever: the checksum of the schema text and deployment identity that created the file
 CREATE TABLE watcher_journal_schema (
-  checksum TEXT NOT NULL
+  checksum TEXT NOT NULL,
+  hub_oracle_policy_id TEXT NOT NULL
 ) STRICT;
 `;

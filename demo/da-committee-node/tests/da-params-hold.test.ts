@@ -174,12 +174,7 @@ describe("the on-chain DA params, checked every tick", () => {
 
   it("refuses stale deployment state at startup, before any read", async () => {
     const { service, store, chain } = await committee();
-    await store.initDeployment({
-      hubOraclePolicyId: "44".repeat(28),
-      manifestSha256: "55".repeat(32),
-      contractDeploymentInfoSha256: "66".repeat(32),
-      manifestRaw: "{}",
-    });
+    await store.initDeployment("44".repeat(28));
     await expect(service.initialize()).rejects.toThrow(
       /stale_deployment_state_requires_fresh_redeploy/u,
     );

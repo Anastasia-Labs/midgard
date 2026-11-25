@@ -196,9 +196,6 @@ export type L1SourceState = {
 
 export type CommitteeDeploymentRecord = {
   readonly hubOraclePolicyId: string;
-  readonly manifestSha256: string;
-  readonly contractDeploymentInfoSha256: string;
-  readonly manifestRaw: string;
 };
 
 /**
@@ -261,12 +258,7 @@ export interface CommitteeStore {
     expectedPointId?: string,
   ): Promise<PromiseCapacityEvidence>;
   close?(): Promise<void>;
-  initDeployment(args: {
-    readonly hubOraclePolicyId: string;
-    readonly manifestSha256: string;
-    readonly contractDeploymentInfoSha256: string;
-    readonly manifestRaw: string;
-  }): Promise<void>;
+  initDeployment(hubOraclePolicyId: string): Promise<void>;
   getDeployment(): Promise<CommitteeDeploymentRecord | undefined>;
   getL1SourceState(): Promise<L1SourceState | undefined>;
   saveL1SourceState(state: L1SourceState): Promise<void>;

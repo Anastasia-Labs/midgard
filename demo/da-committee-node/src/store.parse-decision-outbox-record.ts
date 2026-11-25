@@ -42,32 +42,12 @@ export const parseCommitteeDeploymentRecord = (
     throw new Error("committee node deployment record must be an object");
   }
   const record = value as Record<string, unknown>;
-  const expected = [
-    "hubOraclePolicyId",
-    "manifestSha256",
-    "contractDeploymentInfoSha256",
-    "manifestRaw",
-  ] as const;
   if (
-    Object.keys(record).length !== expected.length ||
-    expected.some((key) => !Object.prototype.hasOwnProperty.call(record, key))
+    Object.keys(record).length !== 1 ||
+    !Object.prototype.hasOwnProperty.call(record, "hubOraclePolicyId")
   ) {
     throw new Error(
-      "committee node deployment record must contain exactly hubOraclePolicyId, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
-    );
-  }
-  const digest = (field: "manifestSha256" | "contractDeploymentInfoSha256") => {
-    const entry = record[field];
-    if (typeof entry !== "string" || !/^[0-9a-f]{64}$/u.test(entry)) {
-      throw new Error(
-        `committee node deployment record ${field} must be lowercase SHA-256 hex`,
-      );
-    }
-    return entry;
-  };
-  if (typeof record.manifestRaw !== "string") {
-    throw new Error(
-      "committee node deployment record manifestRaw must be a string",
+      "committee node deployment record must contain only hubOraclePolicyId",
     );
   }
   if (
@@ -78,12 +58,7 @@ export const parseCommitteeDeploymentRecord = (
       "committee node deployment record hubOraclePolicyId must be 28-byte lowercase hex",
     );
   }
-  return {
-    hubOraclePolicyId: record.hubOraclePolicyId,
-    manifestSha256: digest("manifestSha256"),
-    contractDeploymentInfoSha256: digest("contractDeploymentInfoSha256"),
-    manifestRaw: record.manifestRaw,
-  };
+  return { hubOraclePolicyId: record.hubOraclePolicyId };
 };
 
 export const decisionEffectId = (args: {

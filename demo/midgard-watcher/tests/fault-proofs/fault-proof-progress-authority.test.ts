@@ -91,9 +91,11 @@ describe("supervisor progress authority", () => {
   it("drives nothing an earlier process left: work starts only from a live fault", async () => {
     const test = await setup();
     // An earlier process's open objective.
-    recordObjectives(test.fixture.journalRoot, [
-      { category: "doubleSpend", headerHash: test.fixture.old.headerHash },
-    ]);
+    recordObjectives(
+      test.fixture.journalRoot,
+      [{ category: "doubleSpend", headerHash: test.fixture.old.headerHash }],
+      deploymentIdentity.hubOraclePolicyId,
+    );
     for (const revision of [1, 2, 3])
       expect(
         await test.authority.admit({

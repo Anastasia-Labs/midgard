@@ -36,9 +36,6 @@ export const COMMITTEE_STORE_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS committee_deployment (
   id integer PRIMARY KEY CHECK (id = 1),
   hub_oracle_policy_id text NOT NULL CHECK (hub_oracle_policy_id ~ '^[0-9a-f]{56}$'),
-  manifest_sha256 text NOT NULL CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
-  contract_deployment_info_sha256 text NOT NULL CHECK (contract_deployment_info_sha256 ~ '^[0-9a-f]{64}$'),
-  manifest_raw text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW()
 );

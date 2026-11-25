@@ -78,6 +78,7 @@ describe("watcher journal persist", () => {
     roots.push(root);
     let database = openWatcherJournalDatabase({
       journalRoot: root,
+      hubOraclePolicyId: "11".repeat(28),
       authenticationKey: KEY,
     });
     const preloadStarted = performance.now();
@@ -102,6 +103,7 @@ describe("watcher journal persist", () => {
     const verifyStarted = performance.now();
     database = openWatcherJournalDatabase({
       journalRoot: root,
+      hubOraclePolicyId: "11".repeat(28),
       authenticationKey: KEY,
     });
     const startupVerifyMs = performance.now() - verifyStarted;

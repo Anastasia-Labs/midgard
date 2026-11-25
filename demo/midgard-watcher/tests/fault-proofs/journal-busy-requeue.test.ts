@@ -118,9 +118,11 @@ const setup = async () => {
   });
   // Open with neither a queue row nor a decision of its own: the progress
   // authority's startup forgets it, a write.
-  recordObjectives(fixture.journalRoot, [
-    { category: "doubleSpend", headerHash: "ab".repeat(28) },
-  ]);
+  recordObjectives(
+    fixture.journalRoot,
+    [{ category: "doubleSpend", headerHash: "ab".repeat(28) }],
+    deploymentIdentity.hubOraclePolicyId,
+  );
   // Every run lands our removal, which the chain shows beyond k.
   const landed = await landedRemoval(fixture);
   const verifyCompleted = vi.fn(verifyCompletedFraudProofWorkflow);
@@ -191,6 +193,7 @@ const setup = async () => {
   const states = (table: "fault_proof_queue" | "fault_proof_objectives") =>
     openWatcherJournalDatabase({
       journalRoot: fixture.journalRoot,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     })
       .rows(table)
@@ -265,6 +268,7 @@ const armBusy = (
       if (take())
         openWatcherJournalDatabase({
           journalRoot: test.fixture.journalRoot,
+          hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
           authenticationKey: TEST_JOURNAL_KEY,
         }).transaction(() => undefined);
     });

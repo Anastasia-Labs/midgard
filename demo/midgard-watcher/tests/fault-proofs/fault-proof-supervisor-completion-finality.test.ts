@@ -96,6 +96,7 @@ const complete = async (confirmationDepth: number, rounds: number) => {
     listWatcherProofObjectives(
       openWatcherJournalDatabase({
         journalRoot: root,
+        hubOraclePolicyId: "dd".repeat(28),
         authenticationKey: TEST_JOURNAL_KEY,
       }),
       ["doubleSpend"],

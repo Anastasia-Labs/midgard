@@ -12,6 +12,9 @@ import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-sc
 /** The key the test supervisor authenticates its journals with by default. */
 export const TEST_JOURNAL_KEY = Uint8Array.from({ length: 32 }, () => 0xa5);
 
+/** Default hub-oracle policy id for journal tests that do not choose one. */
+export const TEST_JOURNAL_POLICY_ID = "11".repeat(28);
+
 const roots: string[] = [];
 
 /**
@@ -48,14 +51,17 @@ export const removeJournalDirectories = async (): Promise<void> => {
 export const recordObjectives = (
   journalRoot: string,
   objectives: readonly WatcherProofObjective[],
+  hubOraclePolicyId: string,
   authenticationKey: Uint8Array = TEST_JOURNAL_KEY,
 ): void => {
-  openWatcherJournalDatabase({ journalRoot, authenticationKey }).transaction(
-    (tx) => {
-      for (const objective of objectives)
-        openWatcherProofObjective(tx, objective);
-    },
-  );
+  openWatcherJournalDatabase({
+    journalRoot,
+    hubOraclePolicyId,
+    authenticationKey,
+  }).transaction((tx) => {
+    for (const objective of objectives)
+      openWatcherProofObjective(tx, objective);
+  });
 };
 
 /** Writes an authenticated objective row with an arbitrary body, keyed by
@@ -64,11 +70,13 @@ export const recordObjectives = (
 export const recordRawObjectiveRow = (
   journalRoot: string,
   body: Readonly<{ category: string; headerHash: string }>,
+  hubOraclePolicyId: string,
   key?: string,
 ): void => {
   const scope = watcherObjectiveScope(body.category, body.headerHash);
   openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId,
     authenticationKey: TEST_JOURNAL_KEY,
   }).transaction((tx) =>
     tx.put("fault_proof_objectives", {

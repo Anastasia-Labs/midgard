@@ -106,6 +106,8 @@ export class CommitteeService {
    * process: nothing is written or decided until an operator looks.
    */
   private storeIntegrity: string | undefined;
+  /** True once `initialize()` has bound the store to `hubOraclePolicyId`. */
+  private initialized = false;
   /** A stored L1 source state for another network; sticky like the above. */
   private l1SourceMismatch: string | undefined;
   /** When the follower's cursor last moved, seen by `latestL1ProgressAtMs`. */
@@ -175,13 +177,8 @@ export class CommitteeService {
   }
 
   async initialize(): Promise<void> {
-    await this.deps.store.initDeployment({
-      hubOraclePolicyId: this.deps.config.hubOraclePolicyId,
-      manifestSha256: this.deps.config.deploymentManifestSha256,
-      contractDeploymentInfoSha256:
-        this.deps.config.contractDeploymentInfoSha256,
-      manifestRaw: this.deps.config.deploymentManifestRaw,
-    });
+    await this.deps.store.initDeployment(this.deps.config.hubOraclePolicyId);
+    this.initialized = true;
     // The on-chain DA params are checked on every tick against the
     // follower's facts, never here: a startup read could only fail closed.
     const l1State = await this.deps.store.getL1SourceState();
@@ -242,7 +239,6 @@ export class CommitteeService {
       readonly retention?: CommitteeRetentionReadinessSnapshot;
     } = {},
   ): Promise<CommitteeReadinessSnapshot> {
-    const deployment = await this.deps.store.getDeployment();
     const l1SourceState = await this.deps.store.getL1SourceState();
     // Indexed counters and the open-header slice; never a full table scan.
     const counts = await this.deps.store.readinessCounts();
@@ -274,31 +270,8 @@ export class CommitteeService {
         tick?.result?.errors ?? (tick?.error === undefined ? [] : [tick.error]),
     };
     const reasons: string[] = [];
-    if (deployment === undefined) {
+    if (!this.initialized) {
       reasons.push("store deployment is not initialized");
-    } else if (
-      deployment.hubOraclePolicyId !== this.deps.config.hubOraclePolicyId
-    ) {
-      reasons.push(
-        `store hubOraclePolicyId ${deployment.hubOraclePolicyId} does not match configured ${this.deps.config.hubOraclePolicyId}`,
-      );
-    }
-    if (
-      deployment?.manifestSha256 !== undefined &&
-      deployment.manifestSha256 !== this.deps.config.deploymentManifestSha256
-    ) {
-      reasons.push(
-        "store deployment manifest hash does not match configured manifest",
-      );
-    }
-    if (
-      deployment?.contractDeploymentInfoSha256 !== undefined &&
-      deployment.contractDeploymentInfoSha256 !==
-        this.deps.config.contractDeploymentInfoSha256
-    ) {
-      reasons.push(
-        "store contract deployment info hash does not match configured deployment info",
-      );
     }
     if (scanner.status === "not_started") {
       reasons.push("state queue scanner has not completed a tick");
@@ -390,23 +363,6 @@ export class CommitteeService {
       },
       deployment: {
         hubOraclePolicyId: this.deps.config.hubOraclePolicyId,
-        ...(deployment === undefined
-          ? {}
-          : { storeHubOraclePolicyId: deployment.hubOraclePolicyId }),
-        storeMatchesConfigured:
-          deployment?.hubOraclePolicyId === this.deps.config.hubOraclePolicyId,
-        manifestSha256: this.deps.config.deploymentManifestSha256,
-        ...(deployment?.manifestSha256 === undefined
-          ? {}
-          : { storeManifestSha256: deployment.manifestSha256 }),
-        contractDeploymentInfoSha256:
-          this.deps.config.contractDeploymentInfoSha256,
-        ...(deployment?.contractDeploymentInfoSha256 === undefined
-          ? {}
-          : {
-              storeContractDeploymentInfoSha256:
-                deployment.contractDeploymentInfoSha256,
-            }),
       },
       contracts: {
         stateQueuePolicyId: this.deps.config.stateQueuePolicyId,

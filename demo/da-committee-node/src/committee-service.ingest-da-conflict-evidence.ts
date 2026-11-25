@@ -198,12 +198,6 @@ export type CommitteeReadinessSnapshot = {
   };
   readonly deployment: {
     readonly hubOraclePolicyId: string;
-    readonly storeHubOraclePolicyId?: string;
-    readonly storeMatchesConfigured: boolean;
-    readonly manifestSha256: string;
-    readonly storeManifestSha256?: string;
-    readonly contractDeploymentInfoSha256: string;
-    readonly storeContractDeploymentInfoSha256?: string;
   };
   readonly contracts: {
     readonly stateQueuePolicyId: string;

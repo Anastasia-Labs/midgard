@@ -343,6 +343,7 @@ const objectiveRows = (journalRoot: string): readonly string[] =>
   listWatcherProofObjectives(
     openWatcherJournalDatabase({
       journalRoot,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     }),
     ["doubleSpend"],
@@ -355,6 +356,7 @@ const journalStates = (
 ): readonly string[] =>
   openWatcherJournalDatabase({
     journalRoot,
+    hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
     authenticationKey: TEST_JOURNAL_KEY,
   })
     .rows(journal)
@@ -545,6 +547,7 @@ describe("proof objective progress with journals", () => {
     const rows = listWatcherProofObjectives(
       openWatcherJournalDatabase({
         journalRoot: root,
+        hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
         authenticationKey: TEST_JOURNAL_KEY,
       }),
       ["doubleSpend"],
@@ -1116,6 +1119,7 @@ describe("proof objective progress with journals", () => {
     // published afterwards by another handle.
     openWatcherJournalDatabase({
       journalRoot: test.fixture.journalRoot,
+      hubOraclePolicyId: deploymentIdentity.hubOraclePolicyId,
       authenticationKey: TEST_JOURNAL_KEY,
     }).transaction((tx) => {
       for (const row of tx.rows("fault_decisions"))
