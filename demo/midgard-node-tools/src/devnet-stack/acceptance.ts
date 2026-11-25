@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 
 import {
   ACCEPTANCE_TRIGGER_POLL_MS,
+  ACCEPTANCE_TRIGGER_TIMEOUT_MS,
   AcceptanceJourney,
   requireInjectedDrills,
 } from "./acceptance-journey.js";
@@ -78,7 +79,7 @@ export const runFinalAcceptance = async (
     gapMs: 120_000,
     recoveryMs: 900_000,
     stableMs: 300_000,
-    triggerTimeoutMs: 1_200_000,
+    triggerTimeoutMs: ACCEPTANCE_TRIGGER_TIMEOUT_MS,
     pollMs: ACCEPTANCE_TRIGGER_POLL_MS,
   };
   const observations = join(

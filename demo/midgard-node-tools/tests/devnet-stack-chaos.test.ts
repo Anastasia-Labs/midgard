@@ -9,8 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+import { settlementAttemptDetail } from "midgard-node/services/settlement.attempt-detail";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ACCEPTANCE_TRIGGER_TIMEOUT_MS } from "../src/devnet-stack/acceptance-journey.js";
+import { DEPLOYMENT_PROFILE } from "../src/devnet-stack/build.js";
 import {
   type ChaosDeps,
   type Drill,
@@ -207,14 +211,27 @@ describe("drillCatalogue", () => {
         settlement("waiting", "settlement eligibility wait until x"),
       ),
     ).toBe(false);
-    expect(
-      TRIGGERS.settlement.holds(
-        settlement(
-          "waiting",
-          "settlement transaction abababababababababababababababababababababababababababababababab journaled; S6 sends its exact bytes until it lands",
-        ),
-      ),
-    ).toBe(true);
+    // The node's own wording of an unconfirmed settlement transaction.
+    const txHash = "ab".repeat(32);
+    for (const detail of [
+      settlementAttemptDetail.journaled(txHash),
+      settlementAttemptDetail.landed(txHash, 1),
+      settlementAttemptDetail.landed(txHash, 12),
+    ])
+      expect([
+        detail,
+        TRIGGERS.settlement.holds(settlement("waiting", detail)),
+      ]).toEqual([detail, true]);
+  });
+
+  it("lets the acceptance wait past the earliest a withdrawal's settlement can start", () => {
+    // A withdrawal is included no sooner than its event wait, and its block
+    // merges no sooner than block maturity after that; settlement follows.
+    const { event_wait_ms, block_maturity_ms } =
+      DEPLOYMENT_PROFILES[DEPLOYMENT_PROFILE].timing;
+    expect(ACCEPTANCE_TRIGGER_TIMEOUT_MS).toBeGreaterThan(
+      event_wait_ms + block_maturity_ms,
+    );
   });
 });
 

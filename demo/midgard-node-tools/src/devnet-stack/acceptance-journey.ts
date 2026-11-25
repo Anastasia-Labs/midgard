@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
+
 import { assertAcceptanceActive } from "./acceptance-process.js";
+import { DEPLOYMENT_PROFILE } from "./build.js";
 import {
   type ChaosDeps,
   type Drill,
@@ -27,6 +30,17 @@ export const ACCEPTANCE_PHASE_DRILLS = {
  * as it is stored), so the reads come this close together.
  */
 export const ACCEPTANCE_TRIGGER_POLL_MS = 10;
+
+const { event_wait_ms, block_maturity_ms } =
+  DEPLOYMENT_PROFILES[DEPLOYMENT_PROFILE].timing;
+/**
+ * How long an armed phase drill waits for its moment. The settlement drill is
+ * armed before the withdrawals are submitted, and the first settlement starts
+ * no sooner than the event wait and block maturity after them; the rest is
+ * for the orders to land and for the commit and the merge.
+ */
+export const ACCEPTANCE_TRIGGER_TIMEOUT_MS =
+  event_wait_ms + block_maturity_ms + 25 * 60_000;
 
 export type AcceptanceObservation = {
   readonly nonce: string;

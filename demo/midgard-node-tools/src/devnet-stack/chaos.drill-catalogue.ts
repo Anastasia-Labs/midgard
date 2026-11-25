@@ -39,11 +39,11 @@ export const section = (body: Json, key: string) => (body[key] ?? {}) as Json;
 
 /**
  * Settlement details the node reports while a journaled settlement
- * transaction is in flight (S6 sends it) and not yet confirmed
- * (settlement.reconcile-attempt.ts).
+ * transaction is not yet confirmed: S6 is sending it, or a block holds it
+ * short of confirmation depth (the node's settlement.attempt-detail.ts).
  */
 const SETTLEMENT_IN_FLIGHT =
-  /^(settlement transaction [0-9a-f]{64} journaled; S6 sends its exact bytes until it lands|waiting for authenticated confirmation depth|waiting for confirmation block identity)$/u;
+  /^settlement transaction [0-9a-f]{64} (journaled; S6 sends its exact bytes until it lands|landed at depth \d+; waiting for confirmation depth)$/u;
 
 export const TRIGGERS = {
   admission: {

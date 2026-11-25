@@ -13,6 +13,7 @@ import * as Journal from "../database/settlement.js";
 import { providerViewPoint } from "../l1-provider-view.js";
 import { type NodeConfigDep } from "./config.js";
 import type { UnwrittenHold } from "./intent-journal.holds.js";
+import { settlementAttemptDetail } from "./settlement.attempt-detail.js";
 import { settlementCall, settlementCheck } from "./settlement-call.js";
 import type { SettlementReconcileStuck } from "./settlement-retry.js";
 
@@ -188,7 +189,7 @@ export const reconcileAttempt = (
       () => inspectSettlementAttempt(attempt),
     );
     if (status?.kind === "landed")
-      return `settlement transaction ${attempt.tx_hash} landed at depth ${status.depth}; waiting for confirmation depth`;
+      return settlementAttemptDetail.landed(attempt.tx_hash, status.depth);
     const before = yield* settlementCall("L1 view sync", () =>
       Effect.runPromise(providerViewPoint(lucid)),
     );
@@ -242,5 +243,5 @@ export const reconcileAttempt = (
     // status; a dead body waits for the expiry decision above.
     if (status !== null && isDeadStatus(status))
       return `settlement transaction ${attempt.tx_hash} is dead (${status.kind}); not resubmitted`;
-    return `settlement transaction ${attempt.tx_hash} journaled; S6 sends its exact bytes until it lands`;
+    return settlementAttemptDetail.journaled(attempt.tx_hash);
   });
