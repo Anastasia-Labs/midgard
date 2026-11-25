@@ -1,12 +1,11 @@
 /**
- * The production foreign replayer (`replayForeignBlock`) on
- * a real Postgres follower store and the node's DA table: a block's event
- * sets must equal the in-window events and forced orders the follower
- * facts hold at the view, in both polarities (honest blocks replay; a known
- * event outside the window is invalid, an unknown one invalid where the
- * facts cover the block's range and a bounded hold where they do not); a
- * block past what the view can know waits; the retained payload's identity
- * is checked; a fetched payload is kept only after the block replayed.
+ * The production foreign replayer (`replayForeignBlock`) on a real Postgres
+ * follower store and the node's DA table: a block's event sets must equal the
+ * in-window events and forced orders the follower facts hold at the view, in
+ * both polarities (honest blocks replay; a known event outside the window is
+ * invalid, an unknown one invalid where the facts cover the block's range and a
+ * bounded hold where they do not); a block past the view waits; the retained
+ * payload's identity is checked; a fetched payload is kept after replay.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";
@@ -40,6 +39,7 @@ import {
   retirementTx,
 } from "./helpers/l1-events-chain.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
 import { AVAILABILITY } from "./landed-blocks-replay-foreign.availability.js";
 import {
@@ -76,7 +76,7 @@ const follow = async (...args: Parameters<typeof followChain>) => {
 
 beforeEach(async () => {
   clock.offsetMs = 0;
-  await db(resetApplicationTables);
+  await db(Effect.andThen(resetApplicationTables, installEmptyLedger()));
 });
 afterEach(async () => {
   vi.restoreAllMocks();

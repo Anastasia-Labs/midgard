@@ -7,8 +7,8 @@
  * order there is no bound (`null`). An order that cannot be rebuilt bounds
  * the horizon as well; it also holds `/readyz` by name. An `unreadable`
  * order is never due, so it bounds nothing; nor does an order included at
- * or before the snapshot anchor's end time, which gets no row
- * (`snapshot-anchor.ts`).
+ * or before the snapshot anchor's end time, or any order before the node's
+ * ledger is installed, which gets no row (`snapshot-anchor.ts`).
  *
  * A node row without a header whose order is gone (a rollback removed it)
  * bounds the horizon the same way until the forced-order hook deletes it or

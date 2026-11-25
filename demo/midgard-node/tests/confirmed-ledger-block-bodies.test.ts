@@ -59,7 +59,7 @@ import {
   GENESIS,
   harness,
   hex,
-  inNode,
+  inInstalledNode,
   ports,
   queueOf,
   rootOf,
@@ -215,7 +215,7 @@ describe("an own block's merge folds forward only", () => {
       ),
       [WithdrawalsDB.Columns.STATUS]: WithdrawalsDB.Status.Projected,
     };
-    await inNode(
+    await inInstalledNode(s.state)(
       Effect.gen(function* () {
         const progress = mergeProgress(
           s.a,
@@ -259,7 +259,7 @@ describe("an own block's merge folds forward only", () => {
 describe("an own block's bodies live until its fold is final", () => {
   it("merges again after a rollback of its folded merge, reading the bodies, onto the replayed ledger", async () => {
     const s = await setUp();
-    await inNode(
+    await inInstalledNode(s.state)(
       Effect.gen(function* () {
         yield* s.commitBodies;
         yield* processLandedQueue(ports(s.state), s.unmerged);
@@ -310,7 +310,7 @@ describe("an own block's bodies live until its fold is final", () => {
     const s = await setUp();
     const other = "0b".repeat(28);
     const otherTx = Buffer.alloc(32, 0x0b);
-    await inNode(
+    await inInstalledNode(s.state)(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* s.commitBodies;

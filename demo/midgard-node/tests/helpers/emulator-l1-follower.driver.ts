@@ -176,11 +176,13 @@ export const makeEmulatorDriver = <R = never>(
      * runs again, up to `UNAPPLIED_RUNS` in a row, and an applied run whose
      * landed-block hold a later run clears runs again, up to
      * `LANDED_RERUNS` more. A run that still does not apply fails with its
-     * result and holds.
+     * result and holds. The applied run carries the holds of the runs
+     * before it that did not apply.
      */
     const untilApplied = Effect.gen(function* () {
       let landedReruns = 0;
       let unapplied = 0;
+      const unappliedHolds: DriverHold[] = [];
       for (;;) {
         const run = yield* runOnce;
         if (run.result.kind === "applied") {
@@ -189,9 +191,10 @@ export const makeEmulatorDriver = <R = never>(
             run.landedHold !== undefined &&
             RERUN_HOLDS.has(run.landedHold.reason) &&
             landedReruns++ < LANDED_RERUNS;
-          if (!rerun) return run;
+          if (!rerun) return { ...run, unappliedHolds };
           continue;
         }
+        unappliedHolds.push(...run.holds);
         if (++unapplied >= UNAPPLIED_RUNS)
           return yield* Effect.die(
             new Error(

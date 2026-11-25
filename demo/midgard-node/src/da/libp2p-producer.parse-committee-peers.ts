@@ -81,6 +81,12 @@ export type DaProducerCommitteePeer = {
   readonly roles: readonly string[];
 };
 
+/** The peer a request dials: its multiaddrs, and its peer id for errors. */
+export type DaRequestPeer = Pick<
+  DaProducerCommitteePeer,
+  "peerId" | "multiaddrs"
+>;
+
 export type DaProducerPublicationManifest = {
   readonly deploymentFingerprint: string;
   readonly localPrivateKeySource: string;
@@ -221,7 +227,7 @@ export type DaLibp2pPreflightReport = {
 export type DaProducerProbeTransport = {
   readonly localPeerId: () => string | Promise<string>;
   readonly request: (
-    peer: DaProducerCommitteePeer,
+    peer: DaRequestPeer,
     protocolId: string,
     payload: Uint8Array,
     timeoutMs: number,

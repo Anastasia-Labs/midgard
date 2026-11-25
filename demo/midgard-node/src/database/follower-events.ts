@@ -12,8 +12,9 @@
  *   A retired one without a row is inserted only while a processed landed
  *   block names it (a foreign block may include an event this node never
  *   saw live); any other is skipped.
- * - On a node that took its ledger from a snapshot, an event included at or
- *   before the anchor's end time gets no row (`snapshot-anchor.ts`).
+ * - An event included at or before the snapshot anchor's end time gets no
+ *   row, nor does any event before the node's ledger is installed
+ *   (`snapshot-anchor.ts`).
  * - One bad event never fails the run: an event that does not decode into a
  *   node row (`l1_event_undecodable`), or whose public id has a row under
  *   another live identity or none (`l1_event_identity_conflict`), is refused
@@ -387,11 +388,12 @@ export const reconcileFollowerEvents = (
     if (!(yield* followerViewValid(plan.view)))
       return { kind: "stale" } as FollowerIngestionOutcome;
     const read = (event: ProjectedEvent) => readUserEvent(event, input.network);
-    // The ledger a node took from a snapshot holds what the events its
-    // anchor's block or an earlier one included did: they get no row.
+    // The node's ledger holds what the events its anchor's block or an
+    // earlier one included did: they get no row, nor does any event before
+    // the ledger is installed.
     const anchor = yield* SnapshotAnchor.retrieve;
     const events = plan.events.filter(
-      (event) => !SnapshotAnchor.includedByAnchor(anchor, event.inclusionTime),
+      (event) => !SnapshotAnchor.givesNoRow(anchor, event.inclusionTime),
     );
     const deposits = yield* ingestKind(
       "deposit",

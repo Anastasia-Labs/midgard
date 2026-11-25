@@ -2,6 +2,7 @@ import { availableParallelism } from "node:os";
 
 import { Config } from "effect";
 
+import { ledgerSnapshotPeersConfig } from "./config.ledger-snapshot-peers.js";
 import {
   nonNegativeSafeIntegerConfig,
   positiveSafeIntegerConfig,
@@ -36,6 +37,9 @@ export const mpfConfig = Config.all({
     "LEDGER_MPF_DB_PATH",
     "midgard-ledger-mpf-db",
   ),
+  /** The peers a node without a ledger takes its ledger snapshot from
+   * (`config.ledger-snapshot-peers.ts`). */
+  LEDGER_SNAPSHOT_PEERS: ledgerSnapshotPeersConfig,
   MPF_NATIVE_OWNER_BINARY_PATH: stringConfig(
     "MPF_NATIVE_OWNER_BINARY_PATH",
     "native/mpf-event-flat-wasm/target/release/architecture-g-owner",

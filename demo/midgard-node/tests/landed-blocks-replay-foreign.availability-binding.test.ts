@@ -34,6 +34,7 @@ import {
   eventOrder,
   EVENTS_CONFIG,
 } from "./helpers/l1-events-chain.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
 import {
   attested,
@@ -74,6 +75,7 @@ beforeEach(async () => {
   clock.offsetMs = 0;
   time.ms = 1_000_000;
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -424,7 +426,7 @@ describe("the node's binding pass in the driver run", () => {
         bindRetained: (read: LandedStateQueue) =>
           Effect.sync(() => void bound.push(read)),
       } as unknown as LandedBlockPorts<never>,
-      run: (effect) => Effect.runPromise(effect as Effect.Effect<never>),
+      run: (effect) => db(effect as Effect.Effect<never, never, never>),
     });
     expect(
       await hook({ kind: "unchanged", view: queue.view } as never),

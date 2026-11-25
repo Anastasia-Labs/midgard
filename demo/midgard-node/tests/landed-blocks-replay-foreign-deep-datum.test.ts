@@ -32,6 +32,7 @@ import {
 import { reconcileOverDead } from "./helpers/follower-view.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import { admissionTx, eventOrder, listOf } from "./helpers/l1-events-chain.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import {
   clock,
   depositBlock,
@@ -61,6 +62,7 @@ const follow = async () => {
 beforeEach(async () => {
   clock.offsetMs = 0;
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
 });
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((store) => store.close()));

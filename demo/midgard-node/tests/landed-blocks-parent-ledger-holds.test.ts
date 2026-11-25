@@ -27,7 +27,7 @@ import {
   G0,
   G1,
   harness,
-  inNode,
+  inInstalledNode,
   localFaultAlarms,
   ports,
   queueOf,
@@ -104,7 +104,7 @@ const rowOfA = (
 
 it("holds a block as a local fault when the store retains no root on the processed chain to its parent", async () => {
   const fx = await setup();
-  await inNode(
+  await inInstalledNode(fx.state)(
     Effect.gen(function* () {
       yield* fx.process([fx.a]);
       const ledgers = yield* Effect.promise(() => fx.state.ledgers);
@@ -116,7 +116,7 @@ it("holds a block as a local fault when the store retains no root on the process
 
 it("holds a block as a local fault when a processed delta to its parent does not apply to the retained ledger", async () => {
   const fx = await setup();
-  await inNode(
+  await inInstalledNode(fx.state)(
     Effect.gen(function* () {
       // Spends an out-ref genesis does not hold.
       yield* insertRow(
@@ -129,7 +129,7 @@ it("holds a block as a local fault when a processed delta to its parent does not
 
 it("holds a block as a local fault when the processed deltas reach another root than its parent's", async () => {
   const fx = await setup();
-  await inNode(
+  await inInstalledNode(fx.state)(
     Effect.gen(function* () {
       yield* insertRow(
         rowOfA(fx.a, fx.genesisRoot, {

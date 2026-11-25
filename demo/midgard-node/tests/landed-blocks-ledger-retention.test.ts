@@ -19,6 +19,7 @@ import {
   type LandedBlockRow,
 } from "../src/landed-blocks/store.js";
 import { Lucid } from "../src/services/lucid.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import {
   NODE_PREFIX,
   nodeDatum,
@@ -31,6 +32,7 @@ import {
   inNode,
   queueOf,
 } from "./landed-blocks-own.fixture.js";
+import { provideDatabaseLayers } from "./utils.js";
 
 const root = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
 const header = (byte: number) => byte.toString(16).padStart(2, "0").repeat(28);
@@ -179,6 +181,7 @@ describe("landed-block ledger retention", () => {
 
   it("runs after the hook processed the queue it read", async () => {
     const queue = { ...chain().queue, root: null } as LandedStateQueue;
+    await inNode(installEmptyLedger());
     const retained: LandedStateQueue[] = [];
     const hook = landedBlockHook({
       store: {
@@ -192,7 +195,10 @@ describe("landed-block ledger retention", () => {
         retainLedgers: (read: LandedStateQueue) =>
           Effect.sync(() => void retained.push(read)),
       } as unknown as LandedBlockPorts<never>,
-      run: (effect) => Effect.runPromise(effect as Effect.Effect<never>),
+      run: (effect) =>
+        Effect.runPromise(
+          provideDatabaseLayers(effect as Effect.Effect<never, never, never>),
+        ),
     });
     expect(
       await hook({ kind: "unchanged", view: queue.view } as never),

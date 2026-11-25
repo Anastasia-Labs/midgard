@@ -15,12 +15,14 @@
  *   never by an equal root. Processing then walks forward from there like
  *   any other run. A root on no lineage the frontier can reach either way
  *   holds the narrowed `confirmed_ledger_behind`.
+ *
+ * The frontier is always set: the node's ledger install sets it
+ * (`ledger-snapshot-start.ts`), and landed processing runs only after the
+ * install (`hook.ts`).
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either } from "effect";
 
-import { ConfirmedLedgerDB } from "../database/index.js";
 import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { Database } from "../services/database.js";
@@ -48,79 +50,10 @@ import { Frontier, type HeaderRoot, retrieveRows } from "./store.js";
 const behind = (detail: string): DriverHold =>
   notRetried({ reason: CONFIRMED_LEDGER_BEHIND, detail });
 
-/**
- * Sets the frontier when there is none, on the merged root's lineage: at
- * the root if it is the empty ledger's; else at the latest header of the
- * lineage (`history.ts`) whose post-state root is the empty ledger's, or at
- * genesis, with the configured genesis ledger written into
- * `confirmed_ledger` at the lineage's first parent root. Processing then
- * walks forward from it.
- *
- * `confirmed_ledger` is written only in the transaction that sets or moves
- * the frontier (here, `foldMerge`, `unfoldFrontier`), so with no frontier
- * it holds no row and its root is the empty ledger's. The node admits the
- * configured genesis into the ledger store at startup, checked against the
- * clean queue's root, so the configured genesis ledger has the chain's
- * genesis root and is not hashed again here.
- */
-export const bootstrapFrontier = <R>(
-  ports: LandedBlockPorts<R>,
-  view: View,
-  root: HeaderRoot,
-  history: Effect.Effect<QueueHistory, unknown, R | Database>,
-) =>
-  Effect.gen(function* () {
-    if ((yield* Frontier.retrieve) !== undefined) return undefined;
-    const empty = SDK.EMPTY_MERKLE_TREE_ROOT;
-    if (root.utxosRoot === empty) {
-      yield* viewChecked(ports, view, Frontier.upsert(root));
-      return undefined;
-    }
-    const walked =
-      root.headerHash === SDK.GENESIS_HEADER_HASH ? undefined : yield* history;
-    const lineage =
-      walked === undefined
-        ? { anchor: SDK.GENESIS_HEADER_HASH, headers: [] }
-        : lineageBack(
-            walked,
-            root.headerHash,
-            (hash) =>
-              hash === SDK.GENESIS_HEADER_HASH ||
-              walked.headers.get(hash)?.utxosRoot === empty,
-          );
-    if (lineage !== undefined && lineage.anchor !== SDK.GENESIS_HEADER_HASH) {
-      yield* viewChecked(
-        ports,
-        view,
-        Frontier.upsert({
-          headerHash: lineage.anchor,
-          utxosRoot: empty,
-        }),
-      );
-      return undefined;
-    }
-    if (lineage !== undefined) {
-      const genesisRoot =
-        lineage.headers[0]?.header.prevUtxosRoot ?? root.utxosRoot;
-      const rows = yield* ports.genesis;
-      yield* viewChecked(
-        ports,
-        view,
-        Effect.gen(function* () {
-          if (rows.length > 0)
-            yield* ConfirmedLedgerDB.insertMultiple([...rows]);
-          yield* Frontier.upsert({
-            headerHash: SDK.GENESIS_HEADER_HASH,
-            utxosRoot: genesisRoot,
-          });
-        }),
-      );
-      return undefined;
-    }
-    return behind(
-      `confirmed_ledger is empty and the merged queue root ${root.headerHash} (${root.utxosRoot}) is not on a retained lineage from genesis or from a header whose ledger is empty`,
-    );
-  });
+/** The frontier, which the install set. */
+const installedFrontier = Frontier.retrieve.pipe(
+  Effect.map((frontier) => frontier!),
+);
 
 /** The base mismatch `error` carries, if any (a gate may wrap the work's failure). */
 const baseMismatchOf = (error: unknown) => {
@@ -174,12 +107,7 @@ export const foldToRoot = <R>(
 ) =>
   Effect.gen(function* () {
     for (;;) {
-      const frontier = yield* Frontier.retrieve;
-      if (frontier === undefined)
-        return {
-          kind: "held",
-          hold: behind("confirmed_ledger has no frontier yet"),
-        } satisfies FoldOutcome;
+      const frontier = yield* installedFrontier;
       // Before each fold and once the frontier stops: a new block whose
       // parent is the frontier may be checked on its root.
       yield* holdFrontierRoot(ports, frontier);
@@ -221,9 +149,8 @@ export const rewindToRoot = <R>(
   history: Effect.Effect<QueueHistory, unknown, R | Database>,
 ) =>
   Effect.gen(function* () {
-    const frontier = yield* Frontier.retrieve;
-    if (frontier === undefined || frontier.headerHash === root.headerHash)
-      return undefined;
+    const frontier = yield* installedFrontier;
+    if (frontier.headerHash === root.headerHash) return undefined;
     const chain = processedChain(yield* retrieveRows, frontier.headerHash);
     if (chain.some((row) => row.headerHash === root.headerHash))
       return undefined;

@@ -36,6 +36,7 @@ import {
   ingestionHook,
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import {
   clock,
   emptyBlock,
@@ -55,6 +56,7 @@ const opened: FactStore[] = [];
 beforeEach(async () => {
   clock.offsetMs = 0;
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
 });
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((store) => store.close()));
@@ -139,6 +141,7 @@ const canonicalIngestion = async () => {
   expect(more).toEqual([]);
   await Promise.all(opened.splice(0).map((open) => open.close()));
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
   return row!;
 };
 

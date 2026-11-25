@@ -27,7 +27,7 @@ import {
   G0,
   GENESIS,
   harness,
-  inNode,
+  inInstalledNode,
   ports,
   queueOf,
   rootOf,
@@ -84,7 +84,7 @@ describe("import checks on the landed chain", () => {
           outcome.kind === "replayed" ? { ...outcome, scriptChecks } : outcome,
         ),
     };
-    const recorded = await inNode(
+    const recorded = await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* processLandedQueue(
           withChecks,

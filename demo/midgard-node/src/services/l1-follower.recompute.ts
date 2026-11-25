@@ -107,6 +107,10 @@ import {
   type RepairFound,
 } from "./l1-follower.recompute-repair.js";
 import {
+  LEDGER_SNAPSHOT_PENDING,
+  LedgerSnapshotPending,
+} from "./ledger-snapshot-start.js";
+import {
   clearLivenessIncident,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   raiseLivenessIncident,
@@ -344,6 +348,12 @@ export const makeDriverRecompute = <R = never>(options: {
             return yield* keep({
               reason: refused.reason,
               detail: refused.detail,
+            });
+          // A node without a ledger waits for a snapshot peer to serve it.
+          if (failure instanceof LedgerSnapshotPending)
+            return yield* keep({
+              reason: LEDGER_SNAPSHOT_PENDING,
+              detail: failure.detail,
             });
           if (target === undefined)
             return yield* keep(

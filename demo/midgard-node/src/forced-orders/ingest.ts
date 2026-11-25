@@ -13,8 +13,9 @@
  *   rebuilds the transaction when all of them resolve;
  * - `malformed`: nothing to rebuild.
  *
- * On a node that took its ledger from a snapshot, an order included at or
- * before the anchor's end time gets no row (`snapshot-anchor.ts`).
+ * An order included at or before the snapshot anchor's end time gets no
+ * row, nor does any order before the node's ledger is installed
+ * (`snapshot-anchor.ts`).
  *
  * Rebuilt rows are inserted in one node transaction that re-checks the
  * follower view. An order whose carriage no source has yet keeps the node
@@ -419,10 +420,10 @@ export const forcedOrderIngestionHook = (
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
-      // The ledger a node took from a snapshot holds what the orders its
-      // anchor's block or an earlier one included did: they get no row.
-      if (SnapshotAnchor.includedByAnchor(anchor.value, row.inclusionTime))
-        continue;
+      // The node's ledger holds what the orders its anchor's block or an
+      // earlier one included did: they get no row, nor does any order
+      // before the ledger is installed.
+      if (SnapshotAnchor.givesNoRow(anchor.value, row.inclusionTime)) continue;
       if (row.spent) {
         // Spent before the node saw it: only a processed landed block that
         // names it (another operator's, while this node was down) needs its

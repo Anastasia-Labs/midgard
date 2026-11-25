@@ -55,7 +55,7 @@ import {
   GENESIS,
   harness,
   hex,
-  inNode,
+  inInstalledNode,
   ports,
   queueOf,
   sortedKeys,
@@ -111,12 +111,11 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     const id = deposit[DepositsDB.Columns.ID];
     const unmerged = queueOf(genesisState, [a]);
     const merged = queueOf(confirmedAt(a, ""), []);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
-        // The frontier's bootstrap, then the own block, which is checked on
-        // the ledger store and reads no whole ledger: O(delta).
-        yield* processLandedQueue(ports(state), queueOf(genesisState, []));
+        // The own block is checked on the ledger store and reads no whole
+        // ledger: O(delta).
         expect(
           (yield* scansOf(processLandedQueue(ports(state), unmerged))).scans,
         ).toBe(0);
@@ -171,7 +170,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     });
     const id = deposit[DepositsDB.Columns.ID];
     const merged = queueOf(confirmedAt(a, ""), []);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
@@ -244,7 +243,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     });
     const id = deposit[DepositsDB.Columns.ID];
     const mergedA2 = queueOf(confirmedAt(a2, ""), []);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* insertDeposits([deposit]);
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
@@ -293,7 +292,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
       Effect.flatMap(SqlClient.SqlClient, (client) =>
         client.withTransaction(effect),
       );
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), unmerged);
         yield* markApplied([a.hash]);
@@ -331,7 +330,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
     state.journals.set(a.hash, journalA);
     const merged = queueOf(confirmedAt(a, ""), []);
     const mergedAt7 = { ...merged, root: createdAt(merged.root!, 7) };
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const runtime = yield* Effect.runtime<Database>();
         const readOutputs = (outRefs: readonly string[]) =>
@@ -406,7 +405,7 @@ describe("temporal confirmed_ledger on an own merged block", () => {
       );
     const marked = (headerHash: string) => (id: Buffer) =>
       `${hex(id)}@${headerHash}`;
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* admitPending(
           [txA!, txF].map((id, index) => ({

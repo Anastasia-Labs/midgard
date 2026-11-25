@@ -11,6 +11,7 @@ import { Effect, Ref } from "effect";
 import { expect } from "vitest";
 
 import { ConfirmedLedgerDB } from "../src/database/index.js";
+import * as SnapshotAnchor from "../src/database/snapshot-anchor.js";
 import type * as Ledger from "../src/database/utils/ledger.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "../src/landed-blocks/holds.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
@@ -110,7 +111,10 @@ export const run = <A, E>(
     provideDatabaseLayers(effect.pipe(Effect.provideService(Globals, globals))),
   );
 
-/** `confirmed_ledger` at the frontier holds `E0`; the processed foreign block spends it for `E1`. */
+/**
+ * An installed node whose `confirmed_ledger` at the frontier holds `E0`;
+ * the processed foreign block spends it for `E1`.
+ */
 export const seed = async (
   globals: Globals,
   row: Partial<LandedBlockRow> = {},
@@ -121,10 +125,18 @@ export const seed = async (
     globals,
     testWrite(
       Effect.gen(function* () {
+        // R0 is not E0's root, so no peer could serve this ledger: the
+        // frontier and anchor the install sets, by the install's own writes,
+        // over a hand-built `confirmed_ledger`.
         yield* ConfirmedLedgerDB.insertMultiple([
           ...(yield* ledgerRows([E0], new Map())),
         ]);
         yield* Frontier.upsert({ headerHash: FRONTIER, utxosRoot: R0 });
+        yield* SnapshotAnchor.record({
+          headerHash: FRONTIER,
+          utxosRoot: R0,
+          endTimeMs: 0n,
+        });
         yield* insertRow({
           headerHash: BLOCK,
           parentHeaderHash: FRONTIER,

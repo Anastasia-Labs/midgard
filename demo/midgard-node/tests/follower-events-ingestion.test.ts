@@ -55,6 +55,7 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const databases = testDatabases();
@@ -231,6 +232,7 @@ describe("follower event ingestion (Postgres)", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         const plan = yield* writeFollowerView(VIEW_SLOT, events);
         const first = applied(yield* ingest(plan));
         const once = yield* eventRows;
@@ -276,6 +278,7 @@ describe("follower event ingestion (Postgres)", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         applied(
           yield* ingest(
             yield* writeFollowerView(VIEW_SLOT, [inline, relocated]),
@@ -320,6 +323,7 @@ describe("follower event ingestion (Postgres)", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         applied(
           yield* ingest(yield* writeFollowerView(VIEW_SLOT, [withdrawal])),
         );
@@ -344,6 +348,7 @@ describe("follower event ingestion (Postgres)", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         const plan = yield* writeFollowerView(VIEW_SLOT, [early, late]);
         const before = applied(yield* ingest(plan, 5_000));
         const partial = yield* eventRows;
@@ -371,6 +376,7 @@ describe("follower event ingestion (Postgres)", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         applied(
           yield* ingest(yield* writeFollowerView(VIEW_SLOT, [early, late])),
         );
@@ -428,6 +434,7 @@ describe("follower event ingestion (Postgres)", () => {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* resetApplicationTables;
+        yield* installEmptyLedger();
         const none = yield* followerIngestedView;
         const old = yield* writeFollowerView(VIEW_SLOT - 10, []);
         applied(yield* ingest(old));

@@ -17,8 +17,9 @@ import {
   confirmedAt,
   confirmedKeys,
   fixture,
+  type Harness,
   harness,
-  inNode,
+  inInstalledNode,
   ports,
   queueOf,
   sortedKeys,
@@ -27,8 +28,10 @@ import {
 /** This node's operator key: not the key that signed the fixture's blocks. */
 const OWN_OPERATOR = "33".repeat(28);
 
-const inNodeWithGlobals = <A>(work: Effect.Effect<A, unknown, any>) =>
-  inNode(work.pipe(Effect.provide(Globals.Default)));
+const inNodeWithGlobals = <A>(
+  state: Harness,
+  work: Effect.Effect<A, unknown, any>,
+) => inInstalledNode(state)(work.pipe(Effect.provide(Globals.Default)));
 
 describe("merging another operator's block", () => {
   it("leaves the confirmed ledger to landed-block processing, which folds the block once the merged root covers it", async () => {
@@ -40,6 +43,7 @@ describe("merging another operator's block", () => {
     state.journals.set(a.hash, journalA);
     const landed = ports(state);
     await inNodeWithGlobals(
+      state,
       Effect.gen(function* () {
         yield* processLandedQueue(landed, queueOf(genesisState, [a, f]));
         // The rebase applied A and F (its own suites cover the rebase).

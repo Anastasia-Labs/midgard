@@ -84,12 +84,6 @@ export type LandedBlockPorts<R> = Readonly<{
   ownJournal: (
     headerHash: string,
   ) => Effect.Effect<OwnJournal | undefined, unknown, R | Database>;
-  /** The genesis ledger: empty on every network. */
-  genesis: Effect.Effect<
-    readonly Ledger.EntryNoTimeStamp[],
-    unknown,
-    R | Database
-  >;
   /**
    * Runs the working-ledger rebase now (the driver's recompute), unless it
    * cannot run yet; returns why it did not finish, as its hold. A rebase

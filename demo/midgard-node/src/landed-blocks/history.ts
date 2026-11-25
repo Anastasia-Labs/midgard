@@ -6,8 +6,7 @@
  *
  * Processing walks a root's lineage back through it to the last header the
  * node processed, so the blocks a merge passed before the node processed
- * them are processed in order like any other; bootstrap sets the frontier
- * on the same lineage.
+ * them are processed in order like any other.
  */
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk/core";

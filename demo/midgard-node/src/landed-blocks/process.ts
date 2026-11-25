@@ -44,7 +44,7 @@
  *    brought up to the queue history, and the folds whose merge is at or
  *    below the follower's prune boundary are dropped.
  *
- * Every write (fold, unfold and bootstrap included) re-checks the
+ * Every write (fold and unfold included) re-checks the
  * follower view in its transaction; a view that moved ends the run with the
  * transient `landed_blocks_waiting` ("view moved"), which the next run, the
  * move's, replaces. Every hold keeps the process up and clears on a later
@@ -64,7 +64,6 @@ import { followerWriteHoldOf } from "../services/follower-write-gate.js";
 import { failureHold } from "../services/l1-follower.failure-hold.js";
 import type { MergePoint } from "./confirmed-merges.js";
 import {
-  bootstrapFrontier,
   foldToRoot,
   type ProcessOptions,
   rewindToRoot,
@@ -303,8 +302,6 @@ const run = <R>(
             .pipe(Effect.map((elements) => (read = decodeHistory(elements))))
         : Effect.succeed(read),
     );
-    const booted = yield* bootstrapFrontier(ports, queue.view, root, history);
-    if (booted !== undefined) return booted;
     const rewound = yield* rewindToRoot(ports, queue.view, root, history);
     if (rewound !== undefined) return rewound;
     const mergePoint = (headerHash: string) =>

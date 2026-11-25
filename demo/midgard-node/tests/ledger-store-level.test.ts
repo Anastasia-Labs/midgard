@@ -38,7 +38,6 @@ import type { StoredNode } from "../src/services/mpf-native-owner/service.normal
 import {
   type NativeOwnerLedger,
   openNativeOwnerLedger,
-  writeGenesisLedger,
 } from "../src/services/mpf-native-owner/service.open-ledger.js";
 import { refuseOutputs } from "./helpers/native-owner-ledger.js";
 
@@ -261,7 +260,7 @@ describe("leveldb ledger storage beside the node's MPF readers", () => {
   });
 
   const genesis = async ({ store }: NativeOwnerLedger) =>
-    await writeGenesisLedger(store, base, await oracleLedgerRoot(base));
+    await store.admit(base, await oracleLedgerRoot(base), { current: true });
 
   /**
    * Opens the node's ledger at `path` with every write after the first

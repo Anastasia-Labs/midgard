@@ -44,6 +44,7 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const databases = testDatabases();
@@ -166,6 +167,7 @@ describe("follower event ingestion refusals (Postgres)", () => {
       const result = await run(
         Effect.gen(function* () {
           yield* resetApplicationTables;
+          yield* installEmptyLedger();
           const plan = yield* writeFollowerView(VIEW_SLOT, [
             byKey(foreign.key),
             byKey(honest.key),
@@ -230,6 +232,7 @@ describe("a block journal's event members (Postgres)", () => {
       const result = await run(
         Effect.gen(function* () {
           yield* resetApplicationTables;
+          yield* installEmptyLedger();
           applied(
             yield* ingest(yield* writeFollowerView(VIEW_SLOT, [event]), 0),
           );

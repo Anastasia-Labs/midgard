@@ -3,8 +3,8 @@
  * a node that took its ledger from a peer's snapshot: an event the anchor's
  * block or an earlier one included gets no row, so it is never projected
  * into the working ledger and never becomes a due event the next block
- * cannot take. Without an anchor every event gets its row
- * (follower-events-ingestion.test.ts).
+ * cannot take. Before the node installs its ledger no event gets a row:
+ * the install's anchor then admits the events after it.
  */
 import { type FactStore, type OutRef } from "@al-ft/midgard-l1-follower";
 import {
@@ -17,7 +17,6 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Either } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import * as SnapshotAnchor from "../src/database/snapshot-anchor.js";
 import {
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,
@@ -41,6 +40,7 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const databases = testDatabases();
@@ -116,6 +116,53 @@ const planned = <A extends { event_id: Buffer }>(
   return hexIds(selection.right);
 };
 
+const reconcileAt = (
+  plan: Effect.Effect.Success<ReturnType<typeof writeFollowerView>>,
+) =>
+  withFollowerWrite(
+    reconcileOverDead(plan, {
+      network: "Preprod",
+      slotToUnixTime: (slot) => slot * 1000,
+      cutoffMs: 60_000,
+    }),
+  ).pipe(Effect.provideService(FollowerWriteFixture, true));
+
+const eventRows = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return {
+    deposits: hexIds(
+      yield* sql<{ event_id: Buffer }>`SELECT event_id FROM deposits_utxos`,
+    ),
+    withdrawals: hexIds(
+      yield* sql<{ event_id: Buffer }>`SELECT event_id FROM withdrawal_utxos`,
+    ),
+  };
+});
+
+describe("follower event ingestion before the node's ledger is installed", () => {
+  it("gives no event a row while the install is pending, and after it only the events included after its anchor", async () => {
+    const around = await eventsAroundAnchor();
+    const result = await Effect.runPromise(
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* resetApplicationTables;
+          const plan = yield* writeFollowerView(VIEW_SLOT, around.events);
+          yield* reconcileAt(plan);
+          const pending = yield* eventRows;
+          yield* installEmptyLedger(ANCHOR_END_MS);
+          yield* reconcileAt(plan);
+          return { pending, installed: yield* eventRows };
+        }),
+      ),
+    );
+    expect(result.pending).toEqual({ deposits: [], withdrawals: [] });
+    expect(result.installed).toEqual({
+      deposits: [around.depositAfter],
+      withdrawals: [around.withdrawalAfter],
+    });
+  });
+});
+
 describe("follower event ingestion on a node started from a snapshot", () => {
   it("gives no row to a deposit or withdrawal the anchor's block or an earlier one included, and the next block plans", async () => {
     const around = await eventsAroundAnchor();
@@ -124,19 +171,9 @@ describe("follower event ingestion on a node started from a snapshot", () => {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           yield* resetApplicationTables;
-          yield* SnapshotAnchor.record({
-            headerHash: "ab".repeat(28),
-            utxosRoot: "cd".repeat(32),
-            endTimeMs: ANCHOR_END_MS,
-          });
+          yield* installEmptyLedger(ANCHOR_END_MS);
           const plan = yield* writeFollowerView(VIEW_SLOT, around.events);
-          yield* withFollowerWrite(
-            reconcileOverDead(plan, {
-              network: "Preprod",
-              slotToUnixTime: (slot) => slot * 1000,
-              cutoffMs: 60_000,
-            }),
-          ).pipe(Effect.provideService(FollowerWriteFixture, true));
+          yield* reconcileAt(plan);
           const deposits = yield* sql<{
             event_id: Buffer;
           }>`SELECT event_id FROM deposits_utxos`;

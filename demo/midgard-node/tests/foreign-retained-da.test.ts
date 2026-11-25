@@ -92,8 +92,11 @@ const transport = (material: (peerIndex: number) => Buffer | undefined) => {
             DaRequestResponseProtocol.payloadByHeader,
           )
         ) {
-          requests.push(peer.signerIndex);
-          const payloadBytes = material(peer.signerIndex);
+          const signerIndex = manifest.committeePeers.findIndex(
+            (committee) => committee.peerId === peer.peerId,
+          );
+          requests.push(signerIndex);
+          const payloadBytes = material(signerIndex);
           return encodeDaPayloadByHeaderResponseCbor({
             status: payloadBytes === undefined ? "not_found" : "found_inline",
             headerHash: request.headerHash,

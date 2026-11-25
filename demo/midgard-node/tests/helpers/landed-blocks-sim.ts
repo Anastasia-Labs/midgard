@@ -219,7 +219,7 @@ export const landedBlocksSimProjection = (
       if (model.equalRoot) stats.equalRootUnfolds += 1;
     }
     if (model.from === undefined && queue.root !== SDK.GENESIS_HEADER_HASH)
-      stats.bootstrapsPastGenesis += 1;
+      stats.firstRunsPastGenesis += 1;
     const rooted = rootLineage(env.registry, queue.root);
     if (settled.deferred === true) {
       // Processing ran up to the rebase it asked for: the frontier is

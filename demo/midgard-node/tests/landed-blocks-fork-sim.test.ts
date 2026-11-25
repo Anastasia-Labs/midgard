@@ -66,12 +66,8 @@ import { Level } from "level";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { fullScanCounter } from "../src/database/confirmedLedger.js";
-import {
-  MempoolLedgerDB,
-  type PendingBlockFinalizationsDB,
-} from "../src/database/index.js";
+import { type PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { queueTerminalProjection } from "../src/l1-queue-terminals/projection.js";
-import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { readLedgerOutputs } from "../src/landed-blocks/ledger-outputs.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { NodeConfig } from "../src/services/config.js";
@@ -93,6 +89,7 @@ import {
   createSimUniverse,
   type SimUniverse,
 } from "./helpers/landed-blocks-sim.universe.js";
+import { installLedger } from "./helpers/ledger-install.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 import { createOwnerService } from "./helpers/native-owner-ledger.js";
 import { SIM_QUEUE_CONFIG } from "./helpers/state-queue-sim.fixtures.js";
@@ -253,11 +250,14 @@ const runScenario = (
 ) =>
   Effect.gen(function* () {
     yield* resetApplicationTables;
+    // The node installs the genesis ledger: both ledgers hold the genesis
+    // outputs and the frontier is at genesis.
+    yield* installLedger({
+      headerHash: SDK.GENESIS_HEADER_HASH,
+      endTimeMs: 0n,
+      entries: universe.genesis,
+    });
     yield* insertDeposits(universe.deposits.map(({ row }) => row));
-    // Node startup seeds the working ledger with the genesis outputs.
-    yield* MempoolLedgerDB.insert([
-      ...(yield* ledgerRows(universe.genesis, new Map())),
-    ]);
     const scans = yield* fullScans;
     const outcome = yield* Effect.acquireUseRelease(
       Effect.promise(() => openOwner(runtime)),
@@ -364,7 +364,7 @@ const expectEveryCase = (stats: LandedSimStats, prunes: number): void => {
     "unrejectedRestored",
     "offlineChecks",
     "coalescedMerges",
-    "bootstrapsPastGenesis",
+    "firstRunsPastGenesis",
     "heldPastMerge",
   ] as const)
     expect({ field, count: stats[field] > 0 }).toEqual({ field, count: true });

@@ -51,19 +51,17 @@ export const serveDa = (
   peers = 1,
 ) => {
   const requests: number[] = [];
+  const committeePeers = Array.from({ length: peers }, (_, index) => ({
+    signerIndex: index,
+    daVkey: (0xab + index).toString(16).repeat(32),
+    peerId: `fabricated-committee-${index.toString()}`,
+    multiaddrs: [],
+    roles: ["committee"],
+  }));
   vi.spyOn(
     Manifest,
     "loadDaProducerPublicationManifestFromEnv",
-  ).mockResolvedValue({
-    ...manifest,
-    committeePeers: Array.from({ length: peers }, (_, index) => ({
-      signerIndex: index,
-      daVkey: (0xab + index).toString(16).repeat(32),
-      peerId: `fabricated-committee-${index.toString()}`,
-      multiaddrs: [],
-      roles: ["committee"],
-    })),
-  });
+  ).mockResolvedValue({ ...manifest, committeePeers });
   vi.spyOn(Publication, "getPublicationTransport").mockResolvedValue({
     localPeerId: () => "fabricated-outbound-client",
     sign: () => Buffer.alloc(64),
@@ -77,8 +75,11 @@ export const serveDa = (
           DaRequestResponseProtocol.payloadByHeader,
         )
       ) {
-        requests.push(peer.signerIndex);
-        const payload = serve(peer.signerIndex);
+        const signerIndex = committeePeers.findIndex(
+          (committee) => committee.peerId === peer.peerId,
+        );
+        requests.push(signerIndex);
+        const payload = serve(signerIndex);
         const payloadBytes =
           payload === undefined ? undefined : await envelope(payload);
         return encodeDaPayloadByHeaderResponseCbor({

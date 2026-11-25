@@ -32,7 +32,7 @@ import {
   fixture,
   GENESIS,
   harness,
-  inNode,
+  inInstalledNode,
   ledgerStoreOf,
   ports,
   queueOf,
@@ -45,7 +45,7 @@ describe("processing reports the blocks it commits", () => {
     state.journals.set(a.hash, journalA);
     const committed: string[] = [];
     const progress = localFaultProgress();
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const process = (nodes: readonly Block[]) =>
           processLandedQueue(ports(state), queueOf(genesisState, nodes), {
@@ -97,7 +97,7 @@ describe("processing reports the blocks it commits", () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         state.replayEnds = Effect.succeed({
           kind: "event_unknown",
@@ -117,7 +117,7 @@ describe("processing reports the blocks it commits", () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         state.replayEnds = Effect.succeed({
           kind: "forced_order_pending",
@@ -140,12 +140,14 @@ describe("processing reports the blocks it commits", () => {
     const store = await ledgerStoreOf();
     state.ledgers = Promise.resolve(store);
     const committed: string[] = [];
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const alarms = Metric.value(
           Metric.tagged(landedBlockLocalFaultCounter, "kind", "local_fault"),
         ).pipe(Effect.map(({ count }) => count));
         const before = yield* alarms;
+        // The store dropped the installed ledger.
+        yield* Effect.promise(() => store.retain(new Set()));
         const process = () =>
           processLandedQueue(ports(state), queueOf(genesisState, [a]), {
             committed: (headerHash) => committed.push(headerHash),

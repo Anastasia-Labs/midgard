@@ -258,8 +258,8 @@ export const observe = async (
       const sqlLedger = yield* MempoolLedger.retrieveSpendable;
       const workingLedger = yield* MempoolLedger.retrieve;
       const rows = yield* retrieveRows;
-      // Landed-block processing bootstraps its frontier at the first merged
-      // root it folds; before that there is nothing to replay.
+      // The node's ledger install sets the frontier; before it there is
+      // nothing to replay.
       const landed = yield* landedChain(rows);
       const replay =
         landed === undefined

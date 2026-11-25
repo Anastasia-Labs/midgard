@@ -63,6 +63,10 @@ VALIDATION_WORKER_POOL_SIZE: "4"
 # sends them the L2 transactions it accepts so the operator holding the next
 # turn can commit them. Empty turns sharing off.
 L2_TX_PEERS: ""
+# Nodes asked, in order, for the ledger at the confirmed header when this node
+# has none yet: libp2p multiaddrs (comma separated), each ending in
+# /p2p/<peer id>. Empty is valid while the confirmed ledger is empty.
+LEDGER_SNAPSHOT_PEERS: ""
 
 # --- Public release identity (required) -----------------------------------------
 # The API does not open until the signed release verifies against these.

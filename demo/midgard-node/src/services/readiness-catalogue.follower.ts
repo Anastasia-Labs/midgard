@@ -75,6 +75,7 @@ import {
   DRIVER_RECOMPUTE_FAILED,
   STARTUP_PREPARATION_FAILED,
 } from "./l1-follower.recompute.js";
+import { LEDGER_SNAPSHOT_PENDING } from "./ledger-snapshot-start.js";
 import {
   COUNT,
   detail,
@@ -126,6 +127,7 @@ export const FOLLOWER_READINESS_ROWS: readonly ReadinessRow[] = [
   reason(FOLLOWER_VIEW_UNAPPLIED),
   reason(DRIVER_RECOMPUTE_PENDING),
   reason(DRIVER_RECOMPUTE_FAILED),
+  reason(LEDGER_SNAPSHOT_PENDING),
   reason(STARTUP_PREPARATION_FAILED),
   // The driver's fallback when a failed run named no hold (`l1-follower.ts`).
   reason("l1_driver_transient_failure"),

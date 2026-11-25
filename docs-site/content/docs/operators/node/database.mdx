@@ -31,6 +31,21 @@ refuses a database created by a different schema, or one holding tables but no
 schema record: recreate such a database (drop it and create it empty). The
 schema is never altered in place.
 
+## A node's first ledger
+
+A node whose database holds no ledger yet takes in the ledger at the state
+queue's confirmed header before it ingests any L1 event. On a deployment whose
+confirmed ledger is empty it starts from the empty ledger. Otherwise it asks
+the peers in `LEDGER_SNAPSHOT_PEERS` for that ledger, in order, over the DA
+libp2p `ledger-snapshot` protocol, checks the stream against the confirmed
+UTxO root, and installs it in one transaction. It then syncs the blocks above
+that header as any node does. `LEDGER_SNAPSHOT_PEERS` is a comma-separated
+list of libp2p multiaddrs, each ending in `/p2p/<peer id>`, for example
+`/dns4/node-a.example.org/tcp/4001/p2p/12D3KooW...`; empty (the default) is
+valid. Until a peer serves the ledger, `/readyz` reports
+`ledger_snapshot_pending` and the node asks again on its retry. A peer that
+served a wrong ledger is not asked again until the node restarts.
+
 `db:backfill-da-payloads` reconstructs missing DA payload rows from finalized
 block journals. See the [CLI Reference](/docs/operators/node/cli-reference).
 

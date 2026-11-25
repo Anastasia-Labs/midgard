@@ -18,7 +18,9 @@
  *   starts the next on the same database and emulator, as a node restart
  *   does: a fresh driver's first view runs the recompute and the startup
  *   preparation again. With `hubOraclePolicyId`, the next generation starts
- *   under that deployment's hub-oracle policy id instead.
+ *   under that deployment's hub-oracle policy id instead; with
+ *   `ledgerSnapshotPeers`, a generation started without a ledger asks
+ *   those peers for it.
  *
  * Each generation first runs the node's database initialization
  * (`initializeNodeDatabase`), before it follows the chain or starts the
@@ -31,7 +33,7 @@
  * emulator come from `openPublishedLifecycle`.
  */
 import { SqlClient } from "@effect/sql";
-import { Effect, Exit, Layer, ManagedRuntime, Ref, Scope } from "effect";
+import { Effect, Exit, ManagedRuntime, Ref, Scope } from "effect";
 import { expect, vi } from "vitest";
 
 import { initializeNodeDatabase } from "../../src/commands/listen-startup.initialize-database.js";
@@ -41,27 +43,16 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import type { DriverHold } from "../../src/l1-events/driver.js";
-import { NodeConfig } from "../../src/services/config.make-config.js";
-import { Database } from "../../src/services/database.js";
 import {
   type FollowerWritePermit,
   readFollowerWriteGate,
   runAtFollowerView,
 } from "../../src/services/follower-write-gate.js";
-import { Globals } from "../../src/services/globals.globals.js";
-import {
-  IntentJournal,
-  IntentJournalLive,
-} from "../../src/services/intent-journal.js";
+import type { Globals } from "../../src/services/globals.globals.js";
+import { IntentJournal } from "../../src/services/intent-journal.js";
 import type { DriverRecompute } from "../../src/services/l1-follower.recompute.js";
-import { Lucid } from "../../src/services/lucid.js";
-import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache.js";
+import type { LedgerSnapshotPeerSource } from "../../src/services/ledger-snapshot-start.js";
 import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
-import {
-  ContractDeploymentIdentity,
-  MidgardContracts,
-} from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
-import { WriteBehindLive } from "../../src/services/write-behind.make-write-behind.js";
 import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import {
   makeGlobalsService,
@@ -77,6 +68,7 @@ import type { emulatorState } from "./emulator-snapshot.js";
 import { bindNodeFollower } from "./follower-emulator.host.js";
 import { keepingJournaled } from "./intent-journal.js";
 import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
+import { productionServices } from "./production-lifecycle.services.js";
 import { openPublishedLifecycle } from "./published-lifecycle.js";
 
 export type ProductionLifecycleOptions = {
@@ -163,44 +155,30 @@ export const openProductionLifecycle = async (
     globals: Globals,
     generation: number,
     hubOraclePolicyId?: string,
+    ledgerSnapshotPeers?: LedgerSnapshotPeerSource,
   ) => {
-    const generationIdentity =
-      hubOraclePolicyId === undefined
-        ? identity
-        : { ...identity, hubOraclePolicyId };
-    const services = Layer.mergeAll(
-      Layer.succeed(NodeConfig, nodeConfig),
-      Layer.succeed(Globals, globals),
-      Layer.succeed(
-        Lucid,
-        Lucid.make({
+    const runtime = ManagedRuntime.make(
+      productionServices({
+        nodeConfig,
+        globals,
+        lucid: {
           ...lucidService,
           operatorMainAddress: operatorAddress,
           operatorMergeAddress: operatorAddress,
           referenceScriptsWalletAddress: await fixture.referenceScriptsLucid
             .wallet()
             .address(),
-        }),
-      ),
-      Layer.succeed(
-        MidgardContracts,
-        MidgardContracts.make({
+        },
+        contracts: {
           ...fixture.contracts,
           consensusProfile: identity.consensusProfile,
-        }),
-      ),
-      Layer.succeed(
-        ContractDeploymentIdentity,
-        ContractDeploymentIdentity.make(generationIdentity),
-      ),
-      Database.layer,
-    );
-    const runtime = ManagedRuntime.make(
-      Layer.mergeAll(
-        mempoolLedgerCacheLayer,
-        WriteBehindLive,
-        IntentJournalLive,
-      ).pipe(Layer.provideMerge(services)),
+        },
+        identity:
+          hubOraclePolicyId === undefined
+            ? identity
+            : { ...identity, hubOraclePolicyId },
+        ledgerSnapshotPeers,
+      }),
     );
     if (generation === 0) {
       // This worker's database shard: start from empty application tables.
@@ -263,6 +241,7 @@ export const openProductionLifecycle = async (
     late.recompute = driver.recompute;
     let landedHold: DriverHold | undefined;
     let dispositionHold: DriverHold | undefined;
+    let unappliedHolds: readonly DriverHold[] = [];
     let stopped = false;
     const requireRunning = () => {
       if (stopped)
@@ -290,6 +269,7 @@ export const openProductionLifecycle = async (
       const run = await runtime.runPromise(driver.untilApplied);
       landedHold = run.landedHold;
       dispositionHold = run.dispositionHold;
+      unappliedHolds = run.unappliedHolds;
       const gate = await runtime.runPromise(readFollowerWriteGate);
       if (gate.applied !== undefined) appliedViews.add(viewKey(gate.applied));
       await runtime.runPromise(
@@ -423,6 +403,9 @@ export const openProductionLifecycle = async (
       /** The hold of the rebase the last run's own-commit disposition made
        * due, if it did not finish. */
       dispositionHold: () => dispositionHold,
+      /** The holds of the runs the last synchronization made before the
+       * one that applied. */
+      unappliedHolds: () => unappliedHolds,
       /** One driver run at the emulator's tip, whatever it returns. */
       driveOnce: () => runtime.runPromise(driver.runOnce),
       /** The driver's recompute when the rebase is due, as after S6. */
@@ -465,11 +448,15 @@ export const openProductionLifecycle = async (
     restartRuntime: async ({
       afterStop,
       hubOraclePolicyId,
+      ledgerSnapshotPeers,
     }: {
       /** Observe retained storage only after every old service has closed. */
       readonly afterStop?: () => Promise<void>;
       /** The hub-oracle policy id the next generation starts under. */
       readonly hubOraclePolicyId?: string;
+      /** The snapshot peers the next generation asks in place of the
+       * configured ones, if it starts without a ledger. */
+      readonly ledgerSnapshotPeers?: LedgerSnapshotPeerSource;
     } = {}) => {
       if (restarting)
         throw new Error("Fixture runtime restart was already requested");
@@ -483,6 +470,7 @@ export const openProductionLifecycle = async (
           await makeGlobalsService(),
           stoppedGenerations.length,
           hubOraclePolicyId,
+          ledgerSnapshotPeers,
         );
         restarting = false;
         return current.handle;

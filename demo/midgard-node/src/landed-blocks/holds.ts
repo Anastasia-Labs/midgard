@@ -150,9 +150,10 @@ export const LANDED_BLOCKS_WAITING = "landed_blocks_waiting";
 /**
  * The merged queue root is on no lineage `confirmed_ledger` can reach: not
  * forward from the frontier through the queue history, nor back through the
- * retained folds. On an honest chain it cannot occur once the frontier
- * was set at genesis or on a fold this node made: every rollback a merge can
- * suffer is above the prune boundary, where its fold is retained.
+ * retained folds. On an honest chain it occurs only while a rollback undid
+ * the merge of the header the node's ledger install set the frontier at:
+ * every other rollback a merge can suffer is above the prune boundary,
+ * where its fold is retained.
  */
 export const CONFIRMED_LEDGER_BEHIND = "confirmed_ledger_behind";
 /**

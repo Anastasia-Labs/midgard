@@ -5,7 +5,8 @@
  * `l1_follower_waiting`, `l1_follower_apply_stuck`,
  * `l1_follower_prune_failing`), every hold of the
  * follower-change driver (`l1_events_*`; the recompute's
- * `startup_preparation_failed` and `l1_driver_recompute_failed`; a refused
+ * `startup_preparation_failed`, `l1_driver_recompute_failed` and
+ * `ledger_snapshot_pending`; a refused
  * gated write's `l1_follower_view_stale` and `l1_driver_recompute_pending`;
  * the forced-order hook's
  * `forced_order_carriage_pending` and `forced_order_ingestion_failed`; and landed-block processing's, from

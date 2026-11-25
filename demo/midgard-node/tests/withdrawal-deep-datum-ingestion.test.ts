@@ -57,6 +57,7 @@ import {
   storeOpener,
   testDatabases,
 } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const databases = testDatabases();
@@ -153,6 +154,7 @@ const ingest = (event: ProjectedEvent) =>
   run(
     Effect.gen(function* () {
       yield* resetApplicationTables;
+      yield* installEmptyLedger();
       const plan = yield* writeFollowerView(100, [event]);
       const outcome = yield* withFollowerWrite(
         reconcileOverDead(plan, {

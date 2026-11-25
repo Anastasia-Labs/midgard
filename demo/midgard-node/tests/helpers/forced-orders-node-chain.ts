@@ -25,12 +25,19 @@ import {
 import { db, openNodeFollowerStore } from "./forced-orders-node-store.js";
 import { EVENTS_CONFIG } from "./l1-events-chain.js";
 import { ChainDriver } from "./l1-events-store.js";
+import { installEmptyLedger } from "./ledger-install.js";
 
 export const K = 4;
 export const INCLUSION = 5_000n;
 
-/** Resets the node tables before each test and closes its stores after it. */
-export const nodeFollowerLifecycle = (): (() => Promise<{
+/**
+ * Resets the node tables before each test and closes its stores after it.
+ * Each follow installs the empty ledger before any event unless told not
+ * to (`installed: false`).
+ */
+export const nodeFollowerLifecycle = (): ((options?: {
+  installed?: boolean;
+}) => Promise<{
   store: FactStore;
   chain: ChainDriver;
 }>) => {
@@ -41,7 +48,8 @@ export const nodeFollowerLifecycle = (): (() => Promise<{
   afterEach(async () => {
     await Promise.all(opened.splice(0).map((store) => store.close()));
   });
-  return async () => {
+  return async ({ installed = true } = {}) => {
+    if (installed) await db(installEmptyLedger());
     const store = await openNodeFollowerStore(
       [eventProjection(EVENTS_CONFIG), forcedOrderProjection(FORCED_CONFIG)],
       K,

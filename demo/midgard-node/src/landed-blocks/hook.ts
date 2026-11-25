@@ -5,16 +5,20 @@
  * the queue read's own hold (`state_queue_unhealthy`), so this hook waits for it
  * quietly. The run passes the follower's prune boundary to the fold prune,
  * has the native MPF drop the ledgers it no longer needs, then publishes
- * where `confirmed_ledger` stands, with its level.
+ * where `confirmed_ledger` stands, with its level. Before the node's ledger
+ * is installed (no snapshot anchor) the hook does nothing: the install sets
+ * the frontier, and nothing may set it before.
  */
 import type { DepthParameters, FactStore } from "@al-ft/midgard-l1-follower";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
+import * as SnapshotAnchor from "../database/snapshot-anchor.js";
 import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import type { DriverHook } from "../l1-events/driver.js";
 import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
 import { readLandedStateQueueFrom } from "../l1-state-queue/hook.js";
 import type { Database } from "../services/database.js";
+import { LANDED_BLOCKS_WAITING } from "./holds.js";
 import type { LandedBlockPorts } from "./ports.js";
 import {
   type ConfirmedLedgerPosition,
@@ -50,6 +54,13 @@ export const landedBlockHook =
       change.view,
     );
     if (read.kind !== "ok" || !read.queue.healthy) return undefined;
+    const installed = await options.run(Effect.either(SnapshotAnchor.retrieve));
+    if (Either.isLeft(installed))
+      return {
+        reason: LANDED_BLOCKS_WAITING,
+        detail: installed.left.message,
+      };
+    if (installed.right === undefined) return undefined;
     // A cursor read that fails only skips this run's fold prune.
     const cursor = await options.store.cursor().catch(() => null);
     const held = await options.run(

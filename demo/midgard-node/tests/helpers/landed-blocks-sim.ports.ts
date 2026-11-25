@@ -14,7 +14,6 @@ import { DepositsDB } from "../../src/database/index.js";
 import { readQueueHistory } from "../../src/landed-blocks/history.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "../../src/landed-blocks/holds.js";
 import { ownJournal } from "../../src/landed-blocks/journal.js";
-import { ledgerRows } from "../../src/landed-blocks/ledger.js";
 import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import type { ConfirmedLedgerPosition } from "../../src/landed-blocks/position.js";
 import { rebasePlan } from "../../src/landed-blocks/rebase-target.js";
@@ -108,7 +107,8 @@ export type LandedSimStats = TrafficStats & {
   /** Checks the node missed (down), and runs that met a merged header it never processed. */
   offlineChecks: number;
   coalescedMerges: number;
-  bootstrapsPastGenesis: number;
+  /** Checks that met, as the node's first run, a root past genesis. */
+  firstRunsPastGenesis: number;
   /** A long-late block held while the root passed it. */
   heldPastMerge: number;
 };
@@ -167,7 +167,7 @@ export const zeroLandedSimStats = (): LandedSimStats => ({
   unrejectedRestored: 0,
   offlineChecks: 0,
   coalescedMerges: 0,
-  bootstrapsPastGenesis: 0,
+  firstRunsPastGenesis: 0,
   heldPastMerge: 0,
 });
 
@@ -340,7 +340,6 @@ export const simPorts = (
       catch: (cause) => cause,
     }),
   ownJournal,
-  genesis: ledgerRows(env.universe.genesis, new Map()),
   // The driver's recompute, as the settle step runs it after the hook
   // (deferred, or crashed and resumed now and then): a due rebase is
   // recorded as asked for and held pending until it ran.

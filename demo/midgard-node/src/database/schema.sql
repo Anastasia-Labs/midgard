@@ -484,10 +484,11 @@ CREATE TABLE public.node_landed_blocks (
     CONSTRAINT node_landed_blocks_withdrawals_check CHECK ((jsonb_typeof(withdrawals) = 'array'::text))
 );
 
--- class: D-x; retention: one row, written once by the install of a peer's ledger snapshot; absent on a node that started from the empty ledger
--- The confirmed header a node's ledger was taken from (a peer's snapshot of
--- its post-state root) and that header's end time: the node keeps no row
--- for an event included at or before it.
+-- class: D-x; retention: one row, written once by the install of the node's ledger, in the transaction that stamps it
+-- The confirmed header a node's ledger was taken from (the empty ledger, or
+-- a peer's snapshot of the header's post-state root) and that header's end
+-- time: the node keeps no row for an event included at or before it, and
+-- none at all before the row exists.
 CREATE TABLE public.node_ledger_snapshot_anchor (
     id boolean DEFAULT true NOT NULL,
     header_hash bytea NOT NULL,
@@ -497,6 +498,16 @@ CREATE TABLE public.node_ledger_snapshot_anchor (
     CONSTRAINT node_ledger_snapshot_anchor_header_hash_check CHECK ((octet_length(header_hash) = 28)),
     CONSTRAINT node_ledger_snapshot_anchor_id_check CHECK (id),
     CONSTRAINT node_ledger_snapshot_anchor_utxos_root_check CHECK ((utxos_root ~ '^[0-9a-f]{64}$'::text))
+);
+
+-- class: D-x; retention: rows live while a node without a ledger stamp takes in a peer's ledger snapshot; emptied when a take-in starts and by the install that stamps the ledger
+-- The entries of the snapshot being taken in, as `confirmed_ledger` rows:
+-- the install moves them into `confirmed_ledger` and `mempool_ledger`.
+CREATE TABLE public.node_ledger_snapshot_staging (
+    outref bytea NOT NULL,
+    tx_id bytea NOT NULL,
+    output bytea NOT NULL,
+    address text NOT NULL
 );
 
 CREATE TABLE public.operator_membership_observations (
@@ -957,6 +968,9 @@ ALTER TABLE ONLY public.node_landed_blocks
 
 ALTER TABLE ONLY public.node_ledger_snapshot_anchor
     ADD CONSTRAINT node_ledger_snapshot_anchor_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.node_ledger_snapshot_staging
+    ADD CONSTRAINT node_ledger_snapshot_staging_pkey PRIMARY KEY (outref);
 
 ALTER TABLE ONLY public.operator_membership_observations
     ADD CONSTRAINT operator_membership_observations_pkey PRIMARY KEY (hub_oracle_policy_id, operator_key);

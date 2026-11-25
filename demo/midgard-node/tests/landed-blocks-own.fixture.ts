@@ -4,7 +4,8 @@
  * their landed queue, and stub landed-block ports over the node database
  * that record replays and rebases (held pending: the driver's recompute
  * never runs here), serve a set queue history, and read and persist ledgers
- * in a memory ledger store retaining the genesis ledger.
+ * in a memory ledger store retaining the genesis ledger. A node runs landed
+ * processing once it installed its ledger (`installGenesis`).
  */
 import {
   createLedgerStore,
@@ -24,7 +25,6 @@ import type {
   LandedStateQueueElement,
 } from "../src/l1-state-queue/index.js";
 import { LANDED_BLOCK_REBASE_PENDING } from "../src/landed-blocks/holds.js";
-import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import {
   type LandedBlockPorts,
   type OwnJournal,
@@ -39,6 +39,7 @@ import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { rootDatum } from "./helpers/landed-blocks-sim.traffic.js";
 import { simDigest, simOutput } from "./helpers/landed-blocks-sim.universe.js";
+import { installLedger } from "./helpers/ledger-install.js";
 import {
   hex32,
   NODE_PREFIX,
@@ -298,7 +299,6 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
       catch: (cause) => cause,
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),
-  genesis: ledgerRows(GENESIS, new Map()),
   // A driver rebase this fixture records and never runs: it stays pending.
   rebase: () =>
     Effect.sync(() => {
@@ -358,6 +358,28 @@ export const inNode = <A>(work: Effect.Effect<A, unknown, Database>) =>
       }),
     ),
   );
+
+/**
+ * Installs the genesis ledger, the ledger at the fixture chain's genesis
+ * header, into the harness's ledger store as a node without a ledger stamp
+ * takes it in from a snapshot peer: both ledgers hold it, the frontier and
+ * the anchor are at genesis.
+ */
+export const installGenesis = (state: Pick<Harness, "ledgers">) =>
+  Effect.gen(function* () {
+    yield* installLedger({
+      headerHash: SDK.GENESIS_HEADER_HASH,
+      endTimeMs: 0n,
+      entries: GENESIS,
+      node: yield* Effect.promise(() => state.ledgers),
+    });
+  });
+
+/** `inNode` on a node that installed the genesis ledger (`installGenesis`). */
+export const inInstalledNode =
+  (state: Pick<Harness, "ledgers">) =>
+  <A>(work: Effect.Effect<A, unknown, Database>) =>
+    inNode(Effect.andThen(installGenesis(state), work));
 
 export const confirmedKeys = ConfirmedLedgerDB.retrieve.pipe(
   Effect.map((entries) => sortedKeys(entries)),

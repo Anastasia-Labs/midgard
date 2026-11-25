@@ -54,6 +54,7 @@ import {
 } from "./helpers/forced-orders-node-store.js";
 import { EVENTS_CONFIG } from "./helpers/l1-events-chain.js";
 import { ChainDriver } from "./helpers/l1-events-store.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { resetApplicationTables } from "./utils.js";
 
 const K = 4;
@@ -61,6 +62,7 @@ const K = 4;
 const opened: FactStore[] = [];
 beforeEach(async () => {
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
 });
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((store) => store.close()));

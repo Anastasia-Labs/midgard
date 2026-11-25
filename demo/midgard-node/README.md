@@ -45,6 +45,14 @@ It is responsible for:
   ledger entries, immutable transactions, address history, and rejection logs.
 - `LEDGER_MPF_DB_PATH` points at the LevelDB directory used to persist the
   MPF-backed ledger root across restarts.
+- A node with no ledger yet takes in the ledger at the state queue's confirmed
+  header before it ingests any L1 event: the empty ledger while the confirmed
+  ledger is empty, otherwise a snapshot from the peers in
+  `LEDGER_SNAPSHOT_PEERS` (comma-separated libp2p multiaddrs, each ending in
+  `/p2p/<peer id>`, asked in order over the DA libp2p `ledger-snapshot`
+  protocol). The stream is checked against the confirmed UTxO root and
+  installed in one transaction; the node then syncs the blocks above it.
+  Until a peer serves it, `/readyz` reports `ledger_snapshot_pending`.
 - `pnpm build` bundles the node entry point and worker entry points with tsup;
   workspace imports resolve through package exports.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared

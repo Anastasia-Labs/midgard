@@ -101,7 +101,6 @@ export const nodeLandedBlockPorts = (
         }),
       ),
     ownJournal,
-    genesis: Effect.succeed([]),
     rebase,
   } satisfies LandedBlockPorts<NodeLandedBlockContext>;
 };

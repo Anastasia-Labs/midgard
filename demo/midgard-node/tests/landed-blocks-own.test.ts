@@ -74,7 +74,7 @@ import {
   GENESIS,
   harness,
   hex,
-  inNode,
+  inInstalledNode,
   localFaultAlarms,
   opening,
   ports,
@@ -103,7 +103,7 @@ describe("own landed blocks", () => {
       settlement: "00",
     };
     state.journals.set(a.hash, { ...journalA, withdrawals: [withdrawal] });
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const process = (nodes: readonly Block[]) =>
           processLandedQueue(ports(state), queueOf(genesisState, nodes));
@@ -157,17 +157,16 @@ describe("own landed blocks", () => {
     const { a, f, genesisState, journalA } = await fixture();
     const state = harness();
     state.journals.set(a.hash, journalA);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const process = (nodes: readonly Block[]) =>
           processLandedQueue(ports(state), queueOf(genesisState, nodes));
-        // The bootstrap write.
+        // The first block's write.
         state.viewHeld = false;
         expect(yield* process([a])).toEqual({
           reason: LANDED_BLOCKS_WAITING,
           detail: "view moved",
         });
-        expect(yield* Frontier.retrieve).toBeUndefined();
         expect(yield* retrieveRows).toHaveLength(0);
         state.viewHeld = true;
         expect((yield* process([a]))?.reason).toBe(LANDED_BLOCK_REBASE_PENDING);
@@ -202,7 +201,7 @@ describe("own landed blocks", () => {
       ...journalA,
       expectedUtxosRoot: f.header.utxosRoot,
     });
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const held = yield* processLandedQueue(
           ports(state),
@@ -222,7 +221,7 @@ describe("own landed blocks", () => {
     const state = harness();
     // The journal names the right base and root, but its delta keeps G0.
     state.journals.set(a.hash, { ...journalA, spent: [] });
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const held = yield* processLandedQueue(
           ports(state),
@@ -272,7 +271,7 @@ describe("own landed blocks", () => {
     state.journals.set(a.hash, journalA);
     state.replayExtra = entry("bad-root-extra", 9_000_000n);
     const badRoot = await rootOf([...AFTER_F, state.replayExtra]);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         const waiting = yield* processLandedQueue(
           ports(state),
@@ -362,7 +361,7 @@ describe("own landed blocks", () => {
       [Effect.fail(refused), LANDED_BLOCK_REPLAY_FAILED, true],
       [Effect.fail(new Error("boom")), LANDED_BLOCK_REPLAY_FAILED, false],
     ];
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         // `a` adopted and applied, as the rebase leaves it: what holds is
         // the foreign block's replay alone.
@@ -425,7 +424,7 @@ describe("own landed blocks", () => {
     const state = harness();
     state.journals.set(a.hash, journalA);
     const merged = queueOf(confirmedAt(a, ""), []);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
         // Merged, but not applied by the rebase yet: the fold waits for it.
@@ -461,7 +460,7 @@ describe("own landed blocks", () => {
     const state = harness();
     state.journals.set(a.hash, journalA);
     const merged = queueOf(confirmedAt(a, ""), []);
-    await inNode(
+    await inInstalledNode(state)(
       Effect.gen(function* () {
         yield* processLandedQueue(ports(state), queueOf(genesisState, [a]));
         yield* markApplied([a.hash]);

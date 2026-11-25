@@ -21,7 +21,7 @@ import {
   fixture,
   G1,
   harness,
-  inNode,
+  inInstalledNode,
   localFaultAlarms,
   opening,
   ports,
@@ -51,7 +51,7 @@ it("processes an own block and its relanded parent in one run after a retain dro
     forcedIds: [],
     txIds: [simDigest("own:tx-b")],
   });
-  await inNode(
+  await inInstalledNode(state)(
     Effect.gen(function* () {
       const process = (nodes: readonly Block[]) =>
         processLandedQueue(ports(state), queueOf(genesisState, nodes));

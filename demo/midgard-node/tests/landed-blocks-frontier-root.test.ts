@@ -35,6 +35,7 @@ import {
   G1,
   GENESIS,
   harness,
+  inInstalledNode,
   inNode,
   localFaultAlarms,
   opening,
@@ -100,7 +101,7 @@ const setup = async () => {
 it("processes a block on the frontier after a rollback removed every later row, when a retain dropped the frontier block's root before it folded", async () => {
   const { a, b, c, genesisRoot, state, merged, processedThenRetained } =
     await setup();
-  await inNode(
+  await inInstalledNode(state)(
     Effect.gen(function* () {
       // Both left the window unmerged: retention names the frontier's root
       // and the newest processed one.
@@ -185,7 +186,7 @@ it("processes a block on the frontier an own block's fold set, when the store re
 
 it("moves the frontier to a block whose root the store neither retains nor can rebuild", async () => {
   const { a, b, state, merged, processedThenRetained } = await setup();
-  await inNode(
+  await inInstalledNode(state)(
     Effect.gen(function* () {
       // The store keeps neither `a`'s root nor the frontier's before it.
       yield* processedThenRetained([b.header.utxosRoot]);

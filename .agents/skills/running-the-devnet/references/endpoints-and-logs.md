@@ -558,6 +558,14 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
 - `l1_driver_recompute_failed`: a recompute failed. A transient failure is
   retried on the driver's backoff; any other is read again on the next
   follower change. Read the detail; it repeats until the cause is fixed.
+- `ledger_snapshot_pending`: the node has no ledger yet, the confirmed
+  ledger it starts from is not empty, and no peer in `LEDGER_SNAPSHOT_PEERS`
+  served its snapshot. The detail names each peer and why: one that does
+  not hold the ledger or does not answer is asked again on the next retry;
+  one that served a wrong ledger is not asked again until the node
+  restarts. Retried on the driver's backoff; the node ingests no L1 event
+  until its ledger is installed. Check that the configured peers run and
+  are reachable, or configure a peer.
 - `l1_events_ingestion_waiting`: event ingestion waits for its write gate
   while a recovery runs. Wait.
 - `l1_events_ingestion_failed`: ingestion refused or failed; the detail
