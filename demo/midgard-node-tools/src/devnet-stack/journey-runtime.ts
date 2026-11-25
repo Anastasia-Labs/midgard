@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { walletFromSeed } from "@lucid-evolution/lucid";
 
@@ -15,6 +15,7 @@ import { Journal } from "./journal.js";
 import {
   awaitEarlierAttempts,
   CliFailure,
+  cliProcess,
   type CliRequest,
   type CliRunner,
   definitiveCliFailure,
@@ -22,9 +23,8 @@ import {
   FatalJourneyError,
   firstLine,
   JourneyDeadlineError,
+  journeyRunKey,
   sleep,
-  SUBMISSION_MARKER_ENV,
-  SUBMISSION_RUN_ENV,
 } from "./journey-cli.js";
 import { describeNodeReadiness } from "./journey-node-readiness.js";
 import {
@@ -42,8 +42,7 @@ import {
   type Value,
 } from "./journey-values.js";
 import { servicePorts } from "./layout.js";
-import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
-import { userEnvironment } from "./user-env.js";
+import type { HubOracleOneShot } from "./node-env.js";
 
 export {
   DEFAULT_DEADLINES,
@@ -134,7 +133,7 @@ export class JourneyRuntime {
 
   /** Identifies this run's CLI attempts among every process on the machine. */
   get runKey() {
-    return resolve(this.context.layout.journeyDir);
+    return journeyRunKey(this.context);
   }
 
   /** The same scenario id always resumes the same submission. */
@@ -160,29 +159,10 @@ export class JourneyRuntime {
         (message) => this.log(message),
         this.wait,
       );
-    const user = request.tool === "user";
-    const { layout } = this.context;
-    const entry = user ? "dist/cli.js" : "dist/index.js";
-    return execLogged(process.execPath, [entry, ...request.args], {
-      cwd: user ? layout.userCliRoot : layout.nodeRoot,
-      env: {
-        ...(user
-          ? userEnvironment(this.context, this.runKey)
-          : nodeEnvironment({
-              ...this.context,
-              oneShot: this.oneShot,
-              role: "command",
-            })),
-        ...(request.user === undefined
-          ? {}
-          : { USER_SEED_PHRASE: this.context.identities.seeds[request.user] }),
-        ...(request.submissionId === undefined
-          ? {}
-          : {
-              [SUBMISSION_RUN_ENV]: this.runKey,
-              [SUBMISSION_MARKER_ENV]: request.submissionId,
-            }),
-      },
+    const { args, cwd, env } = cliProcess(this.context, this.oneShot, request);
+    return execLogged(process.execPath, args, {
+      cwd,
+      env,
       logDir: this.logDir,
       label: request.label,
       timeoutMs: request.timeoutMs,

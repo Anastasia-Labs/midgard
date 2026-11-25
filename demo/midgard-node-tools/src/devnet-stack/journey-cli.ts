@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
+import type { DeployContext } from "./deploy.js";
 import type { ExecResult } from "./exec.js";
 import type { UserRole } from "./identities.js";
+import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
+import { userEnvironment } from "./user-env.js";
 
 export const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -65,6 +69,42 @@ export const SUBMISSION_MARKER_ENV = "MIDGARD_DEVNET_JOURNEY_SUBMISSION";
  * basename), so a process is only this run's when both markers match.
  */
 export const SUBMISSION_RUN_ENV = "MIDGARD_DEVNET_JOURNEY_RUN";
+
+/** Identifies a run's CLI attempts among every process on the machine. */
+export const journeyRunKey = ({ layout }: Pick<DeployContext, "layout">) =>
+  resolve(layout.journeyDir);
+
+/**
+ * The process a request names: the node CLI or `midgard-user`, each run from
+ * its own package with its own environment, marked with its submission.
+ */
+export const cliProcess = (
+  context: DeployContext,
+  oneShot: HubOracleOneShot,
+  request: CliRequest,
+) => {
+  const user = request.tool === "user";
+  const { layout, identities } = context;
+  const runKey = journeyRunKey(context);
+  return {
+    args: [user ? "dist/cli.js" : "dist/index.js", ...request.args],
+    cwd: user ? layout.userCliRoot : layout.nodeRoot,
+    env: {
+      ...(user
+        ? userEnvironment(context, runKey)
+        : nodeEnvironment({ ...context, oneShot, role: "command" })),
+      ...(request.user === undefined
+        ? {}
+        : { USER_SEED_PHRASE: identities.seeds[request.user] }),
+      ...(request.submissionId === undefined
+        ? {}
+        : {
+            [SUBMISSION_RUN_ENV]: runKey,
+            [SUBMISSION_MARKER_ENV]: request.submissionId,
+          }),
+    },
+  };
+};
 
 /**
  * Processes of run `runKey` still running a CLI attempt for `submissionId`.

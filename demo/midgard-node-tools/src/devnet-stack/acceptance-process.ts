@@ -7,13 +7,13 @@ import type { DeployContext } from "./deploy.js";
 import type { ExecResult } from "./exec.js";
 import {
   awaitEarlierAttempts,
+  cliProcess,
   type CliRunner,
   FatalJourneyError,
-  SUBMISSION_MARKER_ENV,
-  SUBMISSION_RUN_ENV,
+  journeyRunKey,
 } from "./journey-cli.js";
 import type { JourneyOptions } from "./journey-runtime.options.js";
-import { type HubOracleOneShot, nodeEnvironment } from "./node-env.js";
+import type { HubOracleOneShot } from "./node-env.js";
 
 export const assertAcceptanceActive = (signal: AbortSignal) => {
   if (signal.aborted)
@@ -153,32 +153,18 @@ export const acceptanceJourneyOwner = (
     assertAcceptanceActive(signal);
     if (request.submissionId !== undefined)
       await awaitEarlierAttempts(
-        context.layout.journeyDir,
+        journeyRunKey(context),
         request.submissionId,
         request.timeoutMs,
         console.log,
         sleep,
       );
     assertAcceptanceActive(signal);
+    const { args, cwd, env } = cliProcess(context, oneShot, request);
     const result = await track(
-      acceptanceExec(process.execPath, ["dist/index.js", ...request.args], {
-        cwd: context.layout.nodeRoot,
-        env: {
-          ...nodeEnvironment({
-            ...context,
-            oneShot,
-            role: "command",
-          }),
-          ...(request.user === undefined
-            ? {}
-            : { USER_SEED_PHRASE: context.identities.seeds[request.user] }),
-          ...(request.submissionId === undefined
-            ? {}
-            : {
-                [SUBMISSION_RUN_ENV]: context.layout.journeyDir,
-                [SUBMISSION_MARKER_ENV]: request.submissionId,
-              }),
-        },
+      acceptanceExec(process.execPath, args, {
+        cwd,
+        env,
         logDir: join(context.layout.journeyDir, "logs"),
         label: request.label,
         timeoutMs: request.timeoutMs,
