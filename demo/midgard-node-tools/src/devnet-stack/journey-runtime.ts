@@ -261,8 +261,10 @@ export class JourneyRuntime {
 
   /**
    * One HTTP request. A refused or reset connection, a timeout, a 5xx (bar
-   * an accepted 503, the body of an unready /readyz) or a body that is not
-   * JSON throws a plain Error, which every wait treats as "not yet".
+   * an accepted 503, the body of an unready /readyz), a 429 (the node's rate
+   * limit refused the read, so its body says nothing about what was asked)
+   * or a body that is not JSON throws a plain Error, which every wait treats
+   * as "not yet" and names when it reports.
    */
   async http(
     path: string,
@@ -280,7 +282,7 @@ export class JourneyRuntime {
     } catch (error) {
       throw new Error(`GET ${path}: ${describeError(error)}`);
     }
-    if (status >= 500 && !(accept503 && status === 503))
+    if (status === 429 || (status >= 500 && !(accept503 && status === 503)))
       throw new Error(`GET ${path} answered ${status}: ${text.slice(0, 300)}`);
     try {
       return { status, body: JSON.parse(text) as Json };

@@ -21,6 +21,13 @@ export const ACCEPTANCE_PHASE_DRILLS = {
   "withdrawals-concurrent": "kill-node-on-settlement",
 } as const;
 
+/**
+ * How often an armed phase drill reads its trigger. The admission moment
+ * lasts tens of milliseconds (the node validates a queued transaction as soon
+ * as it is stored), so the reads come this close together.
+ */
+export const ACCEPTANCE_TRIGGER_POLL_MS = 10;
+
 export type AcceptanceObservation = {
   readonly nonce: string;
   readonly phase: string;

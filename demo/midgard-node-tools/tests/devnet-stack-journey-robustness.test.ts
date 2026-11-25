@@ -330,6 +330,21 @@ describe("node readiness in long waits", () => {
     );
   });
 
+  it("names a rate refusal as the reason a wait has not finished", async () => {
+    const refusal = {
+      error: "Request rate exceeded",
+      error_code: "E_HTTP_RATE_LIMITED",
+    };
+    const fetch = (async (url: string) =>
+      url.endsWith("/readyz")
+        ? json(200, { ready: true, reasons: [] })
+        : json(429, refusal)) as unknown as typeof globalThis.fetch;
+    const { journey } = makeJourney(fakeContext(), { fetch });
+    await expect(journey.waitTx("t1", "committed", 0)).rejects.toThrow(
+      `timed out after 0 s waiting for L2 tx t1 to be committed: GET /tx-status?tx_hash=t1 answered 429: ${JSON.stringify(refusal)} (node ready)`,
+    );
+  });
+
   describe("on a clock that advances a minute per poll", () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ["Date"] }));
     afterEach(() => vi.useRealTimers());

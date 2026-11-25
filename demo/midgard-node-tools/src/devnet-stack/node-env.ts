@@ -119,6 +119,12 @@ export const nodeEnvironment = (input: {
     ADMIN_API_KEY: identities.adminApiKey,
     // Small journeys never queue eight blocks; the default would park merges.
     MIN_QUEUE_LENGTH_FOR_MERGING: "1",
+    // The controller, its drills and the CLIs are one loopback client. An
+    // armed acceptance drill reads /pipeline-status or /readyz up to 100
+    // times a second; the public budgets (10 and 5 a second for a client)
+    // would refuse those reads and, with them, the journey's own.
+    HTTP_RATE_LIMIT_READ: "1000,1000,1000,1000",
+    HTTP_RATE_LIMIT_HEALTH: "1000,1000",
     ...(oneShot === undefined
       ? {}
       : {

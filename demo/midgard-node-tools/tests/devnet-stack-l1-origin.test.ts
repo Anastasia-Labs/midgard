@@ -3,12 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { entropyToMnemonic } from "bip39";
+import { ConfigProvider, Effect } from "effect";
 import {
   createDeploymentRunState,
   writeDeploymentRunStateAtomic,
 } from "midgard-node/e2e/run-state";
+import { httpRateLimitConfig } from "midgard-node/services/config.http-proxy-peers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ACCEPTANCE_TRIGGER_POLL_MS } from "../src/devnet-stack/acceptance-journey.js";
 import { committeeEnvironment } from "../src/devnet-stack/da.js";
 import {
   ensureL1Origin,
@@ -157,6 +160,38 @@ describe("the devnet node environment", () => {
     expect(plan.origin.hubOracleOneShot.txHash.toString("hex")).toBe(
       "ab".repeat(32),
     );
+  });
+
+  it("lets the acceptance drills read their triggers as often as they do, beside the journey's own reads", async () => {
+    const layout = runLayout();
+    await signNonce(layout);
+    await ensureL1Origin({ layout, run, artifacts }, oneShot, (input) =>
+      deriveL1Origin({ ...input, find: () => Promise.resolve(found) }),
+    );
+    const env = nodeEnvironment({
+      layout,
+      run,
+      identities,
+      artifacts,
+      oneShot,
+      l1Origin: recordedL1Origin(layout, oneShot),
+      role: "listen",
+    });
+    // The node's own reading of that environment, not the variables' text.
+    const { classes } = await Effect.runPromise(
+      Effect.withConfigProvider(
+        httpRateLimitConfig,
+        ConfigProvider.fromMap(new Map(Object.entries(env))),
+      ),
+    );
+    // One loopback client makes the drill's reads and the journey's:
+    // /pipeline-status (read) and /readyz (health).
+    const triggerReadsPerSecond = 1_000 / ACCEPTANCE_TRIGGER_POLL_MS;
+    expect({
+      read: classes.read.peer.perSecond > triggerReadsPerSecond,
+      readGlobal: classes.read.global!.perSecond > triggerReadsPerSecond,
+      health: classes.health.peer.perSecond > triggerReadsPerSecond,
+    }).toEqual({ read: true, readGlobal: true, health: true });
   });
 
   it("T-b: refuses listen without a recorded origin, and never records an origin the chain does not prove", async () => {

@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import {
+  ACCEPTANCE_TRIGGER_POLL_MS,
   AcceptanceJourney,
   requireInjectedDrills,
 } from "./acceptance-journey.js";
@@ -78,7 +79,7 @@ export const runFinalAcceptance = async (
     recoveryMs: 900_000,
     stableMs: 300_000,
     triggerTimeoutMs: 1_200_000,
-    pollMs: 10,
+    pollMs: ACCEPTANCE_TRIGGER_POLL_MS,
   };
   const observations = join(
     context.layout.journeyDir,
