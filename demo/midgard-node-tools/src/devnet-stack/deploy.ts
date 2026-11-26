@@ -64,6 +64,11 @@ export type DeployContext = {
   readonly artifacts: Artifacts;
   /** Set when the context is a further node's (further-nodes.ts). */
   readonly furtherNode?: number;
+  /**
+   * Where the deployment's reference scripts live, for a further node: the
+   * stack node's reference-script wallet, not its own.
+   */
+  readonly referenceScriptDeployAddress?: string;
 };
 
 const runNodeCommand = (

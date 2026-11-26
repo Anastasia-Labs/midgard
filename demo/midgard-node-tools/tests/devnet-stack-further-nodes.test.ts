@@ -9,8 +9,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { DEPLOYMENT_PROFILE } from "../src/devnet-stack/build.js";
 import { PREFLIGHT_L1_ORIGIN } from "../src/devnet-stack/deployment-origin.js";
-import { FUNDING_POLICY } from "../src/devnet-stack/funding-budget.js";
-import { totalRoleFundingLovelace } from "../src/devnet-stack/funding-budget.js";
+import {
+  FUNDING_POLICY,
+  totalRoleFundingLovelace,
+} from "../src/devnet-stack/funding-budget.js";
 import {
   furtherNodeContext,
   furtherNodeFundingOutputs,
@@ -20,7 +22,7 @@ import {
   otherNodeUrls,
   preflightFurtherNodeConfigs,
 } from "../src/devnet-stack/further-nodes.js";
-import { loadIdentities } from "../src/devnet-stack/identities.js";
+import { loadIdentities, walletInfo } from "../src/devnet-stack/identities.js";
 import { makeLayout, type RunEnv } from "../src/devnet-stack/layout.js";
 import {
   nodeEnvironment,
@@ -157,6 +159,20 @@ describe("a further node's environment", () => {
       expect(env[own], own).not.toBe(stack[own]);
     expect(env.L1_OPERATOR_SEED_PHRASE).toBe(second!.seeds.operator);
     expect(env.POSTGRES_DB).toBe("midgard_node_2");
+    // The deployment's reference scripts are at the stack node's wallet; the
+    // node refuses a deployment manifest that names another address.
+    const published = walletInfo(
+      stack.L1_REFERENCE_SCRIPT_SEED_PHRASE!,
+    ).address;
+    expect(stack.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS).toBeUndefined();
+    expect(env.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS).toBe(published);
+    expect(
+      nodeEnvironment({
+        ...furtherNodeContext(context, second!),
+        ...deployment,
+        role: "command",
+      }).L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
+    ).toBe(published);
     // The committee's second key stays with the stack's node.
     expect(stack.DA_COSIGNER_SEED_PHRASE).toBeDefined();
     expect(env.DA_COSIGNER_SEED_PHRASE).toBeUndefined();

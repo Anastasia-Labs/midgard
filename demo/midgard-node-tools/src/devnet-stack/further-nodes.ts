@@ -152,6 +152,11 @@ export const furtherNodeContext = (
 ): DeployContext => ({
   ...context,
   furtherNode: further.node,
+  // The deployment manifest names the address its reference scripts were
+  // published to, and a node refuses a manifest that names another.
+  referenceScriptDeployAddress: walletInfo(
+    context.identities.seeds.referenceScript,
+  ).address,
   layout: furtherNodeLayout(context.layout, further.node),
   run: {
     ...context.run,

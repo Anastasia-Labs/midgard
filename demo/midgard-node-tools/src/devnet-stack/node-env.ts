@@ -74,6 +74,8 @@ export const nodeEnvironment = (input: {
    * and holds no DA committee key.
    */
   readonly furtherNode?: number;
+  /** `DeployContext.referenceScriptDeployAddress`. */
+  readonly referenceScriptDeployAddress?: string;
   /** libp2p addresses of the nodes a node without a ledger asks for it. */
   readonly snapshotPeers?: readonly string[];
   /** Base URLs of the other operators' nodes, sent the transactions held here. */
@@ -121,6 +123,12 @@ export const nodeEnvironment = (input: {
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: identities.seeds.merge,
     L1_SETTLEMENT_SEED_PHRASE: identities.seeds.settlement,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: identities.seeds.referenceScript,
+    ...(input.referenceScriptDeployAddress === undefined
+      ? {}
+      : {
+          L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS:
+            input.referenceScriptDeployAddress,
+        }),
     ...(input.furtherNode === undefined
       ? { DA_COSIGNER_SEED_PHRASE: identities.seeds.daCosigner }
       : {}),
