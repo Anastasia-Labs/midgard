@@ -88,6 +88,50 @@ describe("time-gated operator transactions against a block-sized ledger tip", ()
     );
   }, 420_000);
 
+  it("activates behind active-operators nodes that other transactions re-created during the wait", async () => {
+    const fixture = await initOperatorLifecycleFixture();
+    const { emulator, referenceScriptsLucid, contracts } = fixture;
+    const { secondLucid, activationTime, secondActiveNodeUnit } =
+      await registerSecondOperatorBehindActiveFirst(fixture);
+    const activationSlot = secondLucid.unixTimeToSlot(Number(activationTime));
+    const activeAddress = contracts.activeOperators.spendingScriptAddress;
+    // At the first tip read short of the activation time, every
+    // active-operators output moves to a new out-ref, as a block commitment
+    // moves its operator's node.
+    let moved = 0;
+    observeEmulatorTip(secondLucid, emulator, (wallSlot) => {
+      if (moved === 0 && wallSlot < activationSlot)
+        for (const [outRef, entry] of Object.entries(emulator.ledger)) {
+          if (entry.utxo.address !== activeAddress) continue;
+          moved += 1;
+          const txHash = moved.toString(16).padStart(64, "a");
+          delete emulator.ledger[outRef];
+          emulator.ledger[txHash + entry.utxo.outputIndex.toString()] = {
+            ...entry,
+            utxo: { ...entry.utxo, txHash },
+          };
+        }
+      return wallSlot;
+    });
+
+    const activated = await runWithoutFollower(
+      registerAndActivateOperatorProgram(
+        secondLucid,
+        contracts,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
+        referenceScriptsLucid,
+      ),
+    );
+
+    expect(moved).toBe(2);
+    expect(activated.activateTxHash).toHaveLength(64);
+    expect(
+      (await secondLucid.utxosAt(activeAddress)).filter(
+        ({ assets }) => assets[secondActiveNodeUnit] === 1n,
+      ),
+    ).toHaveLength(1);
+  }, 420_000);
+
   it("retires with a lower bound backdated from the observed tip while the wall clock is more than a minute ahead of it", async () => {
     const fixture = await initOperatorInactivityFixture(2);
     const appointed = await appointFirstSchedulerOperator(fixture);

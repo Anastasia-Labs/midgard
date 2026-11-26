@@ -3,7 +3,7 @@ import {
   ledgerTipBackdatedValidFromMs,
 } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk/core";
-import type * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -12,7 +12,12 @@ import {
   awaitLedgerTipAtLowerBound,
   observedLedgerTip,
 } from "../ledger-tip-lower-bound.js";
-import { ACTIVATION_VALIDITY_WINDOW_MS } from "../register-active-operator.fetch-hub-oracle-ref-input.js";
+import {
+  ACTIVATION_VALIDITY_WINDOW_MS,
+  fetchNodeSet,
+  linkPointsToKey,
+  registeredNodeMatchesOperator,
+} from "../register-active-operator.fetch-hub-oracle-ref-input.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
@@ -120,5 +125,69 @@ export const activationValidityWindowAtTip = (
           : validFrom + ACTIVATION_VALIDITY_WINDOW_MS,
       );
       return { validFrom, validTo };
+    };
+  });
+
+/**
+ * The list nodes an activation spends or cites, from one read of the three
+ * operator lists. Other operators' transactions re-create these outputs: a
+ * block commitment spends its operator's active node, which is the anchor a
+ * later key is inserted behind. A read from before a wait is not one to
+ * build from.
+ */
+export const readActivationNodes = (
+  lucid: LucidEvolution,
+  contracts: Pick<
+    SDK.MidgardValidators,
+    "registeredOperators" | "activeOperators" | "retiredOperators"
+  >,
+  operatorKeyHash: string,
+) =>
+  Effect.gen(function* () {
+    const [registered, active, retired] = yield* Effect.all(
+      [
+        contracts.registeredOperators,
+        contracts.activeOperators,
+        contracts.retiredOperators,
+      ].map(({ spendingScriptAddress, policyId }) =>
+        fetchNodeSet(lucid, spendingScriptAddress, policyId),
+      ),
+    );
+    const missing = (message: string, cause: string = operatorKeyHash) =>
+      Effect.fail(new SDKStateQueue.StateQueueError({ message, cause }));
+    const registeredNode = registered!.find(({ datum }) =>
+      registeredNodeMatchesOperator(datum, operatorKeyHash),
+    );
+    if (registeredNode === undefined)
+      return yield* missing(
+        "Operator registration node was not found after registration step",
+      );
+    const registeredAnchor = registered!.find(({ datum }) =>
+      linkPointsToKey(datum, registeredNode.datum.key),
+    );
+    if (registeredAnchor === undefined)
+      return yield* missing(
+        "Registered-operators anchor node for activation was not found",
+      );
+    const activeInsertionAnchor = active!.find(({ datum }) =>
+      SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
+    );
+    if (activeInsertionAnchor === undefined)
+      return yield* missing(
+        "Failed to find active-operators ordered insertion anchor for activation",
+        "No active-operators node proves strict ordered non-membership for the operator key",
+      );
+    const retiredNotMemberWitness = retired!.find(({ datum }) =>
+      SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
+    );
+    if (retiredNotMemberWitness === undefined)
+      return yield* missing(
+        "Failed to find retired-operators witness node proving non-membership for activation",
+      );
+    return {
+      registeredNode,
+      registeredAnchor,
+      activeInsertionAnchor,
+      retiredNotMemberWitness,
     };
   });

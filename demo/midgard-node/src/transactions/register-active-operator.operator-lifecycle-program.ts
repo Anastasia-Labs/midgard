@@ -52,6 +52,7 @@ import {
 import {
   activationValidityWindowAtTip,
   canActivateRegisteredOperatorImmediately,
+  readActivationNodes,
 } from "./register-active-operator/activation.js";
 import {
   alignUnixTimeMsToSlotBoundary,
@@ -711,72 +712,27 @@ const operatorLifecycleAttempt = (
       });
     }
 
-    const registeredNode = currentRegisteredNodes.find(({ datum }) =>
-      registeredNodeMatchesOperator(datum, operatorKeyHash),
+    const beforeWait = yield* readActivationNodes(
+      lucid,
+      contracts,
+      operatorKeyHash,
     );
-    if (registeredNode === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Operator registration node was not found after registration step",
-          cause: operatorKeyHash,
-        }),
-      );
-    }
-    const registeredAnchor = currentRegisteredNodes.find(({ datum }) =>
-      linkPointsToKey(datum, registeredNode.datum.key),
-    );
-    if (registeredAnchor === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Registered-operators anchor node for activation was not found",
-          cause: operatorKeyHash,
-        }),
-      );
-    }
-
-    const activeInsertionAnchor = activeNodes.find(({ datum }) =>
-      orderedNotMemberWitness(datum, operatorKeyHash),
-    );
-    if (activeInsertionAnchor === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to find active-operators ordered insertion anchor for activation",
-          cause:
-            "No active-operators node proves strict ordered non-membership for the operator key",
-        }),
-      );
-    }
-    const retiredNotMemberWitnessForActivate = retiredNodes.find(({ datum }) =>
-      orderedNotMemberWitness(datum, operatorKeyHash),
-    );
-    if (retiredNotMemberWitnessForActivate === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to find retired-operators witness node proving non-membership for activation",
-          cause: operatorKeyHash,
-        }),
-      );
-    }
 
     const activationTime = SDK.registeredNodeKeyToPosixTime(
-      registeredNode.datum.key,
+      beforeWait.registeredNode.datum.key,
     );
     if (activationTime === undefined) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
             "Failed to decode registered-operator activation time from registration node key",
-          cause: describeUnknownValue(registeredNode.datum.key),
+          cause: describeUnknownValue(beforeWait.registeredNode.datum.key),
         }),
       );
     }
     const immediateActivation = canActivateRegisteredOperatorImmediately(
-      activeInsertionAnchor,
-      registeredNode.datum,
+      beforeWait.activeInsertionAnchor,
+      beforeWait.registeredNode.datum,
       contracts.activeOperators,
     );
     const initialNow = yield* resolveL1NowMsOrRefuse(lucid, "activation");
@@ -800,6 +756,16 @@ const operatorLifecycleAttempt = (
         activationTime,
         immediateActivation,
       });
+    // The wait lasts the registration delay, and other operators' transactions
+    // land during it.
+    const {
+      registeredNode,
+      registeredAnchor,
+      activeInsertionAnchor,
+      retiredNotMemberWitness: retiredNotMemberWitnessForActivate,
+    } = immediateActivation
+      ? beforeWait
+      : yield* readActivationNodes(lucid, contracts, operatorKeyHash);
 
     const registeredNodeUnit = toUnit(
       contracts.registeredOperators.policyId,
