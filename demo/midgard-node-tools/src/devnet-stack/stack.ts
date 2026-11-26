@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
 
 import { onlyAwaitingActivation } from "../full-stack/readiness.js";
 import { type DeployContext, nodeCli } from "./deploy.js";
@@ -112,13 +119,29 @@ export const ensureSupervisor = async (
   return started;
 };
 
-/** Starts `supervise` detached from this controller; it outlives `up`. */
-export const startSupervisor = (layout: Layout): number => {
+/**
+ * Starts `supervise` detached from this controller; it outlives `up`. With
+ * `furtherNode`, `layout` is that node's and the supervisor runs only it.
+ */
+export const startSupervisor = (
+  layout: Layout,
+  furtherNode?: number,
+): number => {
+  mkdirSync(dirname(layout.serviceLog("supervisor")), {
+    recursive: true,
+    mode: 0o700,
+  });
   const log = openSync(layout.serviceLog("supervisor"), "a", 0o600);
   const child = spawn(
     process.execPath,
     // This controller's own entry script, not a bundled chunk's URL.
-    [process.argv[1]!, "supervise", "--run-dir", layout.runDir],
+    [
+      process.argv[1]!,
+      "supervise",
+      "--run-dir",
+      layout.runDir,
+      ...(furtherNode === undefined ? [] : ["--node", String(furtherNode)]),
+    ],
     { detached: true, stdio: ["ignore", log, log], env: process.env },
   );
   closeSync(log);
@@ -372,6 +395,39 @@ export const waitForServices = async (
       lastPrinted = Date.now();
       console.log(
         `services: waiting on ${pending.map((r) => `${r.name}${r.reasons === undefined ? "" : ` ${JSON.stringify(r.reasons).slice(0, 200)}`}`).join("; ")}`,
+      );
+    }
+    await sleep(5_000);
+  }
+};
+
+/**
+ * Waits until `service`, run by the supervisor `supervisorPid` under
+ * `layout`, is ready. Fails fast if that supervisor exits.
+ */
+export const waitForService = async (
+  layout: Layout,
+  service: ServiceSpec,
+  supervisorPid: number,
+  timeoutMs: number,
+): Promise<ServiceReport> => {
+  const deadline = Date.now() + timeoutMs;
+  let lastPrinted = 0;
+  for (;;) {
+    if (!alive(supervisorPid))
+      throw new Error(
+        `the supervisor of ${service.name} is not running; see ${layout.serviceLog("supervisor")}`,
+      );
+    const report = await serviceReport(layout, service);
+    if (report.alive && report.ready === true) return report;
+    if (Date.now() >= deadline)
+      throw new Error(
+        `${service.name} not ready after ${timeoutMs / 1000} s: ${JSON.stringify(report)}`,
+      );
+    if (Date.now() - lastPrinted > 60_000) {
+      lastPrinted = Date.now();
+      console.log(
+        `${service.name}: waiting${report.reasons === undefined ? "" : ` ${JSON.stringify(report.reasons).slice(0, 300)}`}`,
       );
     }
     await sleep(5_000);

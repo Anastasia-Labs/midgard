@@ -162,7 +162,7 @@ timer starts.
 
 Fresh `devnet-stack` runs fund all fourteen roles once from the generated
 chain's genesis UTxO. There is no role-wallet refill loop. The private chain
-has 2 billion ADA total supply, with 1 billion delegated and 1 billion in the
+has 4 billion ADA total supply, with 1 billion delegated and 3 billion in the
 bootstrap UTxO. This is an isolated-chain funding difference, not a change to
 Preprod protocol parameters.
 
@@ -189,7 +189,8 @@ Each wallet also receives a separate 50 ADA pure-ADA collateral output, above
 | userA, userB, userC              |                24 each |      482,000 each |
 
 Total bootstrap role funding including collateral is **701,837,700 ADA**,
-leaving 298,162,300 ADA before bootstrap fees and existing reserve-float costs.
+leaving 2,298,162,300 ADA before bootstrap fees, existing reserve-float costs
+and any further nodes.
 Reference-script startup capital covers 1,000 publications at the 20 ADA
 planning fee with the same 5× margin. Users reserve 432,000 ADA for fees at
 24 transactions/day plus their original 50,000 ADA journey holdings; transfers
@@ -203,6 +204,36 @@ protocol-cost changes shorten this conditional runway.
 
 The stack funds its role wallets once; it schedules no online treasury
 transfers to them.
+
+## Devnet further nodes
+
+A `devnet-stack` run has one node, the stack's own (node 1). `up
+--further-nodes N` adds N further operators' nodes to the run, numbered from 2.
+The number is fixed on the run's first `up` and cannot change afterwards: the
+funding transaction pays each further node's operator, merge, reference-script
+and settlement wallets at the budgets above (233,680,200 ADA per node), and
+the DA committee's manifests admit each further node's libp2p identity. Both
+are written once.
+
+`up` starts none of them. Start one when the scenario calls for it:
+
+```sh
+node dist/devnet-stack.js join-node --run-dir /absolute/run --node 2
+```
+
+`join-node` creates the node's database, starts the node under its own
+supervisor, waits until `/readyz` answers ready, and registers the node's
+operator (`--no-register` skips that). A further node has its own wallets,
+database (`<run database>_node_<k>`), ledger store and logs
+(`stack/node-<k>`), and listens on the stack node's HTTP and metrics ports
+plus `k - 1`. It holds no DA committee key. Its `LEDGER_SNAPSHOT_PEERS` are
+the run's other nodes, so a node started after blocks have merged takes the
+confirmed ledger from them, and every node lists the others in `L2_TX_PEERS`.
+
+`status` lists each further node's supervisor and service under
+`furtherNodes`, and `down` stops them before the stack. A further node's
+supervisor counts as a user of the run, so an `up` that would rebuild the
+run's code refuses while one runs.
 
 ## Devnet service refusals
 

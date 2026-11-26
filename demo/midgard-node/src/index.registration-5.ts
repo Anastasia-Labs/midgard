@@ -53,6 +53,12 @@ program
   )
   .requiredOption("--network <network>", "Exact Cardano network label")
   .option("--local-signer-index <n>", "Local committee signer index")
+  .option(
+    "--admitted-producer <multiaddr>",
+    "A further operator's node the committee target admits, as /ip4|ip6|dns/<host>/tcp/<port>/p2p/<peer id>; repeatable",
+    collectStringOption,
+    [],
+  )
   .option("--producer-port <port>", "Producer retrieval libp2p port")
   .option("--committee-port <port>", "Committee node libp2p port")
   .option("--public-retained-da-port <port>", "Public retained-DA libp2p port")
@@ -93,6 +99,9 @@ program
                 "--local-signer-index",
               ),
             }
+          : {}),
+        ...(opts.admittedProducer.length > 0
+          ? { admittedProducerMultiaddrs: opts.admittedProducer }
           : {}),
         ...(typeof opts.producerPort === "string"
           ? {

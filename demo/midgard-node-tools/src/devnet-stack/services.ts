@@ -15,6 +15,7 @@ import {
 import type { DeployContext } from "./deploy.js";
 import { recordedL1Origin } from "./deployment-origin.js";
 import { codeStamp, runtimeDistTargets } from "./dist-freshness.js";
+import { otherNodeUrls, preflightFurtherNodeConfigs } from "./further-nodes.js";
 import { walletInfos } from "./identities.js";
 import { servicePorts } from "./layout.js";
 import {
@@ -120,6 +121,7 @@ export const serviceSpecs = (
         oneShot,
         l1Origin,
         role: "listen",
+        txPeers: otherNodeUrls(layout, run, 1),
       }),
       healthUrl: `${node}/healthz`,
       readyUrl: `${node}/readyz`,
@@ -144,6 +146,7 @@ export const preflightServiceConfigs = async (
 ): Promise<void> => {
   preflightWatcherConfigs(context, parsers.watcher);
   await preflightNodeConfig(context);
+  await preflightFurtherNodeConfigs(context);
   preflightCommitteeConfigs(context, parsers.committee);
 };
 

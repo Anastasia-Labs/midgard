@@ -62,6 +62,8 @@ export type DeployContext = {
   readonly run: RunEnv;
   readonly identities: Identities;
   readonly artifacts: Artifacts;
+  /** Set when the context is a further node's (further-nodes.ts). */
+  readonly furtherNode?: number;
 };
 
 const runNodeCommand = (

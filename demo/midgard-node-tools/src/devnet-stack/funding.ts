@@ -100,6 +100,8 @@ export const ensureFunded = async (
   run: RunEnv,
   journal: Journal,
   wallets: Record<WalletRole, WalletInfo>,
+  /** `--tx-out` arguments paid beside the roles' (a run's further nodes). */
+  furtherOutputs: readonly string[] = [],
 ): Promise<FundingRecord> => {
   const work = join(layout.state, "work");
   mkdirSync(work, { recursive: true, mode: 0o700 });
@@ -202,7 +204,10 @@ export const ensureFunded = async (
     if (input === undefined)
       throw new Error("the genesis UTxO is not available");
 
-    const outputs = initialFundingOutputs(wallets, perUser);
+    const outputs = [
+      ...initialFundingOutputs(wallets, perUser),
+      ...furtherOutputs,
+    ];
     const body = join(work, "funding.txbody");
     const signed = join(work, "funding.signed");
     await cli(

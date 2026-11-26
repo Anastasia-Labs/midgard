@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { mkdirSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 
 import { Command } from "commander";
@@ -46,6 +47,18 @@ import {
 } from "./devnet-stack/fresh-controller.js";
 import type { FundingRecord } from "./devnet-stack/funding.js";
 import { ensureFunded } from "./devnet-stack/funding.js";
+import {
+  furtherNodeFundingOutputs,
+  furtherNodeLayout,
+  loadFurtherNodes,
+} from "./devnet-stack/further-nodes.js";
+import {
+  furtherNodeNumber,
+  furtherNodeReports,
+  furtherNodeService,
+  registerJoinNode,
+  stopFurtherNodes,
+} from "./devnet-stack/further-nodes-cli.js";
 import { loadIdentities, walletInfos } from "./devnet-stack/identities.js";
 import { Journal } from "./devnet-stack/journal.js";
 import { Journey, runScenario } from "./devnet-stack/journey.js";
@@ -56,6 +69,7 @@ import { registerServiceRecovery } from "./devnet-stack/service-recovery-cli.js"
 import {
   enduranceReport,
   preflightServiceConfigs,
+  roleProcessesFailClosed,
   serviceSpecs,
   supervisorMaintainers,
   supervisorPaths,
@@ -99,10 +113,20 @@ const resumeUp = async (
   layout: Layout,
   readyTimeoutMs: number,
   code: LoadedCode,
+  furtherNodes?: number,
 ) => {
   const run = await ensureChainGenerated(layout);
   holdRunForResume(layout, code);
   const journal = new Journal(layout.journal);
+  const further = loadFurtherNodes(
+    layout,
+    furtherNodes === undefined
+      ? undefined
+      : {
+          count: furtherNodes,
+          runFunded: journal.get("funding") !== undefined,
+        },
+  );
   const identities = loadIdentities(layout);
   const wallets = walletInfos(identities);
   const artifacts = ensureArtifacts(layout);
@@ -128,7 +152,13 @@ const resumeUp = async (
   console.log(`l1: starting ${run.composeProject}`);
   await startL1(layout, run);
   console.log("l1: ready");
-  const funding = await ensureFunded(layout, run, journal, wallets);
+  const funding = await ensureFunded(
+    layout,
+    run,
+    journal,
+    wallets,
+    furtherNodeFundingOutputs(further),
+  );
   console.log(`funding: confirmed ${funding.txId}`);
   const oneShot = await ensureDeployed(context);
   console.log(
@@ -189,11 +219,23 @@ const runningContext = (layout: Layout) => {
  */
 const SUPERVISOR_EXIT_GRACE_MS = 5_000;
 
-const supervise = async (options: { runDir: string }) => {
-  const layout = layoutFor(options.runDir);
+const supervise = async (options: { runDir: string; node?: string }) => {
+  const stack = layoutFor(options.runDir);
+  const node =
+    options.node === undefined ? undefined : furtherNodeNumber(options.node);
+  const layout = node === undefined ? stack : furtherNodeLayout(stack, node);
+  mkdirSync(layout.state, { recursive: true, mode: 0o700 });
   acquireLock(layout.supervisorPid);
-  const { context, oneShot } = runningContext(layout);
-  const specs = serviceSpecs(context, oneShot);
+  const { context, oneShot } = runningContext(stack);
+  // A further node's supervisor runs that node alone, on its own records.
+  const one =
+    node === undefined
+      ? undefined
+      : await furtherNodeService(runningContext, stack, node);
+  const specs =
+    one === undefined
+      ? serviceSpecs(context, oneShot)
+      : roleProcessesFailClosed([one.spec]);
   recordSupervisorSpecs(layout, specs);
   const abort = new AbortController();
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const)
@@ -201,9 +243,9 @@ const supervise = async (options: { runDir: string }) => {
   try {
     await superviseWithMaintainers(
       specs,
-      supervisorPaths(context, specs),
+      supervisorPaths(one?.own ?? context, specs),
       abort.signal,
-      supervisorMaintainers(context),
+      one === undefined ? supervisorMaintainers(context) : [],
     );
   } finally {
     if (abort.signal.aborted)
@@ -219,11 +261,13 @@ const status = async (options: { runDir: string }) => {
   );
   const endurance = await enduranceReport(context);
   const services = await serviceReports(layout, serviceSpecs(context, oneShot));
+  const furtherNodes = await furtherNodeReports(runningContext, layout);
   console.log(
     JSON.stringify(
       {
         supervisor: runningSupervisor(layout) ?? null,
         services,
+        ...(furtherNodes.length === 0 ? {} : { furtherNodes }),
         daBond: bond,
         endurance,
       },
@@ -235,6 +279,7 @@ const status = async (options: { runDir: string }) => {
 
 const down = async (options: { runDir: string; l1: boolean }) => {
   const layout = layoutFor(options.runDir);
+  await stopFurtherNodes(layout);
   const stopped = await stopSupervisor(layout, SUPERVISOR_STOP_MS);
   console.log(stopped ? "services: stopped" : "services: not running");
   if (options.l1) {
@@ -341,7 +386,7 @@ registerUp(program, (options) => {
   const layout = layoutFor(options.runDir);
   return {
     deps: upDeps(layout, (code) =>
-      resumeUp(layout, options.readyTimeoutMs, code),
+      resumeUp(layout, options.readyTimeoutMs, code, options.furtherNodes),
     ),
     launch: {
       execPath: process.execPath,
@@ -359,7 +404,13 @@ program
     "Run and keep alive every service of a deployed run (started by up)",
   )
   .requiredOption("--run-dir <path>", "Absolute run directory")
+  .option(
+    "--node <number>",
+    "Run only this further node (started by join-node)",
+  )
   .action(supervise);
+
+registerJoinNode(program, layoutFor, runningContext);
 
 program
   .command("status")

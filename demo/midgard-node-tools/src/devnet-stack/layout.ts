@@ -170,3 +170,17 @@ export const servicePorts = (run: RunEnv) => {
     throw new Error("devnet service ports must not overlap");
   return ports;
 };
+
+/**
+ * Host ports of a further node (further-nodes.ts), beside the stack's own
+ * node's; further nodes count from 2.
+ */
+export const furtherNodePorts = (run: RunEnv, node: number) => {
+  const ports = servicePorts(run);
+  return {
+    http: ports.nodeHttp + node - 1,
+    metrics: ports.nodeMetrics + node - 1,
+    // 39001 to 39004 are the committee's, the stack node's and the reader's.
+    libp2p: 39004 + run.portOffset + node,
+  };
+};

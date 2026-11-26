@@ -20,6 +20,7 @@ import {
   requireFreshDists,
   runtimeDistTargets,
 } from "./dist-freshness.js";
+import { liveFurtherNodes } from "./further-nodes.js";
 import type { Layout } from "./layout.js";
 import { acquireLock, lockOwner } from "./lock.js";
 import { supervisorPaths } from "./services.js";
@@ -315,7 +316,8 @@ export const upDeps = (layout: Layout, resume: UpDeps["resume"]): UpDeps => {
     buildEverything: () => buildEverything(layout, controllerLogs),
     buildLockPath: locks.build,
     lockPath: layout.lock,
-    runUsers: () => liveRunUsers(locks),
+    // A further node runs the dists like a journey does; `down` stops it.
+    runUsers: () => [...liveRunUsers(locks), ...liveFurtherNodes(layout)],
     runningSupervisor: () => runningSupervisor(layout),
     stopSupervisor: () => stopSupervisor(layout, SUPERVISOR_STOP_MS),
     sweepOrphans: () =>
@@ -335,6 +337,8 @@ export type UpOptions = {
   readonly runDir: string;
   readonly build: boolean;
   readonly readyTimeoutMs: number;
+  /** `--further-nodes`; absent, the run keeps what it recorded. */
+  readonly furtherNodes?: number;
 };
 
 /**
@@ -363,16 +367,31 @@ export const registerUp = (
       "How long to wait for the services to become ready",
       "1200",
     )
+    .option(
+      "--further-nodes <count>",
+      "Further operators' nodes the run can start with join-node; fixed when the run is created",
+    )
     .action(
       async (options: {
         runDir: string;
         build: boolean;
         readyTimeout: string;
+        furtherNodes?: string;
       }) => {
+        const furtherNodes =
+          options.furtherNodes === undefined
+            ? undefined
+            : Number(options.furtherNodes);
+        if (
+          furtherNodes !== undefined &&
+          (!Number.isSafeInteger(furtherNodes) || furtherNodes < 0)
+        )
+          throw new Error("--further-nodes must be a whole number");
         const up: UpOptions = {
           runDir: options.runDir,
           build: options.build,
           readyTimeoutMs: Number(options.readyTimeout) * 1000,
+          ...(furtherNodes === undefined ? {} : { furtherNodes }),
         };
         const { deps, launch } = wire(up);
         exit(await runUp(up.build, deps, launch));

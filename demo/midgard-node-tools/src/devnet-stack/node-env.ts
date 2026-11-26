@@ -12,7 +12,12 @@ import {
 import type { DeployContext } from "./deploy.js";
 import { PREFLIGHT_L1_ORIGIN } from "./deployment-origin.js";
 import type { Identities } from "./identities.js";
-import { type Layout, type RunEnv, servicePorts } from "./layout.js";
+import {
+  furtherNodePorts,
+  type Layout,
+  type RunEnv,
+  servicePorts,
+} from "./layout.js";
 
 /**
  * Explicit parameters of a fresh deployment that the node refuses to default.
@@ -64,13 +69,28 @@ export const nodeEnvironment = (input: {
   readonly l1Origin?: L1Origin;
   /** `listen` reads the producer DA manifest; commands read the contract one. */
   readonly role: "command" | "listen";
+  /**
+   * A further operator's node (further-nodes.ts): it serves on its own ports
+   * and holds no DA committee key.
+   */
+  readonly furtherNode?: number;
+  /** libp2p addresses of the nodes a node without a ledger asks for it. */
+  readonly snapshotPeers?: readonly string[];
+  /** Base URLs of the other operators' nodes, sent the transactions held here. */
+  readonly txPeers?: readonly string[];
 }): Record<string, string> => {
   const { layout, run, identities, artifacts, oneShot, l1Origin, role } = input;
   if (role === "listen" && (oneShot === undefined || l1Origin === undefined))
     throw new L1OriginUndeterminedError(
       "listen needs the run's hub-oracle nonce and its recorded L1 origin; run up first",
     );
-  const ports = servicePorts(run);
+  const ports =
+    input.furtherNode === undefined
+      ? servicePorts(run)
+      : {
+          nodeHttp: furtherNodePorts(run, input.furtherNode).http,
+          nodeMetrics: furtherNodePorts(run, input.furtherNode).metrics,
+        };
   const contractManifest = existsSync(layout.contractManifest)
     ? layout.contractManifest
     : undefined;
@@ -101,7 +121,9 @@ export const nodeEnvironment = (input: {
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: identities.seeds.merge,
     L1_SETTLEMENT_SEED_PHRASE: identities.seeds.settlement,
     L1_REFERENCE_SCRIPT_SEED_PHRASE: identities.seeds.referenceScript,
-    DA_COSIGNER_SEED_PHRASE: identities.seeds.daCosigner,
+    ...(input.furtherNode === undefined
+      ? { DA_COSIGNER_SEED_PHRASE: identities.seeds.daCosigner }
+      : {}),
     DA_THRESHOLD: String(DA_THRESHOLD),
     DA_LIBP2P_PRIVATE_KEY_SOURCE: `seed:${identities.libp2p.producer}`,
     ...DEPLOYMENT_PARAMETERS,
@@ -132,6 +154,12 @@ export const nodeEnvironment = (input: {
           HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: String(oneShot.outputIndex),
         }),
     ...(l1Origin === undefined ? {} : { L1_ORIGIN: formatL1Origin(l1Origin) }),
+    ...((input.snapshotPeers ?? []).length === 0
+      ? {}
+      : { LEDGER_SNAPSHOT_PEERS: input.snapshotPeers!.join(",") }),
+    ...((input.txPeers ?? []).length === 0
+      ? {}
+      : { L2_TX_PEERS: input.txPeers!.join(",") }),
     ...(contractManifest === undefined
       ? {}
       : { MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: contractManifest }),
@@ -148,7 +176,7 @@ export const nodeEnvironment = (input: {
  * run the node's parser before the deployment exists. Never written; the node
  * reads the real nonce from the run's records when the supervisor starts it.
  */
-const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
+export const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
   txHash: "00".repeat(32),
   outputIndex: 0,
 };
@@ -162,15 +190,20 @@ const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
  * stand-ins; `listen` parses the real ones when it starts. Reads no file,
  * chain or service.
  */
-export const preflightNodeConfig = async (
-  context: DeployContext,
+export const preflightNodeConfig = (context: DeployContext): Promise<void> =>
+  requireNodeAccepts(
+    nodeEnvironment({
+      ...context,
+      oneShot: PREFLIGHT_ONE_SHOT,
+      l1Origin: PREFLIGHT_L1_ORIGIN,
+      role: "listen",
+    }),
+  );
+
+/** Throws unless the node's configuration parser accepts `env`. */
+export const requireNodeAccepts = async (
+  env: Record<string, string>,
 ): Promise<void> => {
-  const env = nodeEnvironment({
-    ...context,
-    oneShot: PREFLIGHT_ONE_SHOT,
-    l1Origin: PREFLIGHT_L1_ORIGIN,
-    role: "listen",
-  });
   const parsed = await Effect.runPromiseExit(
     Effect.provide(NodeConfig, NodeConfig.layer).pipe(
       Effect.withConfigProvider(
