@@ -7,8 +7,8 @@
  * repeats that alarm.
  */
 import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { Clock, Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
 import { type ImportCheckAlarm } from "../src/import-check/alarms.js";
 import {
@@ -25,6 +25,7 @@ import {
   entries,
   firstRuns,
   hex,
+  HOUR_MS,
   idsIn,
   injectedEvaluator,
   processBlock,
@@ -62,7 +63,27 @@ const flood = (
   };
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** A clock that reads `ms` until the test sets it, for passes that wait on
+ * a real pool: every pass run `on` it reads the same time, and its sleeps
+ * are real. It starts at the wall clock's time, which the pool compares a
+ * run's `startBy` with. */
+const manualClock = () => {
+  const live = Clock.make();
+  const time = { ms: Date.now() };
+  const nanos = () => BigInt(time.ms) * 1_000_000n;
+  const clock: Clock.Clock = {
+    [Clock.ClockTypeId]: Clock.ClockTypeId,
+    unsafeCurrentTimeMillis: () => time.ms,
+    currentTimeMillis: Effect.sync(() => time.ms),
+    unsafeCurrentTimeNanos: nanos,
+    currentTimeNanos: Effect.sync(nanos),
+    sleep: (duration) => live.sleep(duration),
+  };
+  return Object.assign(time, {
+    on: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.withClock(effect, clock),
+  });
+};
 
 /** A slow run for admission, and a block of `bodies` not yet processed. */
 const setUp = async (count: number) => {
@@ -72,8 +93,6 @@ const setUp = async (count: number) => {
   );
   return { slow: slow!, block };
 };
-
-type Timed = ImportCheckAlarm & { atMs: number };
 
 describe("import checker under saturated admission", () => {
   it.each(["accepted", "rejected"] as const)(
@@ -91,40 +110,59 @@ describe("import checker under saturated admission", () => {
         { size: 2, backlogShare: 1 },
       );
       const admission = flood(injected.pool, slow);
-      const deadlineMs = Date.now() + 1_500;
+      const clock = manualClock();
+      const deadlineMs = clock.ms + 1_500;
       await processBlock(block, { deadlineMs });
-      const alarms: Timed[] = [];
-      const { input } = checker(injected.evaluator, {
-        ...CONFIG,
-        // The cap does not end before the deadline: the run waits past it.
-        blockCapMs: 60_000,
-      });
-      const timed = {
+      const alarms: ImportCheckAlarm[] = [];
+      let asked!: () => void;
+      const began = new Promise<void>((resolve) => (asked = resolve));
+      const { input } = checker(
+        {
+          ...injected.evaluator,
+          evaluate: (...args) => {
+            asked();
+            return injected.evaluator.evaluate(...args);
+          },
+        },
+        {
+          ...CONFIG,
+          // The cap does not end before the deadline: the run waits past it.
+          blockCapMs: 60_000,
+        },
+      );
+      const recorded = {
         ...input,
         alarm: (alarm: ImportCheckAlarm) =>
-          Effect.sync(() => void alarms.push({ ...alarm, atMs: Date.now() })),
+          Effect.sync(() => void alarms.push(alarm)),
       };
       let passDone = false;
-      const pass = db(runImportCheckPass(timed)).then(() => {
+      const pass = db(clock.on(runImportCheckPass(recorded))).then(() => {
         passDone = true;
       });
-      let sweeping = true;
       const alarmed = new Set<number>();
-      const sweeps = (async () => {
-        while (sweeping) {
-          await db(runUnverifiedSweep(timed, alarmed));
-          await sleep(50);
-        }
-      })();
+      const sweepAt = (nowMs: number) => {
+        clock.ms = nowMs;
+        return db(clock.on(runUnverifiedSweep(recorded, alarmed)));
+      };
       const missed = () =>
         alarms.filter((alarm) => alarm.alarm === "unverified_deadline_missed");
       try {
-        await sleep(deadlineMs + 600 - Date.now());
+        // The run is asked for, and admission takes every worker that
+        // comes free after it.
+        await began;
+        const admittedBefore = admission.admitted();
+        await vi.waitFor(
+          () =>
+            expect(admission.admitted()).toBeGreaterThan(admittedBefore + 6),
+          { timeout: 30_000, interval: 20 },
+        );
+        await sweepAt(deadlineMs - 1);
+        expect(missed()).toEqual([]);
+        await sweepAt(deadlineMs);
         expect(passDone).toBe(false);
         // The run never started: admission held both workers.
         expect(injected.jobs()).toBe(0);
         expect(injected.pool.stats().busyWorkers).toBe(2);
-        expect(admission.admitted()).toBeGreaterThan(6);
         expect(missed()).toEqual([
           expect.objectContaining({
             headerHash: block.headerHash,
@@ -133,16 +171,15 @@ describe("import checker under saturated admission", () => {
             state: "pending",
           }),
         ]);
-        expect(missed()[0]!.atMs).toBeGreaterThanOrEqual(deadlineMs);
-        expect(missed()[0]!.atMs).toBeLessThan(deadlineMs + 500);
+        await sweepAt(deadlineMs + 1);
+        expect(missed()).toHaveLength(1);
       } finally {
+        // Nothing of this test outlives it, whatever failed above.
         await admission.stop();
+        await Promise.allSettled([pass]);
       }
       await pass;
-      await sleep(200);
-      sweeping = false;
-      await sweeps;
-      await db(runUnverifiedSweep(timed, alarmed));
+      await sweepAt(deadlineMs + 2);
       expect(missed()).toHaveLength(1);
       if (late === "rejected") {
         expect(
@@ -205,7 +242,7 @@ describe("import checker under saturated admission", () => {
       { size: 2, backlogShare: 1 },
     );
     // Already due: no pass runs it, and the sweep takes it out.
-    await processBlock(block, { deadlineMs: Date.now() - 1 });
+    await processBlock(block, { deadlineMs: Date.now() - HOUR_MS });
     const check = checker(injected.evaluator);
     expect(await check.importPass()).toEqual([]);
     expect(await db(runBacklogPass(check.input))).toBe(0);

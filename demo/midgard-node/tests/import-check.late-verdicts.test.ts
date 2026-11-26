@@ -15,6 +15,7 @@ import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {
+  ACCEPTED,
   blockOf,
   checker,
   db,
@@ -23,6 +24,7 @@ import {
   idsIn,
   landBlock,
   processBlock,
+  scriptedEvaluator,
   useCheckerDatabase,
 } from "./import-check.checker.fixture.js";
 
@@ -55,9 +57,6 @@ const gated = (result: LocalScriptEvalResult, backlogShare = 1) => {
   };
   return { evaluator, release, began };
 };
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 describe("import checker late verdicts", () => {
   it("raises the near-deadline alarm once, not again each sweep after the deadline passes while its entry is checked", async () => {
@@ -139,16 +138,16 @@ describe("import checker late verdicts", () => {
     expect(await pass).toEqual([]);
   }, 60_000);
 
-  it("raises the missed alarm for a verdict that lands after its deadline with no sweep in between", async () => {
+  it("raises the missed alarm for a verdict that lands at its deadline with no sweep in between", async () => {
     const block = await blockOf(["accept"]);
-    const deadlineMs = Date.now() + 3_000;
+    const t0 = Date.now();
+    const deadlineMs = t0 + 3_000;
     await processBlock(block, { deadlineMs });
-    const { evaluator, release, began } = gated(ACCEPT);
-    const pass = checker(evaluator).importPass();
-    await began;
-    await sleep(deadlineMs - Date.now() + 50);
-    release();
-    expect(await pass).toEqual([
+    // The run starts before the deadline and takes the clock to it.
+    const { evaluator } = scriptedEvaluator(() => ACCEPTED, {
+      elapsedMs: () => deadlineMs - t0,
+    });
+    expect(await checker(evaluator).importPass(t0)).toEqual([
       {
         alarm: "unverified_deadline_missed",
         headerHash: block.headerHash,
