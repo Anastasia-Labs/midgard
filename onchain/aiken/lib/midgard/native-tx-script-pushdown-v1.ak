@@ -31,8 +31,8 @@
 //// only resume exported, so outside this module a walk can only have been
 //// opened over a digested script, stepped over its bytes, or resumed through
 //// the digest. A caller that could write one could start the traversal
-//// mid-script with a stack of its choosing — which is the same capability
-//// #570 removed from `FieldWalkCheckpointV1`, in the shape this tree takes.
+//// mid-script with a stack of its choosing, the capability
+//// `FieldWalkCheckpointV1` also withholds.
 ////
 //// **Authenticate-once, per transaction** (§7.1). The payload is digested when
 //// a walk is opened or resumed and not again: `native_script_run` checks it

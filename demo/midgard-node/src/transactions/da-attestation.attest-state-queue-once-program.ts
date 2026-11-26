@@ -181,7 +181,7 @@ export const attestStateQueueOnceProgram = (
       if (!isDaBondPoolAttestationSkip(outcome.left)) {
         return yield* Effect.fail(outcome.left);
       }
-      // Decision E5: a short or Withdrawing pool never fails the attestation
+      // A short or Withdrawing pool never fails the attestation
       // loop. The pool backs every header alike, so the rest of the round is
       // skipped too; the next round retries once the pool is topped up or its
       // withdrawal is cancelled.

@@ -71,7 +71,7 @@ export const runMaxDepthCmlOperation = (
     timeoutMs = 300_000,
   }: { readonly stackSizeKb?: number; readonly timeoutMs?: number } = {},
 ): MaxDepthCmlResult => {
-  const scratch = mkdtempSync(join(tmpdir(), "midgard-c26-maxdepth-"));
+  const scratch = mkdtempSync(join(tmpdir(), "midgard-maxdepth-"));
   const requestPath = join(scratch, "request.json");
   writeFileSync(requestPath, JSON.stringify(encodeBigints(request)), "utf8");
   const nodeArgs = [

@@ -56,7 +56,8 @@ proof cost are product requirements, not afterthoughts.
   builds it.
 - `offchain`: Haskell library for operator-directory transactions. No CI
   workflow builds or tests it.
-- `onchain/plutarch`: legacy reference; the Aiken tree is the implementation.
+- `onchain/plutarch`: unmaintained Plutarch reference; the Aiken tree is the
+  implementation.
 - `docs-site`: documentation site with its own pnpm version and CI.
 - `docs/agents`: guidance by topic; open only the relevant doc.
 

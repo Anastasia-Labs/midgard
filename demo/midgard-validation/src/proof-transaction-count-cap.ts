@@ -6,18 +6,15 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
  * no fault proof may require more than the sanctioned proof-transaction
  * sanity cap of reserved proof transactions.
  *
- * Owner ruling (2026-08-18): the earlier "aggregate script-execution floor"
- * framing — a bounded proof-transaction count derived as the smallest N
- * reaching the target snapshot's aggregate ceiling, with an aggregate floor
- * of N × usable — is retired. A capacity floor is not the real constraint.
+ * The cap is not an aggregate script-execution floor: a capacity floor is not
+ * the real constraint.
  * The governing constraint is that a fault proof completes within the
  * challenge period before the commitment merges; single-party proofs have
  * no interaction latency, so even a proof requiring on the order of 1,000+
  * transactions is acceptable. What must never happen is a pathologically
  * large proof: the check is therefore an upper bound, not a lower one.
  *
- * The per-transaction reserve arithmetic is unchanged from the retired
- * framing. The target snapshot's per-transaction execution ceiling is
+ * The target snapshot's per-transaction execution ceiling is
  * `MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits` /
  * `...CpuUnits` (16,500,000 memory / 10,000,000,000 CPU — the
  * merged Cardano-mainnet-vs-target-network capability floor,
@@ -29,7 +26,7 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
  * (docs/consensus-profile-v1.md §10), so one proof transaction
  * can carry at most 80% of the target snapshot's ceiling.
  *
- * The cap check inverts the retired floor's direction: for each fault
+ * The cap check bounds from above: for each fault
  * proof, the number of reserved proof transactions it requires —
  * the ceiling of its measured execution cost over the per-transaction
  * usable budget, taken per axis, worst axis governing — must stay at or
@@ -72,7 +69,7 @@ export const PER_PROOF_TRANSACTION_USABLE_CPU_UNITS =
  * than this many reserved proof transactions to carry its complete
  * measured execution cost.
  *
- * Unlike the retired bounded count, this is an owner-asserted constant
+ * This is an owner-asserted constant
  * (ruling 2026-08-18), not a derived value: it encodes "pathologically
  * large", which is a judgment about challenge-period completion, not
  * arithmetic over the target snapshot. The ruling's basis: fault proofs

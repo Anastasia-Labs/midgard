@@ -43,7 +43,7 @@ import {
 } from "./admission-writer.validate-options.js";
 
 /**
- * The admission writer (design D9): an in-memory pending set in front of a
+ * The admission writer: an in-memory pending set in front of a
  * group-committing Postgres writer. `admit` registers a tx and answers at
  * once; one collector, persister and completion fiber per shard write it.
  * A tx leaves the pending set when its row commits, when its own row cannot

@@ -79,7 +79,7 @@ const controls = [
     file: "operations.mjs",
     change: (text) =>
       text.replace(
-        '          MIDGARD_PHASE4_RUN_DIR: resolve(directory, "devnet"),\n',
+        '          MIDGARD_ISOLATED_CHAIN_RUN_DIR: resolve(directory, "devnet"),\n',
         "",
       ),
     match: "devnet generation supplies a private fresh run directory",
@@ -175,7 +175,7 @@ const controls = [
     file: "resources.mjs",
     change: (text) =>
       text.replace(
-        /  if \(owner.namespace && owner.namespace !== self.namespace\) return "unknown";/u,
+        /  if \(owner.namespace !== self.namespace\) return "unknown";/u,
         "",
       ),
     match: "another PID namespace and an unfinished launch remain unknown",

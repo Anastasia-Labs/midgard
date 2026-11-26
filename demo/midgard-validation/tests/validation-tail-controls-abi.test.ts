@@ -144,7 +144,7 @@ describe("canonical V1 validation tail controls", () => {
       encodeCborArrayRaw([encodeCborInteger(1n), encodeCborBytes(bytes("00"))]),
       // A rejection without a reason.
       terminal(2n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
-      // A rejection naming its reason as the legacy label bytes.
+      // A rejection naming its reason as ASCII label bytes.
       terminal(
         2n,
         encodeCborBytes(Buffer.from("E_VALUE_NOT_PRESERVED", "ascii")),

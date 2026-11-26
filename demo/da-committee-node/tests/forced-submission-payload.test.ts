@@ -175,7 +175,7 @@ describe("forced public payload encoding", () => {
     );
   });
 
-  it("refuses obsolete normal bytes under a forced source key", async () => {
+  it("refuses normal transaction bytes under a forced source key", async () => {
     const f = await fixture();
     f.payload.block_body.forced_transaction_preimages = [
       [f.orderKey, f.normalBytes.toString("hex")],

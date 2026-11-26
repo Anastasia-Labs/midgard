@@ -48,10 +48,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { L2TxMistagContracts } from "./contracts.js";
 import {
   L2TxMistagStep01SpendRedeemer,
@@ -81,9 +78,6 @@ export type L2TxMistagStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitL2TxMistagStep01Result =
-  OutsideWorkflowSubmission<L2TxMistagStep01Build>;
 
 export const buildL2TxMistagStep01 = async ({
   lucid,

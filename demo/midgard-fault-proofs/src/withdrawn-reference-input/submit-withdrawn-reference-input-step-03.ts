@@ -42,10 +42,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import { verifyWithdrawnReferenceInputMembership } from "./prepare-withdrawn-reference-input.js";
 import {
@@ -79,9 +76,6 @@ export type WithdrawnReferenceInputStep03Build = {
   readonly fraudProofMintRedeemerIndex: number;
   readonly referenceScriptOutRef: string;
 };
-
-export type SubmitWithdrawnReferenceInputStep03Result =
-  OutsideWorkflowSubmission<WithdrawnReferenceInputStep03Build>;
 
 type Step03SpendLayout = {
   readonly inputIndex: bigint;

@@ -33,6 +33,10 @@ import {
   SERVICE_MARKER_ENV,
   type ServiceSpec,
 } from "../src/devnet-stack/supervisor.js";
+import {
+  holdLockInChild,
+  stopLockHolders,
+} from "./support/hold-lock-in-child.js";
 
 const dirs: string[] = [];
 const scratch = () => {
@@ -40,7 +44,8 @@ const scratch = () => {
   dirs.push(dir);
   return dir;
 };
-afterEach(() => {
+afterEach(async () => {
+  await stopLockHolders();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
 });
@@ -185,11 +190,11 @@ describe("the start of a journey or drill", () => {
     expect(lockOwner(locks.drill)).toBe(process.pid);
   });
 
-  it("refuses while another of the same command holds its lock", () => {
+  it("refuses while another of the same command holds its lock", async () => {
     const layout = existingRun();
-    const owner = heldByOther(runLockPaths(layout).journey);
+    await holdLockInChild(runLockPaths(layout).journey);
     expect(() => startRunUser(layout, "journey")).toThrow(
-      `another controller (pid ${owner}) holds`,
+      "another controller holds",
     );
   });
 
@@ -227,7 +232,7 @@ describe("the resume head of up", () => {
     expect(seen).toEqual([process.pid]);
   });
 
-  it("refuses when a build rewrote the dists, and when another controller holds the run", () => {
+  it("refuses when a build rewrote the dists, and when another controller holds the run", async () => {
     const layout = existingRun();
     const rebuilt = () => {
       throw new Error("the runtime dists changed");
@@ -236,7 +241,7 @@ describe("the resume head of up", () => {
       holdRunForResume(layout, { stamp: "code", assertUnchanged: rebuilt }),
     ).toThrow("the runtime dists changed");
     const other = existingRun();
-    const owner = heldByOther(other.lock);
+    await holdLockInChild(other.lock);
     let checked = false;
     expect(() =>
       holdRunForResume(other, {
@@ -245,7 +250,7 @@ describe("the resume head of up", () => {
           checked = true;
         },
       }),
-    ).toThrow(`another controller (pid ${owner}) holds`);
+    ).toThrow("another controller holds");
     expect(checked).toBe(false);
   });
 });

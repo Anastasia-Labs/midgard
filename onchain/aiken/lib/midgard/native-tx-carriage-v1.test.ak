@@ -948,17 +948,16 @@ test certified_carriage_opens_through_the_access_door() {
 }
 
 // ---------------------------------------------------------------------------
-// Phase-4 exit measurement — the three-chunk corner (spec §8.10, rows 1–6)
+// The three-chunk corner measurement (spec §8.10, rows 1–6)
 // ---------------------------------------------------------------------------
 //
-// #556's dispute bench established the two-chunk reconstruction; the corner
-// this lane owes is the *three*-chunk one, opened through the real door with
-// the four reference inputs a consuming step would actually carry (one
-// certificate, three chunks). The rows below come in a controlled family: every
-// one of them builds the same fixture and opens the same door, and they differ
-// only in which items are read, so a difference between two rows is one read
-// and nothing else. Absolute figures are dominated by fixture construction and
-// are not budget verdicts — spec §8.10 says which differences are the
+// The corner measured here is the *three*-chunk one, opened through the real
+// door with the four reference inputs a consuming step would actually carry
+// (one certificate, three chunks). The rows below come in a controlled family:
+// every one of them builds the same fixture and opens the same door, and they
+// differ only in which items are read, so a difference between two rows is one
+// read and nothing else. Absolute figures are dominated by fixture construction
+// and are not budget verdicts — spec §8.10 says which differences are the
 // measurement.
 
 /// Nine of the straddle vector's items — 360 bytes, item-aligned at the
@@ -1103,8 +1102,7 @@ fn corner_view() -> FieldViewV1 {
 /// `blake2b_256` over the preimage), the four reference inputs, the committed
 /// body and its §3 tx-id — and then stops without opening the door. Row 1
 /// against this row is the door open proper; every absolute figure in the table
-/// is otherwise dominated by this fixture, exactly as #556's bench found and
-/// spec §12.5 restates.
+/// is otherwise dominated by this fixture, as spec §12.5 states.
 test tier3_corner_fixture_only() {
   let (verified, witness_set, reference_inputs) = corner_step_inputs()
   and {

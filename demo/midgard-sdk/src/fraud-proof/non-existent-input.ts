@@ -1,8 +1,7 @@
 /**
- * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
- * remediation): thread state carries the §2.5 anchor rather than a per-field
- * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
- * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * Thread state carries the §2.5 anchor rather than a per-field collection
+ * commitment, and a step redeemer carries a `FieldOpeningV1` rather than a
+ * reproduced `..._preimage: List<…>`; see
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
@@ -63,9 +62,8 @@ export const NonExistentInputStep01SpendRedeemer =
 // ## Step 02 — provide the spend-inputs preimage and select the bad input
 
 /**
- * Mirrors `midgard/fraud_proofs/no_input/step_02.State`. #604: the retired
- * `bad_tx_inputs_hash` became the §2.5 anchor `bad_tx_id`; the two ledger roots
- * are unchanged.
+ * Mirrors `midgard/fraud_proofs/no_input/step_02.State`: the §2.5 anchor
+ * `bad_tx_id` and the two ledger roots.
  */
 export const NonExistentInputStep02StateSchema =
   InputExistenceSourceStateSchema;
@@ -74,15 +72,6 @@ export type NonExistentInputStep02State = Data.Static<
 >;
 export const NonExistentInputStep02State =
   asDataType<NonExistentInputStep02State>(NonExistentInputStep02StateSchema);
-
-export const NonExistentInputStep02DatumSchema = faultProofStepDatumSchema(
-  NonExistentInputStep02StateSchema,
-);
-export type NonExistentInputStep02Datum = Data.Static<
-  typeof NonExistentInputStep02DatumSchema
->;
-export const NonExistentInputStep02Datum =
-  asDataType<NonExistentInputStep02Datum>(NonExistentInputStep02DatumSchema);
 
 /** Mirrors `midgard/fraud_proofs/no_input/step_02.Args`. */
 export const NonExistentInputStep02ArgsSchema = InputExistenceSelectArgsSchema;

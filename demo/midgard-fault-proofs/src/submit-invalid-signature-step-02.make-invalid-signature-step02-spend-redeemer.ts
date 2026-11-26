@@ -70,7 +70,7 @@ export type SubmitInvalidSignatureStep02CliConfig = SubmitProviderConfig & {
   readonly addrTxWitsPreimagePath: string;
   /**
    * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
-   * compact structure. New in #604.
+   * compact structure.
    */
   readonly nativeTxCompactPath: string;
   /**

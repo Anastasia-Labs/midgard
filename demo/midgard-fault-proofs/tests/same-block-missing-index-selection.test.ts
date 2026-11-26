@@ -1,7 +1,6 @@
 /**
  * Which family the watcher proves when a transaction names an output index
- * that a producer committed by the same block never created (decision 0010,
- * owner ruling 2026-11-15).
+ * that a producer committed by the same block never created (decision 0010).
  *
  * Such an input is also absent from the transaction's event pre-state
  * ledger, so both the ledger-absence family and the same-block NoIdx family

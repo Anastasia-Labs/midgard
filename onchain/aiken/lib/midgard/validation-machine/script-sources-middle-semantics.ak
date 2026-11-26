@@ -187,7 +187,7 @@ pub fn stage_six_begin(
     frame.field_preimage_lengths_cbor,
   )
   // The stage reads its policy item only through the field grammar
-  // certificate, so its cost no longer grows with the field's item count.
+  // certificate, so its cost does not grow with the field's item count.
   expect field_door.CertifiedFieldItem { cert_ref_input_index } = route
   middle.script_sources_begin_mint_policy_with_successor(
     pre,

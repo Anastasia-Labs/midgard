@@ -228,10 +228,10 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
  * Committee size at or above which the single-key attestation warning is not
  * emitted.
  *
- * Advice, not a bound. The governor represents a committee of one — the
- * 2026-08-11 owner ruling accepted the single-key attest loop *with a
- * rate-limited explanatory log* and named two-key committees the standing
- * configuration — so nothing here refuses a committee below this size.
+ * Advice, not a bound. The governor represents a committee of one: the
+ * single-key attest loop runs with a rate-limited explanatory log, and
+ * two-key committees are the standing configuration, so nothing here
+ * refuses a committee below this size.
  */
 export const MIN_RECOMMENDED_DA_COMMITTEE_SIZE = 2;
 
@@ -242,8 +242,7 @@ export const MIN_RECOMMENDED_DA_COMMITTEE_SIZE = 2;
  * Advice, not a bound, and deliberately a separate constant from
  * {@link MIN_RECOMMENDED_DA_COMMITTEE_SIZE}: one covers who can attest, the
  * other who can rotate the parameters, and a future change to either must not
- * silently move the other. The 2026-08-13 owner ruling made a lone owner
- * representable, so this drives a warning and nothing else.
+ * silently move the other. A lone owner is representable, so this drives a warning and nothing else.
  */
 export const MIN_RECOMMENDED_DA_OWNER_COUNT = 2;
 
@@ -265,8 +264,8 @@ export const resolveDaCommittee = (
         ).join("");
       }
       // No arity refusal. A locally derived committee of one is the single-key
-      // attest loop the 2026-08-11 owner ruling accepted; `deriveOperatorDaParams`
-      // warns about it rather than failing closed here.
+      // attest loop; `deriveOperatorDaParams` warns about it rather than
+      // failing closed here.
       return [...new Set(signers.map((signer) => signer.verificationKeyHex))]
         .sort()
         .join("");
@@ -282,14 +281,8 @@ export const resolveDaCommittee = (
  * Parses a packed hex set and enforces what `valid_datum` needs of it: correct
  * element width and strictly ascending order (its sorted-unique encoding).
  *
- * There is no longer an arity check. This function carried one — first against
- * a shared `MIN_DA_OWNER_COUNT` of two, then against a per-call minimum once
- * the 2026-08-11 ruling let a committee have one member. The 2026-08-13 ruling
- * dropped the owner-set minimum to one as well, so both call sites bottom out
- * at a single element, and at one the check could not fail: `splitPackedHex`
- * already rejects an empty field. Deleting it rather than passing a vacuous
- * minimum keeps the guard structure honest — the non-emptiness refusal lives in
- * exactly one place, and it is one that actually fires.
+ * It checks no arity: both call sites accept a single element, and
+ * `splitPackedHex` already rejects an empty field.
  *
  * Order is rejected rather than repaired. Committee position *is* the signer
  * index every attestation witness and attested-signer bit is keyed on, so

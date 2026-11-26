@@ -17,11 +17,9 @@
 //// take an already-authenticated preimage and materialise it as typed items,
 //// which is what `transaction.verify_midgard_transaction_field_preimage_v1`
 //// needs to re-encode and so pin the canonical spelling. Nothing here
-//// verifies a field hash on its own — the two helpers that used to
-//// (`verify_spend_inputs_preimage`, `spend_input_cbor_at`) had no production
-//// caller and are gone, because a free-standing field hash is exactly the
-//// shape §4's positional-identity invariant prohibits at a dispute entry
-//// point.
+//// verifies a field hash on its own, because a free-standing field hash is
+//// exactly the shape §4's positional-identity invariant prohibits at a
+//// dispute entry point.
 ////
 //// The §5.1 array head is read through `decode_field_array_header_at` from
 //// the door module — the single decoder for that grammar. `codec`'s
@@ -85,9 +83,7 @@ pub fn encode_address_witness_preimage(
   witnesses |> list.map(encode_midgard_address_witness) |> encode_field_preimage
 }
 
-/// Field 6. Under the retired counted scheme this concatenated raw item CBOR
-/// with no per-item wrapper; the §5.1 envelope now applies here like
-/// everywhere else.
+/// Field 6, in the §5.1 envelope like every other field.
 pub fn encode_script_witness_preimage(
   witnesses: List<MidgardScriptWitness>,
 ) -> ByteArray {
@@ -101,7 +97,7 @@ pub fn encode_script_witness_preimage(
     |> encode_field_preimage
 }
 
-/// Field 8. Same reversion as field 6: enveloped items, not raw concatenation.
+/// Field 8. Like field 6: enveloped items, not raw concatenation.
 pub fn encode_redeemer_witness_preimage(
   witnesses: List<MidgardRedeemerWitness>,
 ) -> ByteArray {
@@ -438,8 +434,8 @@ pub fn mint_policy_items(mint: Data) -> List<ByteArray> {
 }
 
 /// §5.6: the field-5 preimage is the enveloped list of per-policy items, and
-/// an empty mint encodes as `80` like every other field. The retired raw-map
-/// form (`a0` for empty, `a1 …` otherwise) is prohibited.
+/// an empty mint encodes as `80` like every other field. The raw-map form
+/// (`a0` for empty, `a1 …` otherwise) is prohibited.
 pub fn encode_mint_preimage(mint: Data) -> ByteArray {
   mint |> mint_policy_items |> encode_field_preimage
 }

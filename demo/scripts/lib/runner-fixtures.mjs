@@ -147,7 +147,7 @@ export const aikenFixtures = {
     },
     declared: [{ module: "selftest/probe", selector: "selftest_probe" }],
   },
-  // Issue #538. The widened per-task leg batches every manifest-declared
+  // The widened per-task leg batches every manifest-declared
   // selector into one invocation and addresses each as `<module>.{<test>}`, so
   // the fixtures below exercise that shape rather than the single bare-name one.
   // A batch that fails closed on one member is the property that matters: a

@@ -2,7 +2,7 @@ import type { TransportFailedReason, TransportReadiness } from "./protocol.js";
 
 /**
  * The transport failed on a fault no restart repairs
- * (`TRANSPORT_FAILED_REASONS`): it no longer restarts its sidecar, and every
+ * (`TRANSPORT_FAILED_REASONS`): it does not restart its sidecar, and every
  * call and stream fails with this until the process restarts.
  */
 export class TransportFailedError extends Error {

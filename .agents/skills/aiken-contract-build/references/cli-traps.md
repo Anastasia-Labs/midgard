@@ -6,8 +6,7 @@ run printed nothing, or before writing an `and {}` or a large fold.
 Unless stated otherwise, behaviour here was probed on 2026-09-26 with
 `aiken v1.1.23+5adf783` (the pin) in a throwaway project, and the selector
 rules were read from the fork's source,
-`crates/aiken-project/src/lib.rs` `collect_test_items` (same code at fork
-revisions `133151f`, `2a78108` and `5adf783`). <!-- doc-links:external -->
+`crates/aiken-project/src/lib.rs` `collect_test_items`. <!-- doc-links:external -->
 
 ## How `aiken check -m` reads a selector
 
@@ -59,8 +58,6 @@ This is why the two repository scripts exist:
   wrapper that parses the report (both repository scripts do) must not run
   `aiken` under `script`. On a failing test the piped run still prints the
   JSON report and exits 1.
-- An older pin (v1.1.22) showed a silent-exit pathology on detached runs.
-  Not re-probed on the current fork beyond the two points above.
 
 ## Processes and build directories
 
@@ -86,8 +83,8 @@ This is why the two repository scripts exist:
 - **About a hundred items per single-step fold of transaction outputs.** In
   the networkId forced direction, reading one output cost about 120k memory
   on chain, so one transaction fit roughly a hundred outputs under the 20%
-  reserve, against a raw-carriage bound of 352 outputs (commit `36546279`,
-  2026-09-04). The fix was a resumable, checkpointed walk as a separate
-  script (`fraud_proofs/network_id/forced_scan`). Treat the figure as a
+  reserve, against a raw-carriage bound of 352 outputs (measured 2026-09-04).
+  Past that, walk the outputs in a resumable, checkpointed separate script,
+  as `fraud_proofs/network_id/forced_scan` does. Treat the figure as a
   budgeting guide for folds over variable-width items, not a constant:
   re-measure for your own per-item work.

@@ -36,13 +36,11 @@ export const DaParamsDatum = asDataType<DaParamsDatum>(DaParamsDatumSchema);
 /**
  * Smallest owner set the DA params governor will represent: **one**.
  *
- * This was two until the 2026-08-13 in-session owner ruling recorded on #602
- * dropped the governor's owner-set minimum, making a one-owner set carrying
- * `updateThreshold === 1` representable. Single-key governance — one key
- * rotating the committee and both thresholds — is accepted behaviour by owner
- * decision, not an unreachable state.
+ * A one-owner set carrying `updateThreshold === 1` is representable.
+ * Single-key governance — one key rotating the committee and both thresholds —
+ * is accepted behaviour, not an unreachable state.
  *
- * On-chain there is no longer a matching constant: at one the check would be a
+ * On-chain there is no matching constant: at one the check would be a
  * guard that cannot fail, because `sorted_unique_len_at_most` aborts on an
  * empty list before a count exists, so `da-params-governor.ak` carries the
  * non-emptiness refusal structurally and declares no `min_owner_count`.
@@ -80,10 +78,9 @@ export const MIN_DA_COMMITTEE_SIZE = 1;
  * TypeScript twin of `governed_threshold_floor` in
  * `onchain/aiken/validators/da-params-governor.ak`. Both evaluate the ceiling
  * as `(2*setLength + 2) / 3` under integer division, and neither carries a
- * lower clamp: the 2026-08-11 owner ruling lifted the 1-of-1 prohibition, so a
- * one-member DA committee floors at one and a single-key attest loop is
- * representable. The 2026-08-13 ruling extended the same shape to the owner
- * set — see {@link MIN_DA_OWNER_COUNT} — so a lone owner governs at
+ * lower clamp: a one-member DA committee floors at one and a single-key attest
+ * loop is representable. The owner set has the same shape — see
+ * {@link MIN_DA_OWNER_COUNT} — so a lone owner governs at
  * `updateThreshold === 1`. What the floor still guarantees at every set size is
  * that it never returns less than one: no set can name a threshold of zero.
  *

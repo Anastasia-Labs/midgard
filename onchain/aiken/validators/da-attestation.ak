@@ -447,12 +447,11 @@ validator da_attestation(
           own_policy_id,
         )
 
-        // This branch used to decide quorum entirely from
-        // the attestation datum's own frozen `da_threshold`, never reading the
-        // DA params at all, so committee rotation was not retroactive: a quorum
-        // gathered under a rotated-out committee stayed applicable forever.
-        // Reading the *current* governed params and requiring the frozen pair
-        // to still equal them is what retires that quorum.
+        // Quorum is not decided from the attestation datum's frozen
+        // `da_threshold` alone: a quorum gathered under a rotated-out committee
+        // would then stay applicable forever. Reading the *current* governed
+        // params and requiring the frozen pair to still equal them is what
+        // retires that quorum.
         //
         // Equality of the committee hash, not merely `count >= governed
         // threshold`: what is stale about such a quorum is *whose* signatures
@@ -1244,12 +1243,10 @@ test da_attestation_rescue_rejects_redirected_beneficiary() fail {
 // ---------------------------------------------------------------------------
 // ## Non-retroactive committee rotation
 //
-// Before this change `ApplyToStateQueue` read no DA params at all: it decided
-// quorum from the attestation datum's own frozen `da_threshold` and burnt the
-// DAAT. Rotation was therefore not retroactive — a quorum gathered under a
-// committee that governance had since replaced stayed applicable forever. The
-// control below is the unchanged-committee case that must keep working, and
-// the five negatives are the mutation classes that must not.
+// `ApplyToStateQueue` reads the governed DA params, so a quorum gathered under
+// a committee that governance has since replaced does not apply. The control
+// below is the unchanged-committee case that must keep working, and the five
+// negatives are the mutation classes that must not.
 // ---------------------------------------------------------------------------
 
 fn test_header() -> ledger_state.HeaderV1 {
@@ -1471,8 +1468,7 @@ test da_attestation_apply_control_unchanged_committee_applies() {
 
 /// Rotation rejection — the headline case. The single mutated field is the
 /// governed committee, rotated from A to B with its hash honestly re-derived.
-/// The attestation still holds a full quorum under its frozen threshold, which
-/// is exactly what used to be sufficient.
+/// The attestation still holds a full quorum under its frozen threshold.
 test da_attestation_apply_rejects_rotated_committee() fail {
   test_apply_mint(
     test_apply_tx(
@@ -1484,8 +1480,8 @@ test da_attestation_apply_rejects_rotated_committee() fail {
 
 /// Threshold-change rejection. The single mutated field is the governed
 /// `da_threshold`, raised from 2 to 3 over the same committee. Governance
-/// tightening the DA bar must retire in-flight quorums gathered under the old
-/// one rather than let them apply at the bar they froze.
+/// tightening the DA bar must retire in-flight quorums gathered under the
+/// lower bar rather than let them apply at the bar they froze.
 test da_attestation_apply_rejects_governed_threshold_change() fail {
   test_apply_mint(
     test_apply_tx(
@@ -1517,7 +1513,7 @@ test da_attestation_apply_rejects_forged_committee_hash() fail {
 }
 
 /// Stale-params-reference rejection. The single mutated field is the params
-/// reference input's value, which no longer carries the governance NFT. The
+/// reference input's value, which does not carry the governance NFT. The
 /// datum it presents is byte-for-byte the control's, so this is an attacker
 /// replaying an obsolete snapshot of the params to reinstate a rotated-out
 /// committee; only the NFT authentication distinguishes it.

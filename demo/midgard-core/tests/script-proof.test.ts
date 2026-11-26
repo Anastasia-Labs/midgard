@@ -207,7 +207,7 @@ describe("script proof primitives", () => {
     ).toBe("3f81171ae98f8745f125cbe28461e23204fe4f39e609e9ac4be7537b9dac126f");
   });
 
-  it("hashes the exact stored Plutus bytes without requiring a retired envelope", () => {
+  it("hashes the exact stored Plutus bytes and refuses other script spellings", () => {
     const script = {
       language: "PlutusV3",
       scriptBytes: Buffer.from("450101006001", "hex"),
@@ -280,8 +280,8 @@ describe("script proof primitives", () => {
         ]),
       ),
     ).toThrow(/source key is not an output reference/u);
-    // The retired minimal-index spelling — CML's `TransactionInput` CBOR, 36
-    // bytes. §5.3 does not admit it, in either language.
+    // CML's minimal-index `TransactionInput` CBOR, 36 bytes. §5.3 does not
+    // admit it, in either language.
     expect(() =>
       referenceLeafInput(encodeCbor([Buffer.alloc(32, 0x44), 2n])),
     ).toThrow(/source key is not an output reference/u);

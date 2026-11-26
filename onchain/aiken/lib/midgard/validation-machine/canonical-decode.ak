@@ -317,8 +317,8 @@ pub fn observe_canonical_decode_item_v1(
 
 /// `observe_canonical_decode_item_v1` with the item reached by `route`: by
 /// walking its field, or, for a variable-width field, through the field
-/// grammar certificate `route` names, so the observation's cost no longer
-/// grows with the field's item count. Both routes open the same item, so the
+/// grammar certificate `route` names, so the observation's cost does not
+/// grow with the field's item count. Both routes open the same item, so the
 /// observation — and every stage past it — is the same.
 pub fn observe_canonical_decode_item_routed_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
@@ -356,15 +356,10 @@ pub fn observe_canonical_decode_item_routed_v1(
 /// Whether the observation agrees with the control state the step claims to be
 /// in.
 ///
-/// **Named for exactly what it does.** It used to be
-/// `..._is_authentic` and it used to earn that name: it folded the prover's
-/// `ItemProofV1` against the §4 field commitment. Under §4 that fold is
-/// unsatisfiable, and what replaces it — the §8.8 door — has already run by the
-/// time an observation exists. So this checks the remaining, non-cryptographic
-/// half: that the phase is at a legal item position, and that the field's
-/// authenticated item count is the one the control carries. Calling it
-/// "authentic" after the fold left would have been a false docstring on a
-/// predicate that no longer proves anything about bytes.
+/// The §8.8 door has already authenticated the bytes by the time an
+/// observation exists, so this checks only the non-cryptographic half: that the
+/// phase is at a legal item position, and that the field's authenticated item
+/// count is the one the control carries.
 fn canonical_decode_item_observation_is_consistent(
   witness: ValidationOneStepWitnessV1,
   source: CanonicalDecodeItemSourceV1,

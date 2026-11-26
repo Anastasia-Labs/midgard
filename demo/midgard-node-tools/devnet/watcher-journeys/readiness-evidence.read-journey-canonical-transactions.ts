@@ -69,9 +69,7 @@ export const readJourneyNativeEvidencePath = async (directory: string) => {
     );
     return nativeEvidencePath;
   }
-  const retained = join(directory, "native-chain.ndjson");
-  assert(existsSync(retained), "No retained native evidence path is available");
-  return retained;
+  throw new Error("No native evidence path is recorded");
 };
 
 export const sha256 = (bytes: string | Uint8Array) =>

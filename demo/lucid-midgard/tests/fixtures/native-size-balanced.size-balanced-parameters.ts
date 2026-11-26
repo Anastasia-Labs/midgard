@@ -18,12 +18,9 @@ export const SIZE_BALANCED_PARAMETERS = {
   /**
    * The canonical-CBOR size the shape aims at, and the band around it.
    *
-   * Re-centred for §5.1's per-item envelope: fields 6 and 8 gained a definite
-   * byte-string wrapper per item and field 5 moved from a raw map to enveloped
-   * policy items, so the same declared shape now serialises 304 bytes wider than
-   * it did under the retired counted grammar. The counts below are unchanged —
-   * the shape is what this fixture declares, and the byte band is a consequence
-   * of it that regenerates when the grammar moves.
+   * The counts below are what this fixture declares; the byte band, which
+   * includes §5.1's per-item envelope on every field, is a consequence of them
+   * that regenerates when the grammar moves.
    */
   targetFullTxCborBytes: 16_128,
   fullTxCborToleranceBytes: 128,

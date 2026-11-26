@@ -83,7 +83,7 @@ export const outRef = (txHash: string, index: number) => ({
 });
 
 /**
- * The twin chain the ruling-9 test prunes and rolls back: A (b1) pays T#0,
+ * The twin chain the raw-read test prunes and rolls back: A (b1) pays T#0,
  * T#1, C#2; B (b2) spends A#0 and the seed, pays C; the protocol init (b3)
  * and a header commit (b4); two empty blocks; R (b7) spends A#1 to X; one
  * empty block (tip b8).

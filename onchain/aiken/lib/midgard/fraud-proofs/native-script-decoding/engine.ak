@@ -21,17 +21,14 @@
 //// under the transition step's `pre_utxos_root` → transition trace → header
 //// → thread NFT.
 ////
-//// Owner rulings incorporated:
-//// - 2026-08-25 "store the pair": the thread state carries
-////   `outpoint_source_kind` (0 = spend field 0, 1 = reference field 1) and
-////   `outpoint_cursor` (item ordinal within that field) — for direction B
-////   copied verbatim from the trie-authenticated forced leaf's rejection
-////   reason, for direction A chosen by the prover — so the bind step opens
-////   exactly the accused field at the accused ordinal and no spend-count
-////   authority is ever needed.
-//// - The design's `tx_order_id: Int` cannot hold the forced leaf's key
-////   (`TxOrderId = OutputReference`); the state stores the serialised leaf
-////   key bytes instead (`#""` for normal-source threads).
+//// The thread state carries the accused pair: `outpoint_source_kind` (0 =
+//// spend field 0, 1 = reference field 1) and `outpoint_cursor` (item ordinal
+//// within that field) — for direction B copied verbatim from the
+//// trie-authenticated forced leaf's rejection reason, for direction A chosen
+//// by the prover — so the bind step opens exactly the accused field at the
+//// accused ordinal and no spend-count authority is ever needed. The forced
+//// leaf's key (`TxOrderId = OutputReference`) is stored as its serialised
+//// bytes (`#""` for normal-source threads).
 
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
@@ -118,9 +115,8 @@ pub type BindStateV1 {
   PendingForced
 }
 
-/// The constant-size thread state from step-02's output onward (§4 of the
-/// design, as amended by the 2026-08-25 pair ruling and the `tx_order_id`
-/// type repair — see the module header).
+/// The constant-size thread state from step-02's output onward (see the
+/// module header).
 pub type ScanThreadStateV1 {
   direction: Int,
   source_kind: Int,

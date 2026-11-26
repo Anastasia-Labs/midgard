@@ -71,10 +71,8 @@ const decodeRedeemerDataCborHex = (
  * validation machine consumes, re-checking the narrower Midgard builder tag set
  * and that the redeemer payload is Plutus `Data`. Normal admission additionally
  * checks its exact `serialiseData` spelling; forced evaluation keeps the bytes.
- *
- * The retired counted scheme accepted two spellings here (a raw array of
- * four-element arrays, or a CBOR map keyed by pointer). §6.1 admits one byte
- * form per value, so both are gone.
+ * §6.1 admits one byte form per value: a raw array of four-element arrays or a
+ * CBOR map keyed by pointer rejects.
  */
 export const decodeMidgardRedeemers = (
   preimageCbor: Uint8Array,

@@ -39,8 +39,7 @@ provide the intermediate evidence needed to isolate an invalid transition.
 
 DA protocol traffic uses libp2p only. A challenger retrieves committee-retained
 payloads through deployment-bound protocols and validates them against the L1
-header. HTTP DA payload/metadata endpoints are retired and must not be used as
-fallbacks. See the [DA transport decision](../../../docs-site/content/docs/watchers/da-transport.mdx)
+header. No HTTP endpoint serves DA payloads or metadata. See the [DA transport decision](../../../docs-site/content/docs/watchers/da-transport.mdx)
 and the [committee architecture](../../da-committee-node/docs/da-committee-node-architecture.md).
 
 Retained payloads provide source entries, trace entries, event placement,

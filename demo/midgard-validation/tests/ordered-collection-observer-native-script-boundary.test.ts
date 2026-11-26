@@ -324,9 +324,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
     // grows by when one identical native script is added. Every item here is the
     // same synthetic signer/expiry script, so the field is exactly its array
     // header plus `count` strides, and the stride follows from that rather than
-    // from a literal. Published because the envelope moved it: under the retired
-    // counted grammar field 6 concatenated raw item CBOR, so the delta was the
-    // item alone, with no wrapper.
+    // from a literal. The stride includes each item's §5.1 envelope.
     const scriptWitnessItemStrideBytesV1 =
       (scriptField.fieldBytes -
         midgardFieldHeaderLengthForCount(scriptField.itemCount)) /
@@ -353,7 +351,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       fieldPreimageLengthsCborHex:
         scriptField.terminalFoldVector.fieldPreimageLengthsCborHex,
       observerFieldTerminalFoldVector: observerField.terminalFoldVector,
-      // #592: the field-3 carriage for both the observer terminal fixture and
+      // The field-3 carriage for both the observer terminal fixture and
       // `cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree`,
       // which replay the same signed transaction.
       observerFieldPreimageCborHex: observerField.fieldPreimageCborHex,

@@ -47,7 +47,7 @@ export type InputSetPosition = {
  *   * `seed` caches field 0's tail and consumes nothing;
  *   * `consume` takes the larger head and prepends it to the schedule;
  *   * `duplicate` ends InputSets at DuplicateInput, `first` being the item
- *     scanned earlier (pd-design §G11.6).
+ *     scanned earlier.
  *
  * `opened` is the item the step opens through the field door.
  */

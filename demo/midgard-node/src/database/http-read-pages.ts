@@ -48,7 +48,7 @@ export const spendableUtxoPage = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
       Effect.gen(function* () {
-        yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`;
+        yield* sql`SET TRANSACTION READ ONLY`;
         yield* sql`SET LOCAL statement_timeout = '2s'`;
         return yield* sql<PublicUtxoPageRow>`/* midgard-public-utxo-page */ WITH candidates AS MATERIALIZED (
       SELECT mempool_ledger.outref, octet_length(mempool_ledger.output) AS payload_bytes FROM mempool_ledger

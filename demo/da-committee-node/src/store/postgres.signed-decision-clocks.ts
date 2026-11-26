@@ -5,7 +5,7 @@ import type { SignedHeader } from "../l1/follower/obligations.js";
 import { decodeRecord } from "./postgres.assert-postgres-decision-retry.js";
 import { storedHeaderBlockTimeMs } from "./retention.block-time.js";
 
-/** Unknown legacy commit clocks remain held until the exact authenticated retained node supplies them. */
+/** Unknown commit clocks remain held until the exact authenticated retained node supplies them. */
 export const readSignedDecisionClocks = async (
   pool: Pick<Pool, "query">,
 ): Promise<readonly SignedHeader[]> => {

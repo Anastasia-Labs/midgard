@@ -145,7 +145,7 @@ const journeyRun = (f, name = "journey-run") => {
   const runDir = join(f.base, name);
   mkdirSync(join(runDir, "config"), { recursive: true });
   mkdirSync(join(runDir, "work"), { recursive: true });
-  writeFileSync(join(runDir, "run.env"), `MIDGARD_PHASE4_RUN_DIR=${runDir}\n`);
+  writeFileSync(join(runDir, "run.env"), `MIDGARD_ISOLATED_CHAIN_RUN_DIR=${runDir}\n`);
   writeFileSync(join(runDir, "config/config.json"), "{}\n");
   writeFileSync(join(runDir, "compose.host-paths.json"), "{}\n");
   return runDir;
@@ -200,7 +200,7 @@ const valid = {
     stack("stack-up", ["up", "--run-dir", "/absolute/stack"]),
     {
       id: "l1-up",
-      kind: "phase4",
+      kind: "isolated-chain",
       action: "up",
       runDir: "/absolute/run",
       timeoutSeconds: 600,
@@ -312,7 +312,7 @@ test("always is allowed only on a teardown stage and is part of its definition",
   withTeardowns.stages.push(
     {
       id: "l1-down",
-      kind: "phase4",
+      kind: "isolated-chain",
       action: "down",
       runDir: "/absolute/run",
       timeoutSeconds: 600,
@@ -332,7 +332,7 @@ test("always is allowed only on a teardown stage and is part of its definition",
     );
   refuses(
     (c) => (c.stages[0].always = true),
-    /stages\[0\]\.always is allowed only on a teardown stage \(phase4 action down, or devnet-stack down\)/,
+    /stages\[0\]\.always is allowed only on a teardown stage \(isolated-chain action down, or devnet-stack down\)/,
   );
   refuses(
     (c) => (c.stages[1].always = true),
@@ -871,7 +871,7 @@ test("a journey stage refuses a run directory the watcher-journeys generator did
   const generate = `MIDGARD_WATCHER_JOURNEY_RUN_DIR=${runDir} sh demo/midgard-node-tools/devnet/watcher-journeys/scripts/generate.sh`;
   assert.equal(
     entry.reason,
-    `the journey run directory ${runDir} lacks ${join(runDir, "run.env")}, ${join(runDir, "compose.host-paths.json")}; generate the run first with \`${generate}\` and start its L1 services with a phase4 up stage`,
+    `the journey run directory ${runDir} lacks ${join(runDir, "run.env")}, ${join(runDir, "compose.host-paths.json")}; generate the run first with \`${generate}\` and start its L1 services with a isolated-chain up stage`,
   );
   assert.match(readFileSync(entry.logPath, "utf8"), /lacks/);
 });
@@ -967,12 +967,12 @@ test("the stage environment is passed to devnet-stack but never recorded", async
   );
 });
 
-test("phase4 stages run the run directory's up and down scripts", () => {
+test("isolated-chain stages run the run directory's up and down scripts", () => {
   const campaign = parseCampaign(structuredClone(valid));
   const command = stageCommand("/checkout", campaign, campaign.stages[1]);
   assert.deepEqual(command.argv, [
     "sh",
-    "/checkout/demo/midgard-node-tools/devnet/phase4-process/scripts/up.sh",
+    "/checkout/demo/midgard-node-tools/devnet/isolated-chain/scripts/up.sh",
     "/absolute/run",
   ]);
   assert.deepEqual(command.env, {});
@@ -983,7 +983,7 @@ test("the CLI plans a campaign without running it and refuses a mismatched commi
   const stages = [
     {
       id: "l1-down",
-      kind: "phase4",
+      kind: "isolated-chain",
       action: "down",
       runDir: join(f.base, "run"),
       timeoutSeconds: 60,

@@ -29,8 +29,7 @@ const cborBytes = (hex: string): string => {
  * the bytes twice to tell single from double wrapping. Handing it the bare
  * ordinal made two of the 287 ordinals (`9f`, `bf`: truncated indefinite-length
  * array and map heads) spin inside cbor-x for about twelve seconds each before
- * failing, which is where the "40ms per contract" this fixture used to be
- * blamed for actually lived. A well-formed double wrap decodes cleanly at both
+ * failing. A well-formed double wrap decodes cleanly at both
  * layers, so the whole registry hashes in a few milliseconds.
  */
 export const positionalContractScriptCbor = (contractName: string): string => {

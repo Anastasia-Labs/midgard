@@ -173,7 +173,7 @@ describe("invalid-signature emulator lifecycle", () => {
     proofFit["step-01"] = step01Capture.measurement;
     const step01 = step01Capture.result;
     expect(step01.nativeTxId).toBe(subject.nativeTxId);
-    // #604: the thread carries `WitnessAnchor` — the id plus the committed
+    // The thread carries `WitnessAnchor` — the id plus the committed
     // `witness_set_hash` — which is the only reason field 7 can be opened.
     expect(step01.badTxWitnessSetHash).toBe(
       subject.inclusion.nativeTx.witness_set_hash,

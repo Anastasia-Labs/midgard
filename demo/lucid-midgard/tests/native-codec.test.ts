@@ -73,9 +73,7 @@ describe("Midgard native v1 codec", () => {
     );
     // §4/§5.6: an empty mint is exactly `80`, and its commitment is the plain
     // `blake2b_256` of those bytes — the same value every empty field commits to,
-    // because §4's hash input carries no field index. Under the retired counted
-    // scheme this was a domain-tagged Merkle root and deliberately *not* the hash
-    // of `80`; that inequality is now an equality.
+    // because §4's hash input carries no field index.
     expect(decoded.compact.transactionBody.mintHash).toEqual(
       MIDGARD_EMPTY_FIELD_COMMITMENT,
     );

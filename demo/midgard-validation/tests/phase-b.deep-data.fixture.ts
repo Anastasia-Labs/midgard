@@ -89,7 +89,7 @@ type Program = ReturnType<typeof walkingProgram>;
 
 /**
  * The depth of the serialised redeemer rows, past the 2,500 to 3,000 levels at
- * which serialising deeply nested Data used to exhaust the evaluator's stack.
+ * which a recursive serialiser of nested Data exhausts the evaluator's stack.
  */
 export const SERIALISED_REDEEMER_DEPTH = 11_700;
 

@@ -148,7 +148,7 @@ describe("validation-trace dispute runner: spending back a staged step's staging
         bond: bond!,
       }),
     );
-    // The last staging output stays out of the provider's view for now.
+    // The last staging output stays hidden from the provider until the test ends.
     hidden = hideFromProvider(scene.h.proverLucid, outRefOf(stagings.at(-1)!));
 
     await runUntil(() => reclaimSends().length >= 1);

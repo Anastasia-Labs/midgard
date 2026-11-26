@@ -10,15 +10,11 @@ options still require their explicit configuration gates.
 - `src/index.ts`: the `midgard-node-tools` CLI (`dist/index.js`).
 - `src/commands/`: the e2e finalizer and state-correction acceptance, the
   managed-service commands, stress wallets, the corpus
-  generator/verifier, the bounded L2 stress harness, and the Phase 4
-  journal-kill recovery acceptance controller.
+  generator/verifier, and the bounded L2 stress harness.
 - `src/e2e/`: the process supervisor, structured step runner, run summary,
-  owned-process-group records, DA gates, and the journal-kill process
-  harness.
-- `devnet/phase4-process/`: the isolated local-devnet assets for the Phase 4
-  gate (see [`docs/PHASE4_JOURNAL_KILL_RECOVERY_ACCEPTANCE.md`](docs/PHASE4_JOURNAL_KILL_RECOVERY_ACCEPTANCE.md)).
-- `scripts/verify-phase4-journal-kill-recovery-summary.mjs`: the offline verifier
-  for the acceptance summary the controller writes.
+  owned-process-group records and DA gates.
+- `devnet/isolated-chain/`: the private local chain the watcher journeys and
+  `devnet-stack` run on (see its [README](devnet/isolated-chain/README.md)).
 - `tests/`: the suites for all of the above.
 
 ## How It Relates To `midgard-node`
@@ -64,7 +60,6 @@ This is the only live acceptance flow; the operating runbook is
 | `e2e-stress-l2-throughput`                           | Opt-in bounded L2 transfer stress with SQL-grounded stage metrics                                  |
 | `create-l2-wallet`, `stress-wallets:*`               | Persisted stress wallets: create, prepare, fan-out, consolidate, drain                             |
 | `stress-corpus-generate`, `stress-corpus-verify`     | Signed NDJSON transaction corpus for repeatable benchmarks                                         |
-| `e2e-journal-kill-recovery-acceptance`               | The Phase 4 two-node journal-before-submit SIGKILL recovery acceptance                             |
 
 `e2e-stack` records every command it runs through the structured step runner
 in its run directory's `attempts/`. `e2e-start-service` supervises
@@ -152,7 +147,7 @@ pnpm test
 The vitest suite reuses `midgard-node`'s per-worker Postgres shard scheme under
 its own database prefix (`midgard_tools_test_w<N>`), so it never shares a
 database with a concurrently running node suite. `pnpm test` also runs the
-offline summary-verifier tests and the Phase 4 devnet asset tests.
+offline summary-verifier tests and the process devnet asset tests.
 
 `pnpm run journey-replay:warm-up` fills a stack fault drill's replay store
 before the drill. It runs from source through
@@ -169,7 +164,7 @@ Fresh `devnet-stack` runs fund all fourteen roles once from the generated
 chain's genesis UTxO. There is no role-wallet refill loop. The private chain
 has 2 billion ADA total supply, with 1 billion delegated and 1 billion in the
 bootstrap UTxO. This is an isolated-chain funding difference, not a change to
-Preprod protocol parameters. Existing deployments are not changed.
+Preprod protocol parameters.
 
 The policy in `devnet/preprod/funding-policy.json` targets **180 days with a
 5× margin**. Nine submitting service wallets reserve 20 ADA per transaction
@@ -206,11 +201,8 @@ No steady-state role fee series has been measured. Re-measure actual daily
 burn after the final fresh run; usage exceeding the planning envelope or
 protocol-cost changes shorten this conditional runway.
 
-The seven-wallet `devnet/phase4-process/scripts/fund-wallets.sh` bootstrap
-uses the same policy: 78 million ADA plus 50 ADA collateral per wallet,
-546,000,350 ADA total. It is a separate bootstrap flow, not an additional
-allocation in the fourteen-wallet stack. Both fund once; neither schedules
-online treasury transfers to role wallets.
+The stack funds its role wallets once; it schedules no online treasury
+transfers to them.
 
 ## Devnet service refusals
 
@@ -262,5 +254,5 @@ the watcher's transient classification. A correction that changes deployment
 identity, genesis, protocol parameters or the public manifest requires the
 normal explicitly authorized deployment procedure and a new run when required;
 `recover-service` cannot adopt that change. Broken ancestry or missing retained
-history needs authenticated recovery/backfill, not a configuration guess,
+history needs authenticated recovery, not a configuration guess,
 checkpoint reset or timer clearance.

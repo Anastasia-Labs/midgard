@@ -1,6 +1,6 @@
 /**
- * Startup's two follower waits, by failure class (owner ruling 2026-10-09:
- * retry only what is transient, under a budget). The landed-state-queue
+ * Startup's two follower waits, by failure class (retry only
+ * what is transient, under a budget). The landed-state-queue
  * wait rides out a transient database failure within
  * `STARTUP_DATABASE_BUDGET`, fails startup once one outlives it, and fails
  * at once on any other read failure. The follower-view wait fails startup at

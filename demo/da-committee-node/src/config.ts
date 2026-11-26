@@ -47,7 +47,6 @@ export {
 export {
   DEFAULT_NATIVE_LEDGER_AUTHORITY_ID,
   parseNativeLedgerConfig,
-  rejectRetiredWatcherEnvNames,
 } from "./config.l1-submitter-preflight-config.js";
 export { loadCommitteeConfig } from "./config.load-committee-config.js";
 export {

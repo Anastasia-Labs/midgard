@@ -6,8 +6,7 @@ properties for Midgard components. Normative status does not establish that a
 component has passed release acceptance or been deployed.
 
 - **Status:** Active.
-- **Last reviewed:** 2026-08-08 (directory established, Phase 0 of the flat
-  reversion program).
+- **Last reviewed:** 2026-08-08.
 
 ## Authority rule
 

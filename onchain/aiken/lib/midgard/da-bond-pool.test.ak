@@ -1,6 +1,6 @@
 //// Unit coverage for `lib/midgard/da-bond-pool.ak`: the backing clamp, the
-//// authenticated pool readers (the reference input #688's Apply reads, the
-//// spent input #693's Timeout slashes), and the two cross-module facts the
+//// authenticated pool readers (the reference input Apply reads, the spent
+//// input Timeout slashes), and the two cross-module facts the
 //// pool's Slash arm reads cheaply instead of decoding in full.
 ////
 //// GUARD -> TEST MAP

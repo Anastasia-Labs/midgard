@@ -332,16 +332,13 @@ pub fn verify_native_scripts_native_semantics_v1(
 // The two entry points below are that split. Each runs the shared source
 // binding and the shared descriptor gate — the same leaf hashes and the same
 // three §9 membership proofs, in the same order — and then only its own arm.
-// The set of accepted transitions is unchanged in both directions: an input
-// the general form accepts, each of these accepts, and an input either refuses
-// stays refused. The one observable difference is *how* the unreachable arm
-// now fails in the effectful resolver: a `language_tag == 0` witness used to
-// abort inside `expect Some(chunk_proof) = None` and now evaluates to `False`.
-// Abort and `False` are the same verdict on L1 — the step is not producible
-// either way — so no predicate moves.
+// Each accepts exactly what the general form accepts for its family. In the
+// effectful resolver a `language_tag == 0` witness evaluates to `False` where
+// the general form aborts inside `expect Some(chunk_proof) = None`; abort and
+// `False` are the same verdict on L1.
 //
-// This is the "stop linking code the validator does not serve" split, taken
-// for publication margin on a consensus limit.
+// The split keeps code the validator does not serve out of its script, for
+// publication margin on a consensus limit.
 
 fn native_scripts_source_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,

@@ -52,7 +52,7 @@ export type WatcherFaultProofDeadline = Readonly<{
 const admittedDeadlines = new WeakSet<object>();
 
 /**
- * Derives W04/W34 timing authority from the authenticated queue node. The
+ * Derives the fault-proof timing authority from the authenticated queue node. The
  * complete correction path owns the canonical half-maturity budget, so the
  * latest safe start is exactly maturity minus that bound.
  */

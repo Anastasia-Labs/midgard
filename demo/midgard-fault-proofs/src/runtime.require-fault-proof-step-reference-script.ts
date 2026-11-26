@@ -63,8 +63,8 @@ export const requireDeploymentReferenceScript = async ({
  * for use as a transaction reference input.
  *
  * A registered fraud-proof family sources its step spending validators from
- * reference scripts (owner ruling: always reference scripts, never inline
- * attach), so every step submitter accepts an optional `referenceScriptUtxo`.
+ * reference scripts, never inline-attached, so every step submitter accepts
+ * an optional `referenceScriptUtxo`.
  * The UTxO must carry a reference script, and that script must hash to the
  * step's own deployed spending-script hash — a divergence would read a witness
  * that does not authorize the spend.

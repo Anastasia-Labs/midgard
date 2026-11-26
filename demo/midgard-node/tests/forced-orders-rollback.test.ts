@@ -1,5 +1,5 @@
 /**
- * Forced rows across rollbacks (N10b), on a simulated chain with the
+ * Forced rows across rollbacks, on a simulated chain with the
  * follower store in the node database as in production.
  *
  * A rollback that removes an order removes its follower key and its order
@@ -136,7 +136,7 @@ const deadCause = () =>
     ),
   );
 
-describe("forced rows across rollbacks (N10b)", () => {
+describe("forced rows across rollbacks", () => {
   it("an order whose block rolls back and never returns leaves no row, and the horizon drops it", async () => {
     const { store, chain } = await follow();
     const order = inlineOrder(chain.chain, honest());

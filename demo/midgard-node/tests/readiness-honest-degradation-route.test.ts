@@ -357,7 +357,7 @@ describe("GET /readyz names the L1 follower's reasons", () => {
       ),
       "l1_follower_apply_stuck",
     );
-    // F8f: prune passes failing in a row (a prune hook that throws).
+    // Prune passes failing in a row (a prune hook that throws).
     await holds(
       runningFollower(
         followingAtTip({

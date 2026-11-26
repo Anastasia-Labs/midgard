@@ -28,8 +28,8 @@ type GoldenForcedEntry = GoldenEntry & {
   /**
    * The `OperatorVerdictV1` the canonical input asked for, named by its
    * constructor arm: `ForcedTxValid`, or the `RejectionReasonV1` arm carried
-   * by `ForcedTxInvalid`. The arm names — not a coarse validity bucket — are
-   * the fixture's verdict vocabulary since the #640 format wave.
+   * by `ForcedTxInvalid`. The arm names, not a coarse validity bucket, are
+   * the fixture's verdict vocabulary.
    */
   readonly verdict: string;
   readonly orderId: {
@@ -87,7 +87,7 @@ const assertSourceFields = (
   });
 };
 
-describe("RF-031 transaction and forced root V1 golden contract", () => {
+describe("transaction and forced root V1 golden contract", () => {
   it("exercises the production normal transaction-root encoder", () => {
     expect(fixture.schema).toBe("midgard-transaction-root-v1-golden");
     expect(fixture.version).toBe(1);

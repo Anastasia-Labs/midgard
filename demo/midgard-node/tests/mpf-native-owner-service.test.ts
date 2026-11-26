@@ -125,7 +125,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
     }
   });
 
-  it("matches legacy roots, promotes atomically, restarts, and replays recovery", async () => {
+  it("matches scratch-trie roots, promotes atomically, restarts, and replays recovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "midgard-native-owner-"));
     temporaryPaths.push(root);
     const levelPath = join(root, "ledger");
@@ -161,16 +161,16 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
           : { type: "delete" as const, key: Buffer.from(op.key) },
       ),
     }));
-    const legacy = await Effect.runPromise(
-      MidgardMpf.createScratch("legacy-owner"),
+    const reference = await Effect.runPromise(
+      MidgardMpf.createScratch("reference-owner"),
     );
-    await Effect.runPromise(legacy.insert(key1, value1));
+    await Effect.runPromise(reference.insert(key1, value1));
     const expectedRoots: string[] = [];
     for (const operations of events) {
       expectedRoots.push(
         (
           await Effect.runPromise(
-            legacy.applyBatch(
+            reference.applyBatch(
               operations.map((op) =>
                 op.type === "insert"
                   ? {
@@ -185,14 +185,14 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
         ).toString("hex"),
       );
     }
-    await Effect.runPromise(legacy.close());
-    const legacyTraceMpf = await Effect.runPromise(
-      MidgardMpf.createScratch("legacy-owner-transition-trace"),
+    await Effect.runPromise(reference.close());
+    const referenceTraceMpf = await Effect.runPromise(
+      MidgardMpf.createScratch("reference-owner-transition-trace"),
     );
-    await Effect.runPromise(legacyTraceMpf.insert(key1, value1));
+    await Effect.runPromise(referenceTraceMpf.insert(key1, value1));
     const expectedTrace = await Effect.runPromise(
       buildTransitionTraceResult({
-        ledgerMpf: legacyTraceMpf,
+        ledgerMpf: referenceTraceMpf,
         sourceEvents,
         withdrawalCount: 0,
         forcedTransactionCount: 0,
@@ -200,7 +200,7 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
         depositCount: 0,
       }),
     );
-    await Effect.runPromise(legacyTraceMpf.close());
+    await Effect.runPromise(referenceTraceMpf.close());
 
     let service = await createOwnerService(levelPath, {
       binaryPath,
@@ -223,14 +223,14 @@ describe.skipIf(!binaryPresent)("production native MPF owner service", () => {
       key: Buffer.alloc(32, index + 71),
       value: Buffer.alloc(48, index + 81),
     }));
-    const legacyTransactions = await Effect.runPromise(
-      MidgardMpf.createScratch("legacy-owner-transactions"),
+    const referenceTransactions = await Effect.runPromise(
+      MidgardMpf.createScratch("reference-owner-transactions"),
     );
-    await Effect.runPromise(legacyTransactions.applyBatch(transactionOps));
+    await Effect.runPromise(referenceTransactions.applyBatch(transactionOps));
     const expectedRawTxRoot = await Effect.runPromise(
-      legacyTransactions.rootHex(),
+      referenceTransactions.rootHex(),
     );
-    await Effect.runPromise(legacyTransactions.close());
+    await Effect.runPromise(referenceTransactions.close());
     const expectedTxRoot = await Effect.runPromise(
       buildTransactionsSourceRoot(transactionOps),
     );

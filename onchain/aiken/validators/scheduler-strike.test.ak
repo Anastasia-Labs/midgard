@@ -106,8 +106,8 @@ const shift_start = 100_000_000
 /// The validity range every fixture uses, one minute wide.
 const validity_width = 60_000
 
-/// `max_inactivity_between_block_commitments` before it was deleted: an idle
-/// tail this old used to license a strike with no cited event.
+/// A long idle tail (20 minutes): idleness alone never licenses a strike
+/// without a cited event.
 const former_commitment_gap = 1_200_000
 
 const scheduler_input_index = 0
@@ -379,7 +379,7 @@ fn active_node_redeemer() -> active_operators.SpendRedeemer {
 }
 
 /// The scheduler redeemer as raw data, with the cited-event field supplied by
-/// the caller, so a fixture can carry an encoding the type no longer has.
+/// the caller, so a fixture can carry an encoding the type does not have.
 fn raw_scheduler_redeemer(neglected: Data) -> Data {
   let index = fn(i: Int) -> Data { builtin.i_data(i) }
   builtin.constr_data(
@@ -565,9 +565,9 @@ test scheduler_strike_accepts_event_just_after_the_tail() {
   )
 }
 
-/// An idle network well past the deleted commitment-gap threshold: the only
-/// user event on chain was delivered before the tail ended, so there is
-/// nothing to cite and the strike is refused however late it lands.
+/// A network idle for well over 20 minutes: the only user event on chain was
+/// delivered before the tail ended, so there is nothing to cite and the strike
+/// is refused however late it lands.
 test scheduler_strike_rejects_idle_tail_past_the_former_commitment_gap() fail {
   let tail_end = shift_start
   let valid_from = math.max(
@@ -581,8 +581,8 @@ test scheduler_strike_rejects_idle_tail_past_the_former_commitment_gap() fail {
   )
 }
 
-/// The deleted arm's encoding (constructor 0, no fields) no longer decodes as
-/// a cited event, so the scheduler redeemer it rides in is refused.
+/// A no-event encoding (constructor 0, no fields) does not decode as a cited
+/// event, so the scheduler redeemer it rides in is refused.
 test scheduler_strike_rejects_the_deleted_no_event_encoding() fail {
   let raw = raw_scheduler_redeemer(builtin.constr_data(0, []))
   expect redeemer: SpendRedeemer = raw

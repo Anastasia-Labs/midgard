@@ -365,8 +365,7 @@ describe("pooled DA bond challenge and slash lifecycle", () => {
    * case here: `fee_part = penalty` first, `payout = backing - penalty`.
    *
    * The first row leaves `0 < payout < minUTxO`: the reward cannot stand as
-   * an output of its own and lands merged into the one challenger output
-   * (D3).
+   * an output of its own and lands merged into the one challenger output.
    */
   it.each([
     {
@@ -667,7 +666,7 @@ describe("pooled DA bond challenge and slash lifecycle", () => {
   }, 180_000);
 
   /**
-   * B4/G4: the pool's Slash binds to the timeout step alone. A descendant-
+   * B4: the pool's Slash binds to the timeout step alone. A descendant-
    * first timeout leaves the correction lock Locked; the head-removal resume
    * step then carries the same state-queue redeemer
    * (`RemoveUnavailableBlockAfterTimeout`), so only the lock's `Idle` check

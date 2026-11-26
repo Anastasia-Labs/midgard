@@ -1,21 +1,4 @@
-import { type SubmitProviderConfig } from "./runtime.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitZeroInputStep01CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly stateQueueBlockOutRef: string;
-  readonly txInclusionPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export type ZeroInputStep01Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -47,9 +30,6 @@ export type ZeroInputStep01Build = {
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
-
-export type SubmitZeroInputStep01Result =
-  OutsideWorkflowSubmission<ZeroInputStep01Build>;
 
 export type ZeroInputStep01Layout = {
   readonly inputIndex: bigint;

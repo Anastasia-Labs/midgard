@@ -500,16 +500,15 @@ fn script_sources_stage_seven_observer_scan_is_complete(
 
 // The stage-7 successor checks below must commit to the *canonical* successor
 // witness encoding produced by `exact_script_sources_control` (definite-length
-// headers, `encode_definite_bytes` for every bytestring). They previously
-// spliced replacement items into the decoded `Data` list and re-serialised with
-// `builtin.list_data |> cbor.serialise`, i.e. Plutus `serialiseData`, which
-// emits an indefinite `9f..ff` array and chunks bytestrings over 64 bytes as
-// `5f..ff`. That form is rejected by every other check of the same rule -- by
-// the binding the next step applies (`script_sources_stage_seven_control_is_bound`
-// / `script_sources_control_is_bound`), by the stage-0 shape gate, and by the
-// evidence path's `script_sources_control_successor_is_exact` -- so no stage-7
-// step committed through the deployed wrappers could ever be continued.
-// Build the successor control and reuse the single canonical encoder instead.
+// headers, `encode_definite_bytes` for every bytestring). Re-serialising a
+// spliced `Data` list with `builtin.list_data |> cbor.serialise` (Plutus
+// `serialiseData`) is wrong: it emits an indefinite `9f..ff` array and chunks
+// bytestrings over 64 bytes as `5f..ff`, a form rejected by the binding the
+// next step applies (`script_sources_stage_seven_control_is_bound` /
+// `script_sources_control_is_bound`), by the stage-0 shape gate, and by the
+// evidence path's `script_sources_control_successor_is_exact`, so the step
+// could never be continued. Build the successor control and reuse the single
+// canonical encoder.
 fn script_sources_stage_seven_observer_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

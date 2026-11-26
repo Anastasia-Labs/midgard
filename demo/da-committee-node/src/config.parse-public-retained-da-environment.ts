@@ -1,5 +1,4 @@
 import type { Env } from "./config.committee-config.js";
-import { rejectRetiredWatcherEnvNames } from "./config.l1-submitter-preflight-config.js";
 import { normalizeHex } from "./utils/hex.js";
 
 /** The public reader's settings its environment alone fixes. */
@@ -25,7 +24,6 @@ export const parsePublicRetainedDaEnvironment = (
       "DA_PUBLIC_RETAINED_DA_ENABLED=true is required for the public retained-DA process",
     );
   }
-  rejectRetiredWatcherEnvNames(env);
   if (env.DA_COMMITTEE_DATABASE_URL !== undefined) {
     throw new Error(
       "public retained-DA process requires DA_PUBLIC_RETAINED_DA_DATABASE_URL and must not receive DA_COMMITTEE_DATABASE_URL",

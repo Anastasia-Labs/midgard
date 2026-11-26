@@ -85,10 +85,7 @@ export type ValidationMachineWorkWitness = {
          * One item of one committed field, reached through §8's door, at a
          * site whose step names the field and the item.
          *
-         * It used to carry a counted `(collectionProof, chunkProof)` pair
-         * checked against the §4 flat field commitment — a predicate no honest
-         * prover could satisfy. What replaces the pair is not a smaller
-         * proof but *no* proof: the carriage names where the field's preimage
+         * It carries no proof: the carriage names where the field's preimage
          * is, the door authenticates the whole preimage once against the flat
          * commitment, and the item is then a slice.
          *
@@ -231,10 +228,10 @@ export type ValidationMachineWorkWitness = {
          * index and item index are fixed by the stage and its cursor, so
          * `fieldIndex` here is the plan input's and is never encoded.
          *
-         * This is the C21-STAGE4 site. Its evidence is O(1) in output size
-         * exactly when the resolved carriage is tier 2 or 3
-         * (`onchain/aiken/lib/midgard/validation-machine/`), which
-         * is what resolving at evidence-commitment time restores.
+         * Its evidence is O(1) in output size exactly when the resolved
+         * carriage is tier 2 or 3
+         * (`onchain/aiken/lib/midgard/validation-machine/`), which resolving
+         * at evidence-commitment time provides.
          */
         readonly kind: "transactionRedeemerItemBegin";
         readonly fieldIndex: number;

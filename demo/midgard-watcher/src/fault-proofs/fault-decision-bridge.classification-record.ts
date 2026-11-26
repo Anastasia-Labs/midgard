@@ -22,20 +22,17 @@ const observationKey = (
   `${decision.headerHash}\u0000${decision.authenticatedObservationDigest}`;
 
 /**
- * Only fault decisions carry durable authority: the selected target, proof
- * progress and prover-funding recovery read nothing else. Healthy and
- * unprovable decisions fold replay context that later L1 activity moves
- * (event anchors, settlement snapshots), so the bridge no longer journals
- * them. Such records an earlier writer left stay admitted by the journal's
- * chain but are inert here: not compared, and not counted as a repeated
- * observation identity.
+ * The journaled fault decisions by observation identity. Only fault decisions
+ * carry durable authority (the selected target, proof progress and
+ * prover-funding recovery read nothing else), so the bridge journals nothing
+ * else: healthy and unprovable decisions fold replay context that later L1
+ * activity moves (event anchors, settlement snapshots).
  */
 export const durableFaultDecisions = (
   records: readonly WatcherPersistedFaultDecisionRecord[],
 ): ReadonlyMap<string, WatcherPersistedFaultDecisionRecord> => {
   const byObservation = new Map<string, WatcherPersistedFaultDecisionRecord>();
   for (const record of records) {
-    if (record.decision.decision !== "fault_detected") continue;
     const key = observationKey(record.decision);
     if (byObservation.has(key)) {
       throw new Error(

@@ -188,8 +188,7 @@ describe("Midgard output codec", () => {
   it("rejects structurally invalid tag-0 native reference-script bytes", () => {
     // The #633 probe: language_tag 0 with payload de ad ff, which is not
     // Midgard native-script CBOR. The staged on-chain machine and this codec
-    // reject it; the one-shot `ledger_output_v1.parse_script_ref` accepts it
-    // until decision 0005 R5 item 9 lands with the #617 regeneration wave.
+    // reject it; the one-shot `ledger_output_v1.parse_script_ref` accepts it.
     expect(() =>
       decodeMidgardVersionedScript(Buffer.from("820043deadff", "hex")),
     ).toThrow(/Reserved CBOR additional-info value/u);

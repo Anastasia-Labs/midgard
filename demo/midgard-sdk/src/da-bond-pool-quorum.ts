@@ -217,7 +217,7 @@ export const verifiedDaBondPoolWitnessKeyHashes = (
     );
   });
 
-/** AC1's refusal: the CLI prints exactly this and submits nothing. */
+/** The quorum-shortfall refusal: the CLI prints it and submits nothing. */
 export const daBondPoolQuorumShortfallMessage = (
   have: number,
   threshold: bigint,

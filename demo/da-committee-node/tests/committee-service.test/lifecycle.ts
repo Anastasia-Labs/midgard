@@ -249,7 +249,7 @@ export const registerLifecycleTests = () => {
     expect(published).toEqual([headerHash, headerHash]);
   });
 
-  // Skipped: retention pruning now removes the local payload before the
+  // Skipped: retention pruning removes the local payload before the
   // republish path runs, and whether republish-after-retention should
   // rehydrate or refuse is an open design question. Re-enable once
   // https://github.com/Anastasia-Labs/midgard/issues/646 is decided —

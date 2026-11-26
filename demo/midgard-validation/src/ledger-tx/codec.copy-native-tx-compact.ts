@@ -234,11 +234,9 @@ export const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
  * A Midgard out-ref has exactly one byte spelling, and this is it — ledger MPF
  * trie keys, field-0/1 preimage items and transition-effect source keys are all
  * these same 38 bytes, so this is the inverse of `encodeOutRef` below and of
- * on-chain `decode_midgard_tx_input_cbor`. Every other shape throws: a
- * development ledger written under any other spelling must be reset, not
- * migrated (`docs/spec/midgard-tx.md` §5.3). Tolerating a second shape here
- * would be worse than useless — a stale 36-byte key would decode and re-encode
- * to different bytes, silently re-keying the row instead of failing.
+ * on-chain `decode_midgard_tx_input_cbor`. Every other shape throws
+ * (`docs/spec/midgard-tx.md` §5.3): a tolerated 36-byte key would decode and
+ * re-encode to different bytes, silently re-keying the row instead of failing.
  */
 export const decodeMidgardOutRefBytes = (
   inputBytes: Uint8Array,

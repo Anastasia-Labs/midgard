@@ -112,11 +112,9 @@ export const makeMintAuthorizationEmulatorHarness = async ({
    * `submit-init-emulator-mint-authorization-size-forced-carriage`) are
    * calibrated against its budget reading: the Aiken/WASM evaluator reports
    * the same spend roughly 3.5k memory units OVER `maxTxExMem`, so the two
-   * evaluators disagree at the limit and the disagreement is an open owner
-   * question, not something a harness default may paper over. Long
-   * lifecycles that are not at the memory limit opt into Aiken/WASM, which
-   * is 2–3× faster and, since `@lucid-evolution/uplc` 0.2.23, no longer
-   * leaks its arena per evaluation.
+   * evaluators disagree at the limit, and a harness default must not hide
+   * that. Long lifecycles that are not at the memory limit opt into
+   * Aiken/WASM, which is 2–3× faster.
    */
   readonly useScalusEvaluator?: boolean;
 } = {}) => {

@@ -103,7 +103,7 @@ export type AdmissionWriteRequest = {
   readonly settle: (written: boolean) => Effect.Effect<void>;
   /** Run after a batch holding this tx commits (the tx-queue wake-up). */
   readonly wakeOnCommit: Effect.Effect<void>;
-  /** Takes the tx's input claims (design D6). The writer calls it in its
+  /** Takes the tx's input claims. The writer calls it in its
    * synchronous admit section, after the duplicate, stall and bound checks
    * and in one step with the registration, so no second spender can slip
    * in between; a refusal leaves nothing registered. */
@@ -211,7 +211,7 @@ export type AdmissionWriterShardStats = {
 };
 
 /**
- * The in-memory pending set in front of Postgres (design D9). `admit` answers
+ * The in-memory pending set in front of Postgres. `admit` answers
  * from memory and never waits for the database: the tx is written by a
  * background group commit. See `commands/http/checked-transaction-admission.ts`
  * for the admission path built on it.

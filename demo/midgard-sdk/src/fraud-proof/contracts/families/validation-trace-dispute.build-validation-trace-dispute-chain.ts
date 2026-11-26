@@ -264,16 +264,14 @@ export const buildValidationTraceDisputeChain = ({
      * The semantic family is deployed by iterating a title list, so the loop
      * cannot carry a hand-written argument list per title without drifting from
      * what the validators declare — which is precisely how the ten resolvers
-     * that gained `field_preimage_certificate_policy_id` in #592 kept being
+     * that gained `field_preimage_certificate_policy_id` kept being
      * deployed with two arguments and became always-succeeds scripts.
      * Resolving each declared parameter BY NAME makes the blueprint the only
      * authority on both the count and the order: a resolver that grows a
      * parameter is served automatically if the name is known, and refused
      * loudly if it is not. A count-only rule could not work here anyway — the
      * canonical-decode item resolver declares a parameter set that is
-     * different entirely, not `award_script_hash` plus one (three names
-     * before #620's transition-only subtraction dropped
-     * `proof_item_script_hash`, two after).
+     * different entirely, not `award_script_hash` plus one.
      */
     const semanticResolverParameterValues = new Map<string, Data>([
       ["award_script_hash", award.spendingScriptHash],
@@ -1123,8 +1121,8 @@ export const buildValidationTraceDisputeChain = ({
       );
     }
     // `boundary_v1` dispatches on a one-step resolver index over this list and
-    // used to re-check its length against `resolver_count` per execution; the
-    // deployed list is trusted on chain, so the cardinality is pinned here.
+    // does not re-check its length against `resolver_count`: the deployed list
+    // is trusted on chain, so the cardinality is pinned here.
     const resolverCount: number = resolvers.length;
     if (resolverCount !== VALIDATION_TRACE_RESOLVER_COUNT) {
       return yield* Effect.fail(

@@ -368,15 +368,14 @@ pub fn terminal_fixture_field_slot_commitment(
 }
 
 /// §5.1's items of the fixture's field preimage, through the one uniform reader
-/// all nine fields share since #567.
+/// all nine fields share.
 pub fn terminal_fixture_items(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> List<ByteArray> {
   decode_midgard_tx_byte_list_preimage_cbor(fixture.field_preimage_cbor)
 }
 
-/// The terminal item's payload bytes — what the retired
-/// `ChunkProofV1.chunk` carried at this boundary, now read out of the preimage.
+/// The terminal item's payload bytes, read out of the preimage.
 pub fn terminal_fixture_item(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> ByteArray {
@@ -436,10 +435,8 @@ pub fn verify_maximum_field_terminal_fixture_v1(
     claimed_successor: post,
   }
   // A *different* transaction body: the compact structure with one field's
-  // declared preimage length bumped. Under the counted scheme this fed
-  // `verify_midgard_transaction_field_chunk_v1`'s substitution controls; under §4
-  // it is the door's own binding that refuses it, and the two statements below
-  // say so without needing that retired reader.
+  // declared preimage length bumped. The door's own binding refuses it, and
+  // the two statements below say so.
   let alternate_length_pre = terminal_fixture_alternate_length_pre_state(
     fixture,
   )
@@ -469,7 +466,7 @@ pub fn verify_maximum_field_terminal_fixture_v1(
     // length renders `FieldPreimageLengthMismatch` rather than authenticating —
     // one of the two `CanonicalDecode` verdicts the door leaves reachable (the
     // other being `FieldItemWidthIllegal`; committed bytes that are not a
-    // §5.1 envelope at all are #596's).
+    // §5.1 envelope at all are `canonical-decodability`'s).
     {
       let alternate_length_transition = vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: terminal_fixture_alternate_length_work_witness(
@@ -712,22 +709,16 @@ pub fn maximum_mint_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1
   }
 }
 
-/// The mint boundary's terminal fold, plus the four Merkle attack classes the
-/// counted scheme needed per-item openings to refute.
+/// The mint boundary's terminal fold, plus four attack classes: a substituted
+/// item, a reordered pair, an omitted item and a duplicated one.
 ///
-/// **How the four controls changed shape, and why they are stronger.** Under the
-/// counted scheme each control forged an `ItemProofV1` — a substituted item
-/// commitment, a reordered pair of leaves, an omitted leaf, a duplicated one —
-/// and asserted that `bounded_collection_v1.verify_item` refused it against the
-/// field root. §4 replaced that root with a flat `blake2b_256` over the field's
-/// whole §5.1 preimage, so each attack is now a claim about *bytes*: it produces
-/// a different preimage, whose commitment is not the committed one, and §8's
-/// door refuses it before any rule runs. The controls therefore construct the
-/// perturbed preimage — from the authenticated one, through §5.1's own reader
-/// and encoder, so no attack is hand-spelled — and measure that its commitment
-/// differs from the field's. That is a statement about every one of the field's
-/// 130 items at once, where the counted controls only ever bound the two leaves
-/// their siblings reached.
+/// Each attack is a claim about *bytes*: it produces a different §5.1
+/// preimage, whose flat `blake2b_256` commitment is not the committed one, and
+/// §8's door refuses it before any rule runs. The controls therefore construct
+/// the perturbed preimage — from the authenticated one, through §5.1's own
+/// reader and encoder, so no attack is hand-spelled — and measure that its
+/// commitment differs from the field's. That is a statement about every one of
+/// the field's 130 items at once.
 pub fn verify_maximum_mint_field_terminal_fixture_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
@@ -804,10 +795,9 @@ pub fn verify_terminal_substitution_control_v1(
   }
 }
 
-/// Reorder: the last two items swapped. The counted scheme needed this because a
-/// per-item opening says nothing about position beyond the leaf it hashes; a
-/// flat preimage hash is order-sensitive by construction, and this measures it
-/// on the field the fixture actually pins.
+/// Reorder: the last two items swapped. A flat preimage hash is
+/// order-sensitive by construction, and this measures it on the field the
+/// fixture actually pins.
 pub fn verify_terminal_reorder_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {
@@ -844,8 +834,8 @@ pub fn verify_terminal_omission_control_v1(
   }
 }
 
-/// Duplication: the terminal item appended a second time. The retired control
-/// forged a leaf at `item_count`; the flat commitment refuses the whole preimage.
+/// Duplication: the terminal item appended a second time. The flat commitment
+/// refuses the whole preimage.
 pub fn verify_terminal_duplicate_control_v1(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> Bool {

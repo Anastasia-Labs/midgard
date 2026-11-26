@@ -108,10 +108,10 @@ fn reference_script_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool
       },
       bytearray.length(descriptor.reference_script_hash) == 28,
       descriptor.reference_script_total_length > 0,
-      // #640 (old OPEN B-2): a NATIVE (tag-0) reference script's payload is
-      // capped at 16,384 bytes, so the §2.3 bounds-unreachability lemma of
-      // the decoding-fault thread holds unconditionally. Deliberately no new
-      // size rule for Plutus reference scripts (languages 3/128).
+      // A NATIVE (tag-0) reference script's payload is capped at 16,384
+      // bytes, so the §2.3 bounds-unreachability lemma of the decoding-fault
+      // thread holds unconditionally. Deliberately no size rule for Plutus
+      // reference scripts (languages 3/128).
       descriptor.reference_script_language != 0 || descriptor.reference_script_total_length <= 16_384,
       bytearray.length(descriptor.reference_script_item_commitment) == 32,
     }
@@ -219,7 +219,7 @@ pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
 }
 
 // An equivalent exact-schema decoder for consumers whose compiled footprint
-// benefits from direct parsing. Existing consumers retain decode above.
+// benefits from direct parsing. The other consumers use decode above.
 fn scalar_head_at(bytes: ByteArray, offset: Int, major: Int) -> CborHeadV1 {
   expect Some(head) = head_at_v1(bytes, offset, major)
   head

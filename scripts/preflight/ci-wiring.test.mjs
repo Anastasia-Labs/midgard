@@ -292,6 +292,10 @@ const WARN_ONLY_BY_DESIGN = new Map([
     "golden:script-decode-haskell-v1",
     "its producer needs the Haskell script-decode probe (MIDGARD_SCRIPT_DECODE_PROBE), which CI does not build",
   ],
+  [
+    "golden:retained-da-boundary-corpus-v1",
+    "it replays the midgard-validation boundary producers and both consumer suites for about 30 minutes",
+  ],
 ]);
 
 test("every warn-only check in the real registry is warn-only by design", () => {

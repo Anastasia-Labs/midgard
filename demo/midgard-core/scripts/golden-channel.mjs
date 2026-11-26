@@ -108,14 +108,14 @@ export const formatAikenSource = ({
  * module, leaving everything else in the file untouched.
  *
  * The four whole-module channels above emit their `.ak` file from nothing, so
- * they never need this. The seeds #588 closes are different in kind: their
+ * they never need this. The seeded channels are different in kind: their
  * constants are a handful of generated values embedded in a module whose tests,
  * comments and fuzzers are written and maintained by hand. Regenerating the
  * whole module would throw that away, so the generator has to edit in place.
  *
- * Binding is by **name**, never by value. The retired value-keyed spelling
- * (`source.replaceAll(staleHex, freshHex)`) silently rewrote every other
- * constant that happened to share the stale bytes — and shared bytes are the
+ * Binding is by **name**, never by value. A value-keyed rewrite
+ * (`source.replaceAll(staleHex, freshHex)`) would silently rewrite every other
+ * constant that happens to share the stale bytes — and shared bytes are the
  * normal case here, because sibling fixtures commit the same empty-field hash.
  * A name that is absent is an error rather than a no-op: a renamed constant
  * means the generator has lost the seed it claims to own, which is exactly the

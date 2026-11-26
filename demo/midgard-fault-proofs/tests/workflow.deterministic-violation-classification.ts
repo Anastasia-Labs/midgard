@@ -141,7 +141,7 @@ describe("deterministic violation classification", () => {
     });
   });
 
-  // Owner ruling 2026-11-10: two payable leaves naming one L2 output make the
+  // Decision 0009: two payable leaves naming one L2 output make the
   // later one also a "valid marked, output absent" withdrawalMistag finding
   // at the same event; the watcher proves the pair instead.
   it("prefers doubleWithdraw over withdrawalMistag on a payable same-output pair's later leaf", async () => {

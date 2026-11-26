@@ -42,11 +42,11 @@ const SHORT_MINT_FIELD_PREIMAGE_CBOR =
   "81582282581b0101010101010101010101010101010101010101010101010101ffa1410105";
 
 /**
- * The retired raw-map form of the positive control, kept as a negative: §5.6
- * replaced it, and §6.1 admits one byte form per value. The Aiken twin proves the
- * same refusal in `q24_retired_raw_map_mint_preimage_is_refused`.
+ * The raw-map form of the positive control is a negative: §6.1 admits one
+ * byte form per value. The Aiken twin proves the same refusal in
+ * `raw_map_mint_preimage_is_refused`.
  */
-const RETIRED_RAW_MAP_MINT_PREIMAGE_CBOR =
+const RAW_MAP_MINT_PREIMAGE_CBOR =
   "a1581c01010101010101010101010101010101010101010101010101010101a1410105";
 
 // --- negative-output-value vectors -----------------------------------------
@@ -78,9 +78,9 @@ describe("ada-minted is unrepresentable in canonical V1", () => {
     ).toThrow(/mint policy id must be 28 bytes/i);
   });
 
-  it("rejects the retired raw-map mint preimage form", () => {
+  it("rejects the raw-map mint preimage form", () => {
     expect(() =>
-      decodeMidgardNativeMint(bytes(RETIRED_RAW_MAP_MINT_PREIMAGE_CBOR)),
+      decodeMidgardNativeMint(bytes(RAW_MAP_MINT_PREIMAGE_CBOR)),
     ).toThrow(/not a §5\.1 definite array header/u);
   });
 

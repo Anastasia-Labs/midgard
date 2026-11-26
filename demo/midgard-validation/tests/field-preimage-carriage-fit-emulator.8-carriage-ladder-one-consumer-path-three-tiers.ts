@@ -196,10 +196,6 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
   let harness: Harness;
 
   beforeAll(async () => {
-    // Inflated, and only because of §8.3 erratum E1: the tier-3 case publishes
-    // full-`K` chunks, and at the currently-pinned `K` those measure 16,648
-    // bytes and the real ledger refuses them. The block asserts that overrun
-    // explicitly below rather than letting the inflated limit hide it.
     harness = await setupEmulator();
   });
 
@@ -233,21 +229,14 @@ describe("§8 carriage ladder — one consumer path, three tiers", () => {
           signerKey: PUBLISHER_KEY,
           address: PUBLISHER_ADDRESS,
         });
-        // The E1 gate, stated per publication rather than assumed for the
-        // block: a chunk at or under the frontier really does fit the real
-        // limit, and a full-`K` chunk really does not. The second half is the
-        // live defect, and it is asserted as an exact overrun so that the day
-        // `K` is re-pinned this line turns red and has to be revisited rather
-        // than silently continuing to pass.
-        if (publication.byteLength <= MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES) {
-          expect(result.signedBytes).toBeLessThanOrEqual(
-            MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
-          );
-        } else {
-          expect(publication.byteLength).toBe(MIDGARD_CHUNK_BYTES_K);
-          expect(result.signedBytes).toBe(16_648);
-          expect(result.signedBytes - MAX_L1_TX_BYTES).toBe(264);
-        }
+        // The §8.3 gate, stated per publication rather than assumed for the
+        // block: every chunk fits the real limit with the reserve.
+        expect(publication.byteLength).toBeLessThanOrEqual(
+          MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES,
+        );
+        expect(result.signedBytes).toBeLessThanOrEqual(
+          MAX_L1_TX_BYTES - RELIABILITY_RESERVE_BYTES,
+        );
         // Whatever the size, the cost model the guard is built on reproduces
         // the real signed transaction to the byte.
         expect(midgardCarriagePublicationBytes(publication.byteLength)).toBe(

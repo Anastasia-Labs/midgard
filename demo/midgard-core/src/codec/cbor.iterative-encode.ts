@@ -2,8 +2,8 @@
  * Midgard's generic CBOR encoder, written with explicit stacks so that nesting
  * depth is bounded only by memory.
  *
- * It reproduces, byte for byte and error for error, the RFC 8949 encoding the
- * codec previously delegated to `cborg` (`rfc8949EncodeOptions`): integers
+ * It reproduces, byte for byte and error for error, the RFC 8949 encoding of
+ * `cborg` with `rfc8949EncodeOptions`: integers
  * and lengths in their shortest form, non-integer or unsafe numbers as 64-bit
  * floats, strings as UTF-8 (lone surrogates become U+FFFD), byte-like values
  * as byte strings, and map entries sorted by their encoded key bytes.

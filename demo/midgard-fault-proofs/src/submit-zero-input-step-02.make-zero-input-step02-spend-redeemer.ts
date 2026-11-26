@@ -20,34 +20,9 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  outRefLabel,
-  type ResolvedProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+import { outRefLabel, type ResolvedProverSigner } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  /**
-   * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
-   * compact structure. New in #604: the door re-derives the anchored id from
-   * these bytes and reads field 0 out of them, so the step cannot be built
-   * without the transaction it disputes.
-   */
-  readonly nativeTxCompactPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export type ZeroInputStep02Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -74,9 +49,6 @@ export type ZeroInputStep02Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitZeroInputStep02Result =
-  OutsideWorkflowSubmission<ZeroInputStep02Build>;
 
 type ZeroInputStep02DatumWithState = ZeroInputStep02Datum & {
   readonly data: NonNullable<ZeroInputStep02Datum["data"]>;

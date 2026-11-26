@@ -48,7 +48,6 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
@@ -78,9 +77,6 @@ export type MissingSignatureStep02Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitMissingSignatureStep02Result =
-  OutsideWorkflowSubmission<MissingSignatureStep02Build>;
 
 export const buildMissingSignatureStep02 = async ({
   lucid,

@@ -50,7 +50,7 @@ export const allowListConstants = {
   operators: "operator_allow_list",
 };
 
-// The protocol treasury (pd-design §6.4) is a native script in the cardano-cli
+// The protocol treasury is a native script in the cardano-cli
 // JSON form. The generator renders its CBOR, and the Aiken env derives the
 // script hash, blake2b_224(0x00 || CBOR), at compile time: the hash is never
 // passed.

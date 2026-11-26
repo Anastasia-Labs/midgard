@@ -1,5 +1,5 @@
 /**
- * The stateless fail-fast checks (design D6) over real HTTP on a real
+ * The stateless fail-fast checks over real HTTP on a real
  * database: a tx Phase A refuses on stateless grounds (a bad signature, a fee
  * under the minimum, a foreign network) or whose validity has passed is
  * refused by `/submit` with validation's code and by `/peer/txs` as refused,

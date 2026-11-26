@@ -118,7 +118,7 @@ describe("submit-l2-transfer config helpers", () => {
     expect(config.networkId).toBe(0n);
   });
 
-  it("resolves direct input or USER_WALLET without legacy fallback", () => {
+  it("resolves direct input or USER_WALLET without falling back to USER_SEED_PHRASE", () => {
     const direct = resolveWalletSeedPhrase({
       walletSeedPhrase: TEST_SEED,
       walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,

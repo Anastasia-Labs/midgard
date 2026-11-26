@@ -142,7 +142,6 @@ const runAttempt = async (
     rawLogPath: spec.rawLogPath,
     timeoutMs: spec.timeoutMs,
     terminateOnOutput: spec.terminateOnOutput,
-    terminateOnFile: spec.terminateOnFile,
     startedAtDate,
     startEvent: ({ pid, startedAt }) => ({
       event: "e2e_service_start",
@@ -162,14 +161,10 @@ const runAttempt = async (
     ownership: spec.ownership,
   });
   const classification: ServiceErrorClassification =
-    attemptResult.outputTermination !== null ||
-    attemptResult.fileTermination !== null
+    attemptResult.outputTermination !== null
       ? {
           class: "restartable_runtime",
-          reason:
-            attemptResult.outputTermination !== null
-              ? `service was externally terminated after output marker ${attemptResult.outputTermination.marker}`
-              : `service was externally terminated after stop file ${attemptResult.fileTermination!.path}`,
+          reason: `service was externally terminated after output marker ${attemptResult.outputTermination.marker}`,
           restartable: true,
         }
       : attemptResult.error !== null
@@ -204,7 +199,6 @@ const runAttempt = async (
       classification,
       cleanup: attemptResult.cleanup,
       outputTermination: attemptResult.outputTermination,
-      fileTermination: attemptResult.fileTermination,
     },
     output: attemptResult.combinedOutput,
   };
@@ -241,8 +235,7 @@ export const superviseHostProcess = async (
       summary.exitCode === 0 &&
       summary.signal === null &&
       !summary.timedOut &&
-      summary.outputTermination === null &&
-      summary.fileTermination === null
+      summary.outputTermination === null
     ) {
       return parseServiceSupervisorSummary({
         schemaVersion: E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,

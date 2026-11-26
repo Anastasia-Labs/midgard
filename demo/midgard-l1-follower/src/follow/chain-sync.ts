@@ -40,8 +40,8 @@ export type FollowStep =
   | Readonly<{ event: "roll_backward"; result: RewindResult }>;
 
 /**
- * The sequential writer's step for one transport event (pipelining is
- * deferred ticket F6): a block is decoded and applied in one transaction, a
+ * The sequential writer's step for one transport event (no pipelining):
+ * a block is decoded and applied in one transaction, a
  * rollback rewinds the store to its point. A rollback to the chain's genesis
  * lies below every origin, so it is the R1 case without touching the store.
  * The caller acknowledges `event.seq` only after a result that changed or

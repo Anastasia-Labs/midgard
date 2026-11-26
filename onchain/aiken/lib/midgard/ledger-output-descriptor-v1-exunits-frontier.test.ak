@@ -1,9 +1,8 @@
 //// Measured ExUnits frontier for §5.3 descriptor derivation.
 ////
-//// The `#628` review left the basis crossing for `build_v1` as an
-//// *interpolated* point (~1,680 output bytes) drawn between two golden
-//// vectors of different shape. Interpolation across a shape change is not a
-//// measurement, so this module brackets the crossing with adjacent measured
+//// Interpolating the basis crossing for `build_v1` between two golden vectors
+//// of different shape (~1,680 output bytes) is not a measurement, so this
+//// module brackets the crossing with adjacent measured
 //// rungs of one fixed shape: a canonical output whose only varying part is an
 //// inline datum.
 ////

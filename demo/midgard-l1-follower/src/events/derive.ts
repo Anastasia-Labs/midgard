@@ -9,7 +9,7 @@
  *   reused), any other is admitted and its key enters `l1_event_keys`.
  *
  * Every lookup is by key or by outref, so a block costs O(r) in its
- * qualifying txs, never in the number of stored events (B2). A pure
+ * qualifying txs, never in the number of stored events. A pure
  * function of the block, the stored facts and the config: no clock, no
  * network. The rewind of everything written here is the registry's.
  */

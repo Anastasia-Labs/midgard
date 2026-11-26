@@ -25,7 +25,7 @@ must be supplied externally, not inside YAML. [runtime: loadRuntimeConfig]
 | Public retained DA reader    | Its own directory's `config.yaml`    | No wallet; dedicated libp2p identity                             |
 
 Runtime genesis is empty on every network, matching atomic initialization.
-Fund L2 wallets through authenticated deposits. Legacy testnet genesis wallet
+Fund L2 wallets through authenticated deposits. The `TESTNET_GENESIS_WALLET_*`
 seeds create no runtime balances; isolated fixtures supply their own inputs.
 
 Templates are in each package as `config.example.yaml`; the public reader has

@@ -8,7 +8,7 @@ import {
 
 const b = (byte: number, count: number): Buffer => Buffer.alloc(count, byte);
 
-// Owner ruling 2026-10-07: equivocation is one signer, one header hash and two
+// Equivocation is one signer, one header hash and two
 // availability commitments. A pair over sibling headers is not evidence.
 const sameHeaderEvidence = () => ({
   signerIndex: 4,

@@ -11,10 +11,8 @@ import { encodeMidgardTxOutput } from "../src/codec/output.js";
 import { aikenSerialisedPlutusDataCbor } from "../src/plutus-data-cbor.js";
 
 const LEDGER_OUTPUT_LIMIT_BYTES = 16_384;
-// The admission bound the CEK source constant used to impose on a Data byte
-// payload. It is retired: a ledger inline datum may carry every byte a maximal
-// output can hold, so the commitment path must still admit payloads past it.
-const RETIRED_SOURCE_CONSTANT_ADMISSION_BOUND = 9_215;
+// A ledger inline datum may carry every byte a maximal output can hold, so the
+// commitment path admits a Data byte payload of that size.
 
 const serialisedInlineDatumCbor = (payload: Buffer): Buffer =>
   Buffer.from(
@@ -33,7 +31,7 @@ const bytesNodeRootHex = (payload: Buffer): string =>
     }),
   ).toString("hex");
 
-it("commits ledger Data bytes beyond the source-constant admission bound", () => {
+it("commits ledger Data bytes up to the largest inline datum an output can hold", () => {
   let maximum = 15000;
   const output = (length: number) =>
     encodeMidgardTxOutput({
@@ -47,13 +45,8 @@ it("commits ledger Data bytes beyond the source-constant admission bound", () =>
   while (output(maximum + 1).length <= LEDGER_OUTPUT_LIMIT_BYTES) maximum++;
   expect(output(maximum).length).toBe(LEDGER_OUTPUT_LIMIT_BYTES);
   expect(output(maximum + 1).length).toBeGreaterThan(LEDGER_OUTPUT_LIMIT_BYTES);
-  expect(maximum).toBeGreaterThan(RETIRED_SOURCE_CONSTANT_ADMISSION_BOUND);
 
-  for (const length of [
-    RETIRED_SOURCE_CONSTANT_ADMISSION_BOUND,
-    RETIRED_SOURCE_CONSTANT_ADMISSION_BOUND + 1,
-    maximum,
-  ]) {
+  for (const length of [maximum - 1, maximum]) {
     const payload = Buffer.alloc(length, 0xab);
     // The semantic CBOR length is checked against the length the real chunked
     // serialiser produces, not against a transcribed number, so a change to
@@ -65,8 +58,7 @@ it("commits ledger Data bytes beyond the source-constant admission bound", () =>
     flippedTailBit[length - 1] ^= 0x01;
     const root = bytesNodeRootHex(payload);
     expect(root).toHaveLength(64);
-    // A committed payload past the retired bound must still bind its content
-    // and its length: neither a one-bit edit at the tail nor a one-byte
+    // A committed payload binds its content and its length: neither a one-bit edit at the tail nor a one-byte
     // truncation may reach the same node root.
     expect(bytesNodeRootHex(flippedTailBit)).not.toBe(root);
     expect(bytesNodeRootHex(payload.subarray(0, length - 1))).not.toBe(root);

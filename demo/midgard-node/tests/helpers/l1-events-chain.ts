@@ -1,6 +1,6 @@
 /**
  * Event-list traffic for the node event projection's tests, simulator
- * corpus and B2 bench: list Orders (inline or external payload) admitted by
+ * corpus and tip-apply bench: list Orders (inline or external payload) admitted by
  * a nonce-consuming tx, and retirements that burn the token under the
  * retirement observer's zero withdrawal. The bytes are the SDK's, so the
  * projection opens them exactly as it opens the chain's.

@@ -37,9 +37,8 @@
 //// `expected_chunk_count`, `field_count` and `field_commitment`. A producer
 //// and a consumer who disagreed about any of those would disagree about what
 //// a certificate *is*, and that class of drift is closed by construction.
-//// (The §8.6 asset name is a shared constant of the same module since #606
-//// retired its per-certificate derivation; only the transaction-shape wrapper
-//// reads it.)
+//// (The §8.6 asset name is a shared constant of the same module; only the
+//// transaction-shape wrapper reads it.)
 ////
 //// Four pieces of logic are nonetheless written twice, once here and once
 //// behind the door, and each is a deliberate copy rather than an oversight:
@@ -53,16 +52,15 @@
 ////     set is the one the tx-id committed. An exported copy would have to
 ////     carry that coupling in its own signature — a wrapper taking the proof
 ////     as an argument could enforce it — so this is a deferral rather than an
-////     impossibility: `native_tx_field_access_v1` is a frozen shared surface
-////     for the duration of #573, and shaping such a wrapper belongs to the
-////     #565 serialized Phase-1-surface patch rather than to this lane. The
-////     two are pinned to each other by test rather than by import: here
+////     impossibility. The two are pinned to each other by test rather than by
+////     import: here
 ////     `certification_binds_each_field_to_its_positional_commitment` drives
 ////     all nine slots against a fixture where every slot holds a different
 ////     commitment, and the door's suite pins the same nine through
-////     `door_serves_field_0_spend_inputs` .. `door_serves_field_8_redeemer_witnesses`
-////     plus `a_field_cannot_be_opened_in_another_slot`. Either table drifting
-////     alone reddens its own suite.
+////     `door_serves_field_0_spend_inputs` ..
+////     `door_serves_field_8_redeemer_witnesses` plus
+////     `a_field_cannot_be_opened_in_another_slot`. Either table drifting alone
+////     reddens its own suite.
 ////   * **`raw_chunk_bytes`** (`raw_carriage_bytes` behind the door). Four
 ////     lines of §8.5 datum reading with no shared state and no wire
 ////     consequence: a divergence would make one side reject carriage the other
@@ -78,10 +76,8 @@
 ////     `raw_chunk_bytes` is, and counted here so the inventory is complete.
 ////
 //// Consolidating the §2.5 table and `chunk_shape_matches` into one shared
-//// surface is a Phase-1 change to `native_tx_field_access_v1` and therefore
-//// not a local edit: it belongs to the serialized Phase-1-surface patch in the
-//// #565 lane, which every overlap lane rebases onto. Recorded here so that
-//// patch inherits it.
+//// surface changes `native_tx_field_access_v1`, and with it every validator
+//// that compiles it, so it is not a local edit.
 
 use aiken/builtin
 use aiken/collection/list

@@ -530,20 +530,16 @@ pub fn canonical_output_commitment_output_cbor() -> ByteArray {
 /// One stage-4 output-commitment step, with the two quantities the fold commits
 /// about the item left free so a caller can forge either.
 ///
-/// **Why the forgery moved from the evidence to the claimed successor.** Under
-/// the retired counted scheme the prover asserted the item's
-/// `(item_length, item_commitment)` in an `ItemProofV1` and
-/// `bounded_collection_v1.verify_item` bound that tuple into `outputs_hash` —
-/// the predicate #592 measured as unsatisfiable under §4. Both quantities are
-/// now *derived* from bytes §8's door authenticated
+/// **Why the forgery is in the claimed successor, not the evidence.** The
+/// item's `(item_length, item_commitment)` are *derived* from bytes §8's door
+/// authenticated
 /// (`machine_field_item_commitment` / `machine_field_item_count`), so no field
 /// is left in the evidence to forge: a prover who changes either has changed
 /// the field preimage, and the door's single `blake2b_256` against
 /// `outputs_hash` refuses it by aborting (§7.3) rather than by returning
-/// `False`. What a prover can still get wrong is what it *claims the fold
-/// accumulated*, and that is what these two parameters perturb — the same
-/// `C21-STAGE4` Option A soundness claim, checked at the surface where it is
-/// still decidable.
+/// `False`. What a prover can get wrong is what it *claims the fold
+/// accumulated*, and that is what these two parameters perturb — the stage-4
+/// soundness claim, checked at the surface where it is decidable.
 pub fn canonical_output_commitment_step_with_successor(
   step_to_verify: Int,
   claimed_output_leaf: ByteArray,
@@ -1086,8 +1082,6 @@ pub fn mint_fold_asset_step() -> (
     ..base,
     body: MidgardTransactionBody { ..base.body, mint },
   }
-  // §5.6's policy item is now a named fixture in its own right rather than the
-  // retired raw map's tail with a fresh head glued on.
   let item_cbor = maximum_mint_policy_item_cbor
   let first_chunk = builtin.slice_bytearray(
     0,

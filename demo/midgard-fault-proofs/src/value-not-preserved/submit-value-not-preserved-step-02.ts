@@ -36,10 +36,7 @@ import { selectFeeInput } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { witnessClaimedQuantity } from "./evidence.js";
 import {
@@ -76,9 +73,6 @@ export type ValueNotPreservedStep02FoldBuild = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitValueNotPreservedStep02FoldResult =
-  OutsideWorkflowSubmission<ValueNotPreservedStep02FoldBuild>;
 
 export const buildValueNotPreservedStep02Fold = async ({
   lucid,
@@ -258,9 +252,6 @@ export type ValueNotPreservedStep02FinishBuild = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitValueNotPreservedStep02FinishResult =
-  OutsideWorkflowSubmission<ValueNotPreservedStep02FinishBuild>;
 
 export const buildValueNotPreservedStep02Finish = async ({
   lucid,

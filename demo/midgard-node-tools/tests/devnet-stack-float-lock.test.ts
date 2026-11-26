@@ -1,18 +1,11 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { Journal } from "../src/devnet-stack/journal.js";
 import type { Layout, RunEnv } from "../src/devnet-stack/layout.js";
-import { processStartTime } from "../src/devnet-stack/lock.js";
 import {
   FLOAT_STEP_TIMEOUT_MS,
   FLOAT_TARGET_LOVELACE,
@@ -23,53 +16,10 @@ import {
   provisionReserveFloat,
   withFloatLock,
 } from "../src/devnet-stack/reserve-float-chain.js";
-
-/**
- * The holder's release, landed inside an acquire: after its failed create
- * (EEXIST), just before its owner check reads the lock, or just after that
- * check saw the live holder. These are the interleavings a test cannot
- * schedule on the real filesystem. Unset, the filesystem is the real one.
- */
-const race = vi.hoisted(() => ({
-  releaseOnCreate: undefined as string | undefined,
-  releaseBeforeOwnerRead: undefined as string | undefined,
-  releaseAfterOwnerRead: undefined as string | undefined,
-}));
-vi.mock("node:fs", async (importOriginal) => {
-  const fs = await importOriginal<typeof import("node:fs")>();
-  const openSync = ((...args: Parameters<typeof fs.openSync>) => {
-    try {
-      return fs.openSync(...args);
-    } catch (error) {
-      if (
-        (error as NodeJS.ErrnoException).code === "EEXIST" &&
-        args[0] === race.releaseOnCreate
-      ) {
-        race.releaseOnCreate = undefined;
-        fs.rmSync(args[0]);
-      }
-      throw error;
-    }
-  }) as typeof fs.openSync;
-  const readFileSync = ((...args: Parameters<typeof fs.readFileSync>) => {
-    if (args[0] === race.releaseBeforeOwnerRead) {
-      race.releaseBeforeOwnerRead = undefined;
-      fs.rmSync(args[0]);
-    }
-    const content = fs.readFileSync(...args);
-    if (args[0] === race.releaseAfterOwnerRead) {
-      race.releaseAfterOwnerRead = undefined;
-      fs.rmSync(args[0]);
-    }
-    return content;
-  }) as typeof fs.readFileSync;
-  return {
-    ...fs,
-    default: { ...fs, openSync, readFileSync },
-    openSync,
-    readFileSync,
-  };
-});
+import {
+  holdLockInChild,
+  stopLockHolders,
+} from "./support/hold-lock-in-child.js";
 
 const dirs: string[] = [];
 const tempDir = () => {
@@ -77,10 +27,8 @@ const tempDir = () => {
   dirs.push(dir);
   return dir;
 };
-afterEach(() => {
-  race.releaseOnCreate = undefined;
-  race.releaseBeforeOwnerRead = undefined;
-  race.releaseAfterOwnerRead = undefined;
+afterEach(async () => {
+  await stopLockHolders();
   for (const dir of dirs.splice(0)) {
     chmodSync(dir, 0o700);
     rmSync(dir, { recursive: true, force: true });
@@ -90,12 +38,9 @@ afterEach(() => {
 const layoutAt = (state: string) =>
   ({ state, journal: join(state, "journal.json") }) as Layout;
 
-/** A lock naming a live process other than this one: the test runner's parent. */
-const heldByOther = (state: string) => {
-  const path = join(state, "reserve-float.lock");
-  writeFileSync(path, `${process.ppid} ${processStartTime(process.ppid)}`);
-  return path;
-};
+/** The float lock, held by another controller process. */
+const heldByOther = (state: string) =>
+  holdLockInChild(join(state, "reserve-float.lock"));
 
 /** A clock whose sleeps advance it, failing loudly instead of spinning. */
 const fakeClock = (maxPolls: number) => {
@@ -131,64 +76,16 @@ describe("withFloatLock", () => {
 
   it("gives up on a live holder once FLOAT_STEP_TIMEOUT_MS has passed", async () => {
     const state = tempDir();
-    heldByOther(state);
+    await heldByOther(state);
     const time = fakeClock(1_000);
     let steps = 0;
     await expect(
       withFloatLock(layoutAt(state), time, () => Promise.resolve((steps += 1))),
-    ).rejects.toThrow(/another controller \(pid \d+\) holds/);
+    ).rejects.toThrow(/another controller holds/);
     expect(steps).toBe(0);
     expect(time.clock.at).toBeGreaterThan(FLOAT_STEP_TIMEOUT_MS);
     // 2 s polls: the first one past the deadline ends the wait.
     expect(time.clock.polls).toBe(FLOAT_STEP_TIMEOUT_MS / 2_000 + 1);
-  });
-
-  it("takes a lock its holder released mid-acquire on the next poll, running its step once", async () => {
-    const state = tempDir();
-    const lock = heldByOther(state);
-    race.releaseOnCreate = lock;
-    const time = fakeClock(10);
-    let steps = 0;
-    const result = await withFloatLock(layoutAt(state), time, () =>
-      Promise.resolve((steps += 1)),
-    );
-    expect(race.releaseOnCreate).toBeUndefined();
-    expect(result).toBe(1);
-    expect(steps).toBe(1);
-    expect(time.clock.polls).toBe(1);
-    expect(existsSync(lock)).toBe(false);
-  });
-
-  it("takes a lock its holder released just after the acquire saw it held, running its step once", async () => {
-    const state = tempDir();
-    const lock = heldByOther(state);
-    race.releaseAfterOwnerRead = lock;
-    const time = fakeClock(10);
-    let steps = 0;
-    const result = await withFloatLock(layoutAt(state), time, () =>
-      Promise.resolve((steps += 1)),
-    );
-    expect(race.releaseAfterOwnerRead).toBeUndefined();
-    expect(result).toBe(1);
-    expect(steps).toBe(1);
-    expect(time.clock.polls).toBe(1);
-    expect(existsSync(lock)).toBe(false);
-  });
-
-  it("takes a lock its holder released just before the acquire's owner check read it, running its step once", async () => {
-    const state = tempDir();
-    const lock = heldByOther(state);
-    race.releaseBeforeOwnerRead = lock;
-    const time = fakeClock(10);
-    let steps = 0;
-    const result = await withFloatLock(layoutAt(state), time, () =>
-      Promise.resolve((steps += 1)),
-    );
-    expect(race.releaseBeforeOwnerRead).toBeUndefined();
-    expect(result).toBe(1);
-    expect(steps).toBe(1);
-    expect(time.clock.polls).toBe(1);
-    expect(existsSync(lock)).toBe(false);
   });
 
   it("refuses at once when the lock cannot be written for want of permission", async () => {

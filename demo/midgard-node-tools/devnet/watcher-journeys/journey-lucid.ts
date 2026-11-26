@@ -18,7 +18,7 @@ export type JourneyLucidNetwork = {
 };
 
 /**
- * The harness's L1 access (option E): it is a tool, so it reads L1 through
+ * The harness's L1 access: it is a tool, so it reads L1 through
  * the Kupmios adapter over its own provider, whose tip (the clock node code
  * a journey drives reads through `l1SlotNow`) is the devnet's Ogmios tip.
  * The adapter is opened once per provider; every Lucid built over that

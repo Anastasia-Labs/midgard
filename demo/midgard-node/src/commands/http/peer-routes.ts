@@ -153,7 +153,7 @@ const CAPACITY_REFUSALS = {
  * Admits a signed batch of transactions, in body order: every tx is checked
  * on the submit check workers (`checkPool`; the main thread only waits),
  * then all that pass go to the admission writer in one submission, and the
- * route answers once they are in its pending set (design D3, D9). The
+ * route answers once they are in its pending set. The
  * checks run under the request's peer permit, not `/submit`'s queue slots.
  *
  * A tx refused for capacity (backlog or writer full, writes stalled, writer
@@ -172,8 +172,8 @@ export const postPeerTxsHandler = <R>(
       ({ bytes, keyHash }) =>
         Effect.gen(function* () {
           const txs = yield* decodeOr400(bytes, PEER_INVENTORY_MAX_IDS);
-          // A peer's tx passes the same stateless checks as a user's (design
-          // D6): they read no ledger, so a tx the sender admitted passes them
+          // A peer's tx passes the same stateless checks as a user's:
+          // they read no ledger, so a tx the sender admitted passes them
           // here too. The permit stays held until every verdict is in.
           const outcomes = yield* Effect.promise(() =>
             checkPool.checkTransactions(txs),

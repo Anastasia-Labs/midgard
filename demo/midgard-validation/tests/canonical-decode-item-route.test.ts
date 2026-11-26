@@ -33,8 +33,8 @@ import { context } from "./validation-machine.validate-boundary-abi-and-collect-
 
 /**
  * CanonicalDecode reads every non-empty field item through the complete-item
- * route, whatever the field and whatever the item's size. The canonical-decode
- * chunk route was deleted on-chain in 2e52d2ef4; these traces pin that the
+ * route, whatever the field and whatever the item's size. There is no
+ * canonical-decode chunk route on-chain; these traces pin that the
  * producer emits only steps the deployed prepare accepts (semantic resolver 0
  * for an empty field, 1 for an item) and never a field-chunk auxiliary there.
  */

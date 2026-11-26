@@ -1,5 +1,5 @@
 /**
- * The admission input check's view of the mempool ledger state (design D6),
+ * The admission input check's view of the mempool ledger state,
  * read without the Phase B lock.
  */
 import { Effect } from "effect";

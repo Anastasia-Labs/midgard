@@ -3,7 +3,7 @@
  * {@link VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares} order, and the
  * cardinality each validator's `expected_semantic_resolver_count` argument
  * mirrors on chain (`validators/fraud-proofs/validation-trace/<phase>-v1.ak`,
- * `lib/midgard/validation-resolver-v1.ak`). The validators no longer re-check
+ * `lib/midgard/validation-resolver-v1.ak`). The validators do not re-check
  * the deployed list against that count on every execution — deployment
  * parameterization is trusted on chain — so the builder asserts it here, once,
  * before the list is applied.

@@ -208,9 +208,8 @@ establish runtime readiness or successful challenge acceptance.
   scripts; the immutable catalogue cannot repair a bad deployment.
 - Challengers require authentic evidence for the full challenge window.
 - Post-attestation withholding is remedied by the availability challenge
-  ([operations](availability-challenge-operations.md),
-  [size plan](size-plans/availability-challenge.md)); its live acceptance is a
-  release gate.
+  ([operations](availability-challenge-operations.md)); its live acceptance is
+  a release gate.
 
 - The aggregate reserve remains an optimistic invariant protected by timely
   fault detection and correction.

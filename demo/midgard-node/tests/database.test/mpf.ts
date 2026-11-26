@@ -42,7 +42,7 @@ import { prepareUnderTestLease } from "../helpers/mutation-lease.js";
 import { address1, isolatedDb, makeDepositEntry } from "./fixtures.js";
 
 export const registerMpfTests = () => {
-  describe("Phase 3 MPF durable state", () => {
+  describe("MPF durable state", () => {
     it.effect("persists EWMA and keeps audit divergence sticky", () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -226,9 +226,9 @@ export const registerMpfTests = () => {
                   metadata: {
                     hubOraclePolicyId: "de".repeat(28),
                     consensusProfileId: MIDGARD_CONSENSUS_PROFILE_ID,
-                    stateQueueLeaseToken: `phase3-${index.toString()}`,
-                    baseSnapshotId: `phase3-${index.toString()}`,
-                    baseTailOutRef: `phase3#${index.toString()}`,
+                    stateQueueLeaseToken: `mpf-${index.toString()}`,
+                    baseSnapshotId: `mpf-${index.toString()}`,
+                    baseTailOutRef: `mpf#${index.toString()}`,
                     baseTailHeaderHash:
                       index === 0 ? Buffer.alloc(28) : headers[index - 1]!,
                     baseTailDatumCbor: "d87980",

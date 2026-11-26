@@ -13,9 +13,8 @@ import { decodeMidgardOutRefBytes } from "../src/ledger-tx/codec.js";
  * `decodeMidgardOutRefBytes` is the read side of that single spelling, so what
  * needs proving is not only that it decodes §5.3 bytes but that it *refuses*
  * every other shape. A tolerated second shape would be worse than dead code:
- * the retired 36-byte canonical-Cardano key would decode here and re-encode to
- * different 38 bytes, silently re-keying a stale row instead of failing. A
- * development ledger still holding those bytes must be reset, not migrated.
+ * a 36-byte canonical-Cardano key would decode here and re-encode to
+ * different 38 bytes, silently re-keying the row instead of failing.
  */
 const TX_ID = Buffer.alloc(32, 0x42);
 
@@ -38,15 +37,13 @@ describe("decodeMidgardOutRefBytes (§5.3 field-0/1 item)", () => {
     },
   );
 
-  it("rejects the retired canonical Cardano TransactionInput spelling", () => {
-    // The exact bytes a pre-reset development ledger would still hold, taken
-    // from CML rather than written down, so this stays the real retired form.
+  it("rejects CML's minimal Cardano TransactionInput spelling below index 256", () => {
+    // The bytes are taken from CML rather than written down.
     //
     // Only indices below 256 are listed, and that is the whole reason §5.3
     // needs a fixed index at all: from 256 up, minimal CBOR already spells the
     // index `19 XXXX`, so the two encodings coincide and there is nothing to
-    // reject. The divergence — and every stale 36/37-byte ledger key — lives
-    // entirely below 256.
+    // reject. The divergence lives entirely below 256.
     for (const index of [0n, 23n, 24n, 255n]) {
       const hash = CML.TransactionHash.from_raw_bytes(TX_ID);
       const input = CML.TransactionInput.new(hash, index);
@@ -64,7 +61,7 @@ describe("decodeMidgardOutRefBytes (§5.3 field-0/1 item)", () => {
   it("agrees with the minimal spelling from index 256 up", () => {
     // The other half of the boundary, stated so the rejection above cannot be
     // misread as "CML bytes never decode": at 256 and beyond minimal CBOR
-    // already chooses `19 XXXX`, so the retired producer and this one emit the
+    // already chooses `19 XXXX`, so CML and this producer emit the
     // same 38 bytes and there is exactly one spelling either way.
     for (const index of [256n, 65_535n]) {
       const hash = CML.TransactionHash.from_raw_bytes(TX_ID);

@@ -190,9 +190,8 @@ export const hashMidgardVersionedScript = (
 /**
  * The §5.1 preimage of field 6 (`script_tx_wits`).
  *
- * Each item carries the per-item byte-string envelope, like all nine fields —
- * under the retired counted scheme this field concatenated raw item CBOR, and
- * `docs/spec/midgard-tx.md` §5.1 prohibits that form. The envelope is what buys
+ * Each item carries the per-item byte-string envelope, like all nine fields;
+ * `docs/spec/midgard-tx.md` §5.1 prohibits concatenated raw item CBOR. The envelope is what buys
  * O(1) top-level skips: one head decode plus a byte jump per item, instead of a
  * structural CBOR walk into each script.
  */

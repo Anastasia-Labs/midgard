@@ -1,4 +1,4 @@
-// M2 of the public submit ingress design: main-thread CPU per single-tx
+// Main-thread CPU per single-tx
 // `POST /submit`, with the admission writer stubbed, so what is left is the
 // node's own work on the event loop (HTTP parse, ingress checks, body read,
 // the hand-off to the submit check workers, the response) and nothing from
@@ -17,7 +17,7 @@
 //
 // The client stands behind a trusted proxy (`x-midgard-client-ip`), as behind
 // the nginx edge, and the ingress rate limits are off: this measures cost per
-// request, not the limits. Plain HTTP; TLS is at the edge (D7).
+// request, not the limits. Plain HTTP; TLS is at the edge.
 //
 // SUBMIT_MAIN_THREAD_RATE (default 1000/s), SUBMIT_MAIN_THREAD_SECONDS
 // (default 10) and SUBMIT_MAIN_THREAD_KEEP_ALIVE (share of keep-alive
@@ -136,7 +136,7 @@ const benchConfig = Layer.succeed(
   }),
 );
 
-describe("submit main-thread cost (M2)", () => {
+describe("submit main-thread cost", () => {
   it("measures main-thread CPU per /submit request", async () => {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "submit-m2-"));
     try {

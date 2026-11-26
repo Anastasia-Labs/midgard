@@ -1,6 +1,6 @@
-// W4.2: `localeCompare` must name its locale.
+// `localeCompare` must name its locale.
 //
-// Owner ruling (2026-09-24): canonical JSON orders object keys with the
+// Canonical JSON orders object keys with the
 // collation pinned to "en" (`compareCanonicalJsonKeys` in
 // midgard-core/src/canonical-json.ts). A bare `a.localeCompare(b)` follows the
 // host's default locale, so the same record can sort, and therefore hash,

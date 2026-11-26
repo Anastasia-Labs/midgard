@@ -59,10 +59,7 @@ import { completeStep, fundStep } from "../step-completion.js";
 import { finishStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   buildNativeScriptDecodingStep02Evidence,
@@ -99,9 +96,6 @@ export type NativeScriptDecodingStep02Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitNativeScriptDecodingStep02Result =
-  OutsideWorkflowSubmission<NativeScriptDecodingStep02Build>;
 
 export const buildNativeScriptDecodingStep02 = async ({
   lucid,

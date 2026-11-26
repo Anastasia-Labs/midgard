@@ -322,13 +322,10 @@ fn forced_source_membership(
 
 /// An L2 transaction source committed under the transactions root.
 ///
-/// Under §4's flat reversion the L2 transition authenticates the compact bytes
-/// against the tx-id anchor through the §8.8 door, and #584 retired the
-/// proof-source `transaction_commitment` from `L2TransactionSourceV1` outright
-/// once `validation_claim_v1` — the last reader — was re-anchored onto the
-/// derivation instead of the carried field. So there is nothing left for a
-/// caller to choose here: the source is `(tx_id, source)` and nothing else, and
-/// L2 source membership is verified over raw key/value bytes.
+/// Under §4 the L2 transition authenticates the compact bytes against the
+/// tx-id anchor through the §8.8 door, so there is nothing for a caller to
+/// choose here: the source is `(tx_id, source)` and nothing else, and L2 source
+/// membership is verified over raw key/value bytes.
 fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
@@ -675,14 +672,10 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
 /// The block-committed compact transaction for an L2 transition vector.
 ///
 /// Fields 0 and 2 commit to `field_commitment(preimage)` — §4's flat hash over
-/// the raw enveloped bytes, which is what the door checks. It used to decode
-/// each preimage back into items and re-derive the commitment from those, and
-/// dropping that round trip is not only shorter: it is the difference between a
-/// fixture that can only express preimages the decoder accepts and one that can
-/// commit **any** bytes. A miscounted §5.1 header is exactly the case worth
-/// committing (see the §7.3 abort-never-clamp vector below), and the old shape
-/// could not build it — the fixture aborted before the validator ever saw the
-/// bytes.
+/// the raw enveloped bytes, which is what the door checks. Hashing the bytes
+/// without decoding them lets the fixture commit **any** bytes, not only
+/// preimages the decoder accepts. A miscounted §5.1 header is exactly the case
+/// worth committing (see the §7.3 abort-never-clamp vector below).
 fn native_l2_compact_cbor(
   spend_inputs_preimage: ByteArray,
   outputs_preimage: ByteArray,
@@ -970,8 +963,8 @@ test accepts_l2_mapped_event_missing_from_source_fault() {
 test accepts_l2_source_event_missing_trace_fault() {
   let tx_id = h32_c
   // native_l2_compact_cbor takes §5.1 field *preimages*, not raw 32-byte
-  // hashes. It no longer decodes them — under §4 it hashes them flat — so
-  // passing h32_a/h32_b would no longer abort here; it would commit two
+  // hashes. It does not decode them — under §4 it hashes them flat — so
+  // passing h32_a/h32_b would not abort here; it would commit two
   // well-formed-looking hashes over nonsense bytes and the failure would
   // surface much later, inside the door, as a fault that fails for the wrong
   // reason. Every caller of this helper passes encode_{input,output}_preimage
@@ -2777,7 +2770,7 @@ test forced_order_with_unbounded_interval_is_due_by_inclusion_time() {
 }
 
 // No case for a bound below -1: the order mint decodes the submitted body and
-// refuses one (`docs/spec/midgard-tx.md` §2.1, #817), so no such order exists
+// refuses one (`docs/spec/midgard-tx.md` §2.1), so no such order exists
 // for these proofs to read. `tx_order_mint_refuses_a_submitted_start_below_the_sentinel`
 // in `user-events/tx-order-v1.test.ak` pins that.
 

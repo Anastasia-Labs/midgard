@@ -56,7 +56,7 @@ export type NamedScenario = Readonly<{ name: string; scenario: ForkScenario }>;
  * and after a depth-k rollback over a 2k-block lead (rows pruned, then the
  * rewind drops the boundary below them), and the chain of every shape again
  * with every episode pruned (left out with `prune: false`). Projection
- * tickets run their cases over it.
+ * tests run their cases over it.
  */
 export const forkCorpus = (
   k: number,

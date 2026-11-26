@@ -388,9 +388,9 @@ it("revalidates consumed permission after an asynchronous prestart before spawni
 });
 
 it.each(["codeStamp", "serviceSpecsDigest"])(
-  "keeps legacy requests missing %s refused",
+  "keeps requests missing %s refused",
   (field) => {
-    const dir = mkdtempSync(join(tmpdir(), "devnet-retry-legacy-"));
+    const dir = mkdtempSync(join(tmpdir(), "devnet-retry-refused-"));
     const paths = pathsAt(dir);
     try {
       const refusal = refuseService(paths, "role");

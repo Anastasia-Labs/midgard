@@ -107,9 +107,8 @@ export type OnChainLifecycleCoordinatorDeps = {
   /**
    * Minimum gap between single-key notices. Defaults to ten minutes.
    *
-   * The rate limit is the point: the ruling accepted the single-key attest
-   * loop *with a rate-limited explanatory log*, and this coordinator reconciles
-   * once per published signature and per header, so an unlimited notice would
+   * The single-key attest loop runs with a rate-limited explanatory log: this
+   * coordinator reconciles once per published signature and per header, so an unlimited notice would
    * emit thousands of identical lines and train an operator to filter it.
    */
   readonly singleKeyNoticeIntervalMs?: number;

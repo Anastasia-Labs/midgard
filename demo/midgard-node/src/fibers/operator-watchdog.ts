@@ -26,7 +26,7 @@
  * idle, and the tick re-plans a minute later. A forced retirement at the
  * strike cap needs no event: the chain checks the strike count alone.
  *
- * Progress (B7): no strike or forced retirement lands while the state queue
+ * Progress: no strike or forced retirement lands while the state queue
  * accepts no append, nor against a shift holder whose tail is younger than
  * the new-shift grace period (`progressHold` in the policy).
  *

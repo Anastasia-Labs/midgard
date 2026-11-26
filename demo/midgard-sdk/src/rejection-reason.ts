@@ -22,9 +22,9 @@ import { Data } from "@lucid-evolution/lucid";
  * subject coordinates (field/item/witness/output/redeemer/purpose
  * ordinals) — never expected values, hashes, or recomputable arguments.
  *
- * A reserved family, not populated in V1: `GuardrailExceeded` — kept
- * unpopulated per the 2026-08-24 owner ruling that the L1 forced-order door
- * (`docs/spec/midgard-tx.md` §8.11) excludes guardrail-violating preimages.
+ * A reserved family, not populated in V1: `GuardrailExceeded` — unpopulated
+ * because the L1 forced-order door (`docs/spec/midgard-tx.md` §8.11) excludes
+ * guardrail-violating preimages.
  */
 export const RejectionReasonSchema = Data.Enum([
   // ── CanonicalDecode ────────────────────────────────────────────────

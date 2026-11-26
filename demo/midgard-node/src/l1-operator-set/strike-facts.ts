@@ -1,6 +1,6 @@
 /**
  * What the operator watchdog reads of the landed state queue so it never
- * strikes progress (B7): when the tail was committed, and when the queue
+ * strikes progress: when the tail was committed, and when the queue
  * stops accepting appends. The strike validator checks neither; both are
  * this node's policy.
  */

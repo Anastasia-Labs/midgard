@@ -1,6 +1,6 @@
 /**
- * The commit family's pre-broadcast gate under the follower-backed journal
- * (I1FIX-R2, review-i1fix B1/B2). The gate
+ * The commit family's pre-broadcast gate under the follower-backed journal.
+ * The gate
  * (`PendingBlockFinalizationsDB.recordSignedIntent`, as
  * `submitWithDurableIntent` provides it) owns its outermost history-write
  * transaction, and the journal records the intent inside it: the gate is
@@ -73,8 +73,7 @@ const journalRows = async (env: IntentEmulator): Promise<number> => {
   }
 };
 
-/** The reviewer's repro (review-i1fix B1): a commit submitted through the
- * production gate, with no producer permit. */
+/** A commit submitted through the production gate, with no producer permit. */
 const submitThroughCommitGate = async (
   env: IntentEmulator,
   journalLayer: Layer.Layer<IntentJournal>,

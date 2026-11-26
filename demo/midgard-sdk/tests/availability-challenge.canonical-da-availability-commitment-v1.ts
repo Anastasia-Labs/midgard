@@ -1102,7 +1102,7 @@ describe("canonical DA availability commitment V1", () => {
   });
 
   it("pins the cross-language commitment and asset-identity vectors", () => {
-    // Expected values come from the #688 golden generator's own Plutus Data
+    // Expected values come from the golden generator's own Plutus Data
     // encoder (scripts/da-vector-support.mjs), not from the SDK codec.
     const commitment = build(1024);
     expect({
@@ -1156,7 +1156,7 @@ describe("canonical DA availability commitment V1", () => {
   });
 
   it.each(COMMITMENT_GOLDENS.vectors.map((vector) => [vector.label, vector]))(
-    "reproduces the #688 CommitmentV1 / ChallengeRecordV1 golden %s",
+    "reproduces the CommitmentV1 / ChallengeRecordV1 golden %s",
     (_label, vector) => {
       const commitment = commitmentFromGolden(vector.commitment);
       expect(encodeDaAvailabilityCommitment(commitment)).toBe(

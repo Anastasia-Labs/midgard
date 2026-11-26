@@ -92,6 +92,9 @@ it is written down. Read it top to bottom and take the first match.
   clause an agent has no reason to spend a tool call on it. [review]
 - **Date every measurement.** A count without a date cannot be told from a
   stale one. [review]
+- **State the present rule.** Skills, comments and docs say what holds now.
+  Ticket and milestone labels, and what something used to be or was renamed
+  from, go in commit messages and decision records. [review]
 
 ## 4. Skills
 

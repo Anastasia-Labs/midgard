@@ -581,9 +581,9 @@ describe("watcher deployment identity", () => {
       },
     ],
     [
-      "nested legacy manifest field",
+      "nested unknown manifest field",
       (manifest: MutableRecord) => {
-        manifest.hubOracleOneShot.legacyNonceVersion = 2;
+        manifest.hubOracleOneShot.unknownNonceVersion = 2;
       },
     ],
   ])("rejects %s at the canonical manifest boundary", (_label, mutate) => {

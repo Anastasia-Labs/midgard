@@ -1,7 +1,7 @@
 //// Measured ExUnits frontier for the §5.5.3 transition-trace arms.
 ////
-//// Two questions the `#628` evidence left open, both answered here by
-//// measurement rather than by interpolation:
+//// Two questions, both answered here by measurement rather than by
+//// interpolation:
 ////
 ////   1. Where does the deposit arm cross the execution basis? The pinned reading
 ////      for `accepts_valid_deposit_transition_fault` sits just under the
@@ -16,7 +16,7 @@
 ////      between the two pinned readings is the marginal validator cost;
 ////      neither reading on its own is one.
 ////
-//// The accepted L2 transaction is no longer replayed by one arm: the
+//// The accepted L2 transaction is not replayed by one arm: the
 //// accepted-transaction final streams it one ledger witness per step, and
 //// those steps are measured by the final's own emulator suites.
 ////

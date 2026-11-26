@@ -162,19 +162,18 @@ export type MidgardValidators = {
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;
   /**
-   * The §8.6 field-preimage certificate. #594 retired the receipt family and
-   * replaced it with this policy: the tx-order mint and every field-opening
-   * step take its policy id as a parameter, and the field-access door checks
-   * tier-3 chunk digests against a certificate minted under it. #579 gave it
-   * a deployment role so that one deployed policy serves every reader rather
-   * than each load site rederiving it. The validator takes no parameters, so
-   * its policy id is a pure function of the blueprint.
+   * The §8.6 field-preimage certificate. The tx-order mint and every
+   * field-opening step take its policy id as a parameter, and the field-access
+   * door checks tier-3 chunk digests against a certificate minted under it. It
+   * has a deployment role so that one deployed policy serves every reader
+   * rather than each load site deriving it. The validator takes no parameters,
+   * so its policy id is a pure function of the blueprint.
    */
   fieldPreimageCertificate: SpendingValidator & MintingValidator;
   /**
    * The field grammar certificate: a field grammar certificate lets a step
    * read one item of a variable-width field without walking the whole field,
-   * so the step's cost no longer grows with the field's item count. Its one
+   * so the step's cost does not grow with the field's item count. Its one
    * parameter is the field-preimage certificate policy id.
    */
   fieldGrammarCertificate: SpendingValidator & MintingValidator;

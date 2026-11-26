@@ -1,4 +1,4 @@
-// W4.6: a pinned fee needs a transaction with no change output.
+// A pinned fee needs a transaction with no change output.
 //
 // Validators that read the fee as a protocol payment check `fee == penalty`.
 // `setMinFee` only sets a floor: when Lucid still has to add a change output,

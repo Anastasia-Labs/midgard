@@ -1146,7 +1146,7 @@ test field_grammar_certificate_handlers_open_certifies_a_tier3_field() {
   run_mint(case.redeemer, case.tx)
 }
 
-/// One byte of the last chunk changed: the chunks no longer concatenate to the
+/// One byte of the last chunk changed: the chunks do not concatenate to the
 /// bytes the field-preimage certificate and the field commitment name.
 test field_grammar_certificate_handlers_open_rejects_tier3_chunks_that_disagree_with_the_preimage_certificate() fail {
   let field = outputs_field(400)

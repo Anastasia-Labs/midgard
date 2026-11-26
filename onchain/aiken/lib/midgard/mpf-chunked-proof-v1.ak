@@ -7,8 +7,8 @@
 //// Against the preserved 16,384-byte envelope that exhausts at branch level
 //// 21..23 depending on the family, so an adversary who grinds sibling keys at
 //// 2^4 work per level can push a proof past the envelope for as little as
-//// 2^84 work, and a 2^128 adversary reaches level 32. The proof no longer
-//// fits; the honest prover is censored.
+//// 2^84 work, and a 2^128 adversary reaches level 32. The proof then does
+//// not fit; the honest prover is censored.
 ////
 //// This module removes the proof from the final transaction entirely. A large
 //// proof is *published* across one or more bounded UTxOs whose inline datum
@@ -34,7 +34,7 @@
 //// ## Size derivation (all bounds pinned by tests in the sibling test module)
 ////
 //// - A `Branch` step is the largest step shape and serialises to 139..140
-////   bytes of Plutus data (139 measured by the Q1x fixture; +1 when `skip`
+////   bytes of Plutus data (139 measured by the test fixture; +1 when `skip`
 ////   needs a two-byte integer). `Fork` (<= 74) and `Leaf` (<= 73) are cheaper.
 //// - `maximum_chunk_proof_step_count = 16` therefore bounds a chunk datum at
 ////   16 * 140 + 6 = 2,246 bytes, which `maximum_chunk_datum_byte_count`
@@ -99,10 +99,10 @@ pub type ProofMode {
 /// The challenge thread's state. Authenticated once, at initialization, against
 /// the challenged block header; never mutated afterwards.
 ///
-/// `challenged_root_domain` is an owner-directed deviation from the #541 brief,
-/// which placed the domain in the initialization redeemer alone. A redeemer is
-/// not retained by the ledger, so a reader of a finalized challenge could not
-/// recover *which* of the header's seven roots had been challenged. The field
+/// `challenged_root_domain` lives in the datum, not only in the initialization
+/// redeemer: a redeemer is not retained by the ledger, so a reader of a
+/// finalized challenge could not otherwise recover *which* of the header's
+/// seven roots had been challenged. The field
 /// is not advisory: `challenge_matches_header` requires it to be the very
 /// domain the counted-root commitment was reproduced under, so the datum is
 /// authenticated at initialization along with everything else it claims.

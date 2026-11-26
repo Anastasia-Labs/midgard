@@ -268,7 +268,7 @@ describe("retentionDeadlineAlertV1", () => {
   });
 
   it("has no default threshold: a missing or malformed one is refused", () => {
-    // Opt-in alert (owner ruling 2026-09-26). A default would alert on every
+    // Opt-in alert. A default would alert on every
     // still-challengeable record: the derived margin exceeds the horizon under
     // the testing profiles and exceeds what a merged non-head block has left on
     // mainnet.

@@ -78,8 +78,7 @@ export type ImportCheckConfig = Readonly<{
 }>;
 
 // Room before the case open deadline (block_end + M/2) for an opener's Init,
-// Open and VerifySource to land; the values are the pre-removal per-profile
-// margins (twice the former dispute response window).
+// Open and VerifySource to land, per profile.
 const OPENER_MARGIN_MS_BY_PROFILE = {
   mainnet: 600_000,
   "preprod-public": 600_000,

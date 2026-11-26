@@ -37,7 +37,7 @@ export type ValidationTraceFieldPreimageCertificate = Readonly<{
 /** The field grammar certificate validator the dispute's stages are
  * applied with (its policy id is its spend credential), and its published
  * reference script: a stage reads a variable-width field's item through a
- * `Complete` certificate of it, so its cost no longer grows with the
+ * `Complete` certificate of it, so its cost does not grow with the
  * field's item count. */
 export type ValidationTraceFieldGrammarCertificate = Readonly<{
   validator: Readonly<{ spendingScript: Script; spendingScriptHash: string }>;

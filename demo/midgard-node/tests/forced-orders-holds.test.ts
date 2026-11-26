@@ -1,6 +1,6 @@
 /**
  * The forced-order hook on a simulated chain with the follower store in the
- * node database as in production (N10b). An order is ingested whatever its
+ * node database as in production. An order is ingested whatever its
  * transaction's items: the row is read from the §5.1 envelope the tx-order
  * mint authenticated, so an order whose outputs or native scripts do not
  * decode gets a row (classification rejects it) and never holds the commit
@@ -39,7 +39,7 @@ import { installEmptyLedger } from "./helpers/ledger-install.js";
 
 const follow = nodeFollowerLifecycle();
 
-describe("forced-order hook ingests orders whose items do not decode (N10b)", () => {
+describe("forced-order hook ingests orders whose items do not decode", () => {
   it.each(MINT_ADMITTED_UNDECODABLE)(
     "an order with %s is ingested with no hold",
     async (_name, _reason, bytes) => {

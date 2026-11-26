@@ -706,8 +706,8 @@ test referenced_rejects_facts_for_another_event_id() fail {
   read_order([reference(order_output(moved, None, 600), 0)], 0) == moved
 }
 
-test referenced_rejects_a_legacy_optimistic_deposit_datum() fail {
-  let legacy: Data = user_events.OptimisticDatum {
+test referenced_rejects_an_optimistic_deposit_datum() fail {
+  let optimistic: Data = user_events.OptimisticDatum {
     event: payload(),
     inclusion_time: 400 + env.event_wait_duration,
     witness: owner,
@@ -715,8 +715,8 @@ test referenced_rejects_a_legacy_optimistic_deposit_datum() fail {
     refund_datum: NoDatum,
   }
   let order = order_output(facts(), None, 600)
-  let old = Output { ..order, datum: InlineDatum(legacy) }
-  read_order([reference(old, 0)], 0).inclusion_time == 400 + env.event_wait_duration
+  let optimistic_order = Output { ..order, datum: InlineDatum(optimistic) }
+  read_order([reference(optimistic_order, 0)], 0).inclusion_time == 400 + env.event_wait_duration
 }
 
 // Admission accepts only orders the node's decoder accepts: 28-byte credential

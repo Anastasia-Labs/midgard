@@ -42,16 +42,11 @@ pub type CekSelectionFixtureV1 {
 /// One genuine-Cardano maximum-cardinality field, at the terminal step of its
 /// `CanonicalDecode` fold, as §8's door reaches it.
 ///
-/// **What left this record, and why it is not a weaker fixture.** It used to
-/// carry a `bounded_collection_v1.ItemProofV1` and a
-/// `bounded_item_v1.ChunkProofV1` — a per-item Merkle frontier with siblings,
-/// and the item's chunk with its own frontier — and the step checked the first
-/// against the field's §4 commitment. That is the unsatisfiable predicate #592
-/// is about, and both proofs are gone: the fixture now carries the field's whole
-/// §5.1 **preimage**, the door hashes it once against the flat commitment the
-/// compact structure declares, and the item's length, chunk and
-/// `bounded_item_v1` commitment are all derived from those authenticated bytes.
-/// Nothing per-item is asserted by the fixture, so nothing per-item can drift.
+/// The fixture carries the field's whole §5.1 **preimage**, the door hashes it
+/// once against the flat commitment the compact structure declares, and the
+/// item's length, chunk and `bounded_item_v1` commitment are all derived from
+/// those authenticated bytes. Nothing per-item is asserted by the fixture, so
+/// nothing per-item can drift.
 pub type MaximumFieldTerminalFixtureV1 {
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,

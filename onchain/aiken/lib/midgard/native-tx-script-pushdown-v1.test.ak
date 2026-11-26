@@ -841,10 +841,9 @@ test run_refuses_more_nodes_than_the_bound() fail {
 /// neither the child-count bound nor the depth bound is anywhere near refusing:
 /// what stops this script is the running node count and nothing else.
 ///
-/// This is the vector the old §11.5 asserted could not exist. It claimed the
-/// child-count bound "refuses at that node first", which is true of the wide
-/// shape above and false in general — a script gets big by being *bushy*, not
-/// only by having one enormous node.
+/// The child-count bound "refuses at that node first" only for the wide shape
+/// above, not in general — a script gets big by being *bushy*, not only by
+/// having one enormous node.
 test run_refuses_more_nodes_than_the_bound_without_a_wide_child() fail {
   let script = bushy_script()
   expect _ = native_script_run(

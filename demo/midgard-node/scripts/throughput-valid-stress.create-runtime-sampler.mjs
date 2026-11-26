@@ -194,7 +194,6 @@ export const createStageStats = ({ name, mode, targetRateTps = null }) => ({
   submittedAtByTxId: new Map(),
   cursorPositionsAtStart: null,
   cursorPositionsAtEnd: null,
-  phase1StageACheckpoint: null,
 });
 
 export const snapshotCursorPositions = (cursors) =>

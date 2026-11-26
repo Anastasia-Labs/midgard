@@ -39,7 +39,7 @@ if (!binaryPresent) {
 }
 
 /**
- * Child restarts of the production native owner (owner ruling 2026-10-09): a
+ * Child restarts of the production native owner: a
  * child that fails is restarted from the durable root marker with backoff,
  * with an empty node cache;
  * the same failure `restartLimit` times in a row holds the owner, which

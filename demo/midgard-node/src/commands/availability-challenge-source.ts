@@ -1,6 +1,6 @@
 /**
  * The availability command's canonical source, over the tool L1 access
- * `--l1` selects (`l1-command-access.ts`; option E). The command is a tool:
+ * `--l1` selects (`l1-command-access.ts`). The command is a tool:
  * it never reads a role's follower store, so it runs before any `listen`.
  * It reads chain history (a transaction's block, a foreign spend, the
  * Open's commitment preimage), so only `--l1 kupmios` serves it, over Kupo

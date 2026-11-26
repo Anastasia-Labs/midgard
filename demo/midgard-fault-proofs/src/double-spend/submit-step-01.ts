@@ -2,12 +2,10 @@
  * `double-spend` step-01 submitter. The helpers every family's submitter
  * reuses live in `step-support.ts`.
  *
- * **Re-derived onto the flat field commitments by #604.** Thread state carries
- * the §2.5 anchor — `verified_tx1_id` — and nothing else: the retired
- * `verified_tx1_spend_inputs_hash` is not replaced but *removed*, because the
- * §8.8 door extracts field 0's commitment positionally from the compact
- * structures the anchor authenticates. Carrying it forward would be carrying a
- * value no validator reads. See
+ * Thread state carries the §2.5 anchor — `verified_tx1_id` — and nothing else:
+ * the §8.8 door extracts field 0's commitment positionally from the compact
+ * structures the anchor authenticates, so no validator reads a forwarded
+ * commitment. See
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
@@ -70,10 +68,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 
 export type Step01Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -98,8 +93,6 @@ export type Step01Build = {
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
-
-export type SubmitStep01Result = OutsideWorkflowSubmission<Step01Build>;
 
 type Step01Layout = {
   readonly inputIndex: bigint;

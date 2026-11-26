@@ -25,8 +25,8 @@ import {
   writeCorpus,
 } from "./e2e-stress-l2-throughput.e2e-stress-l2-throughput-config.js";
 
-// Existing pollIntervalMs: "1" runner fixtures deliberately exercise the
-// legacy fixed-interval override path; adaptive backoff has dedicated tests.
+// The pollIntervalMs: "1" runner fixtures exercise the fixed-interval
+// override; adaptive backoff has its own tests.
 describe("e2e-stress-l2-throughput runner", () => {
   it("runs serial stress, polls tx-status, and writes all artifacts", async () => {
     const outDir = await makeTempDir();
@@ -868,7 +868,7 @@ describe("e2e-stress-l2-throughput runner", () => {
     expect(sleepSpy.mock.calls.map(([ms]) => ms)).toEqual([50, 100, 200, 200]);
   });
 
-  it("keeps the legacy fixed poll interval when explicitly configured", async () => {
+  it("keeps the fixed poll interval when explicitly configured", async () => {
     const outDir = await makeTempDir();
     const clock = makeClock();
     const config = parseE2EL2StressConfig({

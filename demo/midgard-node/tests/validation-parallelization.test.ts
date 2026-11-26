@@ -134,12 +134,11 @@ const makeNativeTx = ({
   };
 };
 
-// Phase B enforces the #618 min-Ada floor (E_MIN_ADA, R8 of decision 0005) on
-// every output, so phase-B candidates must carry a compliant amount — the
-// measured floor for these 37-byte outputs is 849,070 lovelace. The original
-// 10-lovelace fixtures predate that ruling and were rejected before the
-// behaviour under test (conflict detection, validity intervals) was ever
-// reached. 5M rather than the exact floor: these tests are
+// Phase B enforces the min-Ada floor (E_MIN_ADA, R8 of decision 0005) on
+// every output, so phase-B candidates must carry a compliant amount: the
+// measured floor for these 37-byte outputs is 849,070 lovelace. A smaller
+// amount is refused before the behaviour under test (conflict detection,
+// validity intervals) is reached. 5M rather than the exact floor: these tests are
 // about conflicts and intervals, not the floor's boundary, so the amount
 // carries headroom against future fee-parameter or serialized-size drift.
 const PHASE_B_COMPLIANT_LOVELACE = 5_000_000n;

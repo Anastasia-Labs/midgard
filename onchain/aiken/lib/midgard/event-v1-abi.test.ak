@@ -526,21 +526,10 @@ test canonical_settlement_v1_typescript_abi_vectors() {
   }
 }
 
-// Every rejection test below used to end in
-// `cbor.serialise(decoded) == cbor.serialise(decoded)`, a tautology that is
-// True for every value the generated decoder could possibly produce, so no
-// round-trip property was established. The intended property is the canonical
-// round trip, and the final expression now compares the re-serialised value
-// against the exact source bytes. The `expect` still carries the rejection for
-// the malformed inputs pinned here; the round trip is what lets the test
-// distinguish a decodable-but-noncanonical source from a canonical one, which
-// the tautology never could.
-//
-// Control (run under the fork, reverted): replacing the source of
-// `event_v1_rejects_a_wrong_deposit_datum_arity` with the well-formed
-// `deposit_datum()` encoding turns the test red, so the pinned inputs are
-// rejected because these decoders reject them, not because the module always
-// fails.
+// Every rejection test below ends by comparing the re-serialised value with
+// the exact source bytes. The `expect` carries the rejection for the malformed
+// inputs pinned here; the canonical round trip is what lets a test distinguish
+// a decodable-but-noncanonical source from a canonical one.
 test event_v1_rejects_an_adjacent_active_operator_mint_tag() fail {
   let source = #"d87e80"
   expect Some(data) = cbor.deserialise(source)
@@ -597,13 +586,13 @@ test event_v1_rejects_an_adjacent_settlement_event_tag() fail {
   cbor.serialise(decoded) == source
 }
 
-// Issue #521 regression pins. `deposit.DepositDatum` used to be named `Datum`,
-// colliding with stdlib `cardano/transaction.Datum` in stock aiken v1.1.22's
-// generated-decoder cache. `transaction.Datum` won, so `scheduler.spend`'s
-// `NeglectedDeposit` branch admitted `NoDatum`/`InlineDatum` shapes and could
-// not decode a well-formed deposit datum at all. This first test forces both
-// decoders into one compiled program, the only shape in which `aiken check`
-// can observe the collision.
+// Stock aiken v1.1.22 keys its generated-decoder cache by the local type name
+// only, so `deposit.DepositDatum` must not be named `Datum` like stdlib
+// `cardano/transaction.Datum`: a shared decoder would make `scheduler.spend`'s
+// `NeglectedDeposit` branch admit `NoDatum`/`InlineDatum` shapes and refuse a
+// well-formed deposit datum. This first test forces both decoders into one
+// compiled program, the only shape in which `aiken check` can observe a
+// collision.
 test event_v1_deposit_and_transaction_datum_decoders_stay_distinct() {
   expect Some(deposit_data) = cbor.deserialise(cbor.serialise(deposit_datum()))
   expect decoded_deposit: deposit.DepositDatum = deposit_data

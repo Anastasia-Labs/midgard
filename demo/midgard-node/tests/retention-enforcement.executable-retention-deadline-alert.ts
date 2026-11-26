@@ -41,7 +41,7 @@ describe("executable retention deadline alert", () => {
   const blockTimeMs = NOW.getTime() - REQUIRED_RETENTION_MS / 2;
 
   it("raises no deadline alert without an operator threshold", () => {
-    // Opt-in alert (owner ruling 2026-09-26): with no threshold, not even a
+    // Opt-in alert: with no threshold, not even a
     // record one millisecond from its deadline alerts. Pruning never removes
     // still-challengeable evidence, so ageing towards the deadline is no fault.
     const result = evaluateRetentionCheck({

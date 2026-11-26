@@ -263,7 +263,7 @@ describe("watcher availability concurrency", () => {
     const second = fixture("45", HEADER_END_TIME + 100n);
     // The second header follows the first in the queue. Its Open is never
     // deferred to the ancestor's Timeout: if the ancestor settles, the
-    // descendant would merge unchallenged (DECISIONS P9(5)).
+    // descendant would merge unchallenged.
     const descendant: SDKDa.DaAvailabilityChallengeSnapshot = {
       ...second.attested,
       confirmedState: first.challenged.confirmedState,

@@ -35,8 +35,8 @@ import {
  * Derives a forced order's transaction binding and the §8 carriage its material
  * requires.
  *
- * `owner` is the §8.6 min-Ada reclaim authority a tier-3 plan records, and under
- * #594's ruling it is the **order creator's own payment key hash**: raw carriage
+ * `owner` is the §8.6 min-Ada reclaim authority a tier-3 plan records, and it
+ * is the **order creator's own payment key hash**: raw carriage
  * and certificates alike are reclaimed by an ordinary key spend at any time after
  * the mint, with no reclaim contract and no time gate, so the authority has to be
  * a key the creator can sign with. `buildTxOrderV1` passes the wallet's payment
@@ -78,7 +78,7 @@ export const deriveTxOrderMaterial = ({
   const carriage: TxOrderFieldCarriage[] = [];
   // §5.1's empty field is the one-byte definite-array header `80`. The on-chain
   // `next_non_empty_field` decides the same thing by comparing the committed hash
-  // against `empty_field_commitment`; since #585 the two spellings agree by
+  // against `empty_field_commitment`; the two spellings agree by
   // construction, and testing the bytes keeps this loop independent of whether a
   // payload's declared hashes are trustworthy yet.
   const emptyFieldPreimage = encodeMidgardFieldArrayHeader(0);
@@ -140,7 +140,7 @@ const MIDGARD_TX_ORDER_MACHINERY_ALLOWANCE_BYTES = 2_048;
  * The order transaction's own reserve for inline (tier-1) carriage, in bytes —
  * the **aggregate** over every inline field, not a per-field bound.
  *
- * #594's ruling is explicit that there is **no on-chain threshold constant** for
+ * There is **no on-chain threshold constant** for
  * the inline/reference split: the L1 transaction limit is the gate, and choosing
  * the split is an off-chain planning concern. So this is a planning reserve and
  * not a consensus bound — the authority on whether an order fits is the built
@@ -272,7 +272,7 @@ export const planTxOrderMaterialCarriage = ({
 /**
  * The order creator's payment key hash — the §8.5/§8.7 reclaim authority.
  *
- * A key, never a script. #594's ruling makes reclaim an ordinary key spend at any
+ * A key, never a script. Reclaim is an ordinary key spend at any
  * time after the mint, with no reclaim contract and no time gate, so an address
  * whose payment credential is a script has no way to reclaim the min-Ada it
  * locked in carriage and the refusal belongs here rather than at the first

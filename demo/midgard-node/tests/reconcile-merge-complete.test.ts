@@ -2,10 +2,6 @@ import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  parseReconciliationResult,
-  RECONCILIATION_SCHEMA_VERSION,
-} from "../src/commands/reconcile.parse-reconciliation-result.js";
-import {
   type MergeCompletionObservation,
   mergeCompletionVerdict,
 } from "../src/commands/reconcile.reconcile-merge-complete-program.js";
@@ -94,25 +90,5 @@ describe("merge-complete reconciliation verdict", () => {
     );
     expect(nextAction).toContain("scheduled merge fiber");
     expect(nextAction).toContain("permissionless");
-  });
-
-  it("refuses a result that claims the deleted merge repair", () => {
-    const repairedBy = (action: string) => ({
-      schemaVersion: RECONCILIATION_SCHEMA_VERSION,
-      milestone: "merge-complete",
-      target: { headerHash: HEADER_HASH },
-      status: "repaired",
-      safeToRetryOriginalStep: true,
-      evidence: [],
-      nextAction: null,
-      repairActions: [action],
-    });
-    // Another milestone's repair still parses; `merge_action` no longer does.
-    expect(
-      parseReconciliationResult(repairedBy("backfill_missing_da_payload")),
-    ).toEqual(repairedBy("backfill_missing_da_payload"));
-    expect(() => parseReconciliationResult(repairedBy("merge_action"))).toThrow(
-      "repairActions[0] must be one of",
-    );
   });
 });

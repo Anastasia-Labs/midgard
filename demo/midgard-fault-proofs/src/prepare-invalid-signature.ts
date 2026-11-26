@@ -1,31 +1,24 @@
 /**
- * **Checked to be unaffected by #604.** This module emits evidence — the witness
- * list, the compact witness set and the inclusion argument — and constructs no
- * datum or redeemer, so the #575 rebind left its output shape alone. Its
- * consumers changed: `submit-invalid-signature-step-02` now opens §2.5 field 7
- * through the §8.8 door and takes the compact witness set this module already
- * emits.
- *
  * `invalid-signature` evidence builder.
  *
- * Harvested from PR #474 (`fp/invalid-signature`) and reconciled against the
- * current native-codec boundary. It locates a committed transaction carrying an
- * address witness whose Ed25519 signature does not verify against that
- * transaction's native id, and emits the two submit-step arguments the on-chain
- * chain consumes.
+ * It locates a committed transaction carrying an address witness whose Ed25519
+ * signature does not verify against that transaction's native id, and emits
+ * the two submit-step arguments the on-chain chain consumes: the witness list,
+ * the compact witness set and the inclusion argument. It constructs no datum
+ * or redeemer. `submit-invalid-signature-step-02` opens §2.5 field 7 through
+ * the §8.8 door and takes the compact witness set this module emits.
  *
  * The two openings the chain walks are, in order:
  *
  * 1. the witness-set compact, whose `blake2b_256` re-encoding must equal the
- *    committed `witness_set_hash` (step 01). #575 deleted the standalone
- *    `verify_native_tx_witness_set` helper that used to make this check; it now
- *    lives inside the §8.8 field-access door, where `authenticated_field_view`
+ *    committed `witness_set_hash` (step 01). The check lives inside the §8.8
+ *    field-access door, where `authenticated_field_view`
  *    (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) refuses to read
  *    any of fields 6–8 unless
  *    `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` equals the
  *    `witness_set_hash` the compact transaction carries; and
- * 2. the address-witness list, whose `bounded_collection_v1.from_items(7, ...)`
- *    commitment must equal the `addr_tx_wits_hash` step 01 forwarded (step 02).
+ * 2. the address-witness list, whose §5.1 preimage must hash to the
+ *    `addr_tx_wits_hash` step 01 forwarded (step 02).
  *
  * The `--midgard-node-url` and `--transactions` routes below are
  * operator-diagnostic rehearsal routes: they read block material from the node's

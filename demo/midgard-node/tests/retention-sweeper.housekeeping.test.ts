@@ -212,7 +212,7 @@ describe("a retention sweep with RETENTION_DAYS unset", () => {
     expect(result.addresses.sort()).toEqual(
       [hex("inside"), hex("queued"), hex("processing")].sort(),
     );
-    // The window is the manifest's, not the former 7-day placeholder.
+    // The window is the manifest's, not a 7-day placeholder.
     expect(result.leases).toContain("ended-inside");
     expect(result.leases).not.toContain("ended-outside");
     expect(result.leases).toHaveLength(101);

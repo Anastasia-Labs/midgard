@@ -1158,7 +1158,7 @@ fn opens_naming_event(event_key: ledger_state.EventKey) -> Bool {
 }
 
 /// Two challengers of one event, claiming different traces.
-test q1_two_claims_on_one_event_name_one_case() {
+test two_claims_on_one_event_name_one_case() {
   let other = pending(honest_source(), h32_c)
   and {
     other.challenger_root != honest_pending().challenger_root,
@@ -1166,7 +1166,7 @@ test q1_two_claims_on_one_event_name_one_case() {
   }
 }
 
-test q1_claims_on_two_events_name_two_cases() {
+test claims_on_two_events_name_two_cases() {
   let other = pending(
     forced_source(rejection_reason_v1.ForcedTxValid),
     root_for_terminal(),
@@ -1179,11 +1179,11 @@ test q1_claims_on_two_events_name_two_cases() {
   }
 }
 
-test q1_an_open_naming_the_claimed_event_opens() {
+test an_open_naming_the_claimed_event_opens() {
   opens_naming_event(event_key_for(honest_source()))
 }
 
-test q1_an_open_naming_another_event_is_refused() fail {
+test an_open_naming_another_event_is_refused() fail {
   opens_naming_event(
     event_key_for(forced_source(rejection_reason_v1.ForcedTxValid)),
   )

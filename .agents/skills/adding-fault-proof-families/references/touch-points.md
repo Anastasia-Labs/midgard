@@ -5,13 +5,10 @@ missing. Read this before step 2 of the skill, and
 whenever a `GAP` line from `family-checklist.mjs` names a file you do not
 recognise.
 
-Legacy line references below are a 2026-09-25 snapshot. The deployment metadata
-owners and projections were rechecked on 2026-10-17, and the fault-proofs table
-on 2026-11-04; those rows use paths without line numbers. The template throughout is
-`mintItemNonCanonical` (catalogue ID `00000036`, four steps). It was added in
-`29ecaaae4` (2026-09-11, 75 files), which predates the family application
-registry (`625d00b38`, 2026-09-19); read that commit for the Aiken, SDK and
-node shape, and the current tree for the registry.
+Line references below are a 2026-09-25 snapshot; rows without line numbers
+were checked against a later tree. The template throughout is
+`mintItemNonCanonical` (catalogue ID `00000036`, four steps); read its files
+in the current tree for the Aiken, SDK, node and registry shape.
 
 "Typecheck" in the enforcement column means a `satisfies Record<Category, …>`
 table, or an exhaustive `switch` without a `default`, that fails to compile

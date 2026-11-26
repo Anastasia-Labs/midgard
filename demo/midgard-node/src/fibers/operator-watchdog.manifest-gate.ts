@@ -77,7 +77,7 @@ const reasonRaised = (state: ManifestGateState): boolean =>
  * Every lifecycle verb verifies the deployment manifest before it acts; the
  * watchdog verifies it before its first strike rather than once at start, so a
  * manifest that could not be read at start (a transient file or config read
- * failure) no longer disables the watchdog for the process's lifetime. A
+ * failure) does not disable the watchdog for the process's lifetime. A
  * verification error is retried with bounded backoff. A confirmed mismatch
  * refuses every strike, is surfaced in readiness, and is re-read at a slow
  * cadence. A raised reason is re-verified on ticks with no strike due as

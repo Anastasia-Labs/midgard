@@ -1,4 +1,4 @@
-// Midgard's local ESLint plugin: owner rulings that can be checked from the
+// Midgard's local ESLint plugin: repository rules that can be checked from the
 // syntax tree, reported through a shrink-only baseline (baseline.mjs).
 //
 // Every rule has fixtures under fixtures/ with `// ruleid:` and `// ok:`

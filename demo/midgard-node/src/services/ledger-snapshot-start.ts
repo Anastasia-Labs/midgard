@@ -138,7 +138,7 @@ const install = (anchor: SnapshotAnchor.SnapshotAnchor) =>
       headerHash: anchor.headerHash,
       utxosRoot: anchor.utxosRoot,
     });
-    yield* MpfEngineStateDB.stampLedgerMigration(anchor.utxosRoot);
+    yield* MpfEngineStateDB.stampLedgerRoot(anchor.utxosRoot);
     yield* SnapshotAnchor.record(anchor);
   });
 

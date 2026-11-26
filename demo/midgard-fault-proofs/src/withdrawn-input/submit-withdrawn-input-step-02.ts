@@ -35,7 +35,6 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import {
@@ -63,9 +62,6 @@ export type WithdrawnInputStep02Build = {
   readonly computationThreadUnit: string;
   readonly carriageTier: string;
 };
-
-export type SubmitWithdrawnInputStep02Result =
-  OutsideWorkflowSubmission<WithdrawnInputStep02Build>;
 
 export const buildWithdrawnInputStep02 = async ({
   lucid,

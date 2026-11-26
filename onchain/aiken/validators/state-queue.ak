@@ -206,7 +206,7 @@ pub fn authenticated_queue_head_for_append_v1(
   head_node
 }
 
-/// Reward exclusivity (2026-08-11 owner ruling): within
+/// Reward exclusivity: within
 /// `RemoveFraudulentBlockHeader`, the reward is payable only by the
 /// bond-consuming arms. Every other shape of that transaction has to carry no
 /// reward-shaped payment at all: the `OperatorAlreadySlashed` arm, which a
@@ -1354,13 +1354,9 @@ pub fn validate_remove_fraudulent_v1(
   // 0. Verify that fraud has been proved for the specified block header,
   //    and read the fraud prover off the same authentic reference input.
   //
-  //    This is the guard that used to sit at the end of this handler as
-  //    step 5; it is unmoved in meaning — the referenced token's policy
-  //    and header suffix are authenticated exactly as before, and the
-  //    header equality below is the same `expect`. It is read first only
-  //    because the prover it also yields is what the slashing arms route
-  //    the reward to, and the fraud-proof datum is where decision 0002 §2.3 says
-  //    that identity lives.
+  //    It is read first because the prover it also yields is what the
+  //    slashing arms route the reward to, and the fraud-proof datum is where
+  //    decision 0002 §2.3 says that identity lives.
   let referenced_fraudulent_header_hash, fraud_prover, fraud_proof_asset_name <- fraud_proof.get_proven_fraud_record_with_identity(
     reference_inputs,
     fraud_proof_script_hash,
@@ -1564,9 +1560,7 @@ pub fn validate_remove_fraudulent_v1(
         )
     }
 
-  // Done. (The fraud-proof reference input that used to be verified here
-  // as step 5 is verified at step 0 above, where the prover it carries is
-  // needed by the reward routing.)
+  // Done. The fraud-proof reference input is verified at step 0 above.
   True
 }
 
@@ -1786,40 +1780,41 @@ validator mint(
   }
 }
 
-const q49_header_hash_a =
+const sample_header_hash_a =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-const q49_header_hash_b =
+const sample_header_hash_b =
   #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-const q49_genesis_header_hash =
+const sample_genesis_header_hash =
   #"00000000000000000000000000000000000000000000000000000000"
 
-const q49_operator = #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+const sample_operator =
+  #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
-const q49_other_operator =
+const sample_other_operator =
   #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
-const q49_utxo_root_a =
+const sample_utxo_root_a =
   #"1111111111111111111111111111111111111111111111111111111111111111"
 
-const q49_utxo_root_b =
+const sample_utxo_root_b =
   #"2222222222222222222222222222222222222222222222222222222222222222"
 
-const q49_event_root =
+const sample_event_root =
   #"3333333333333333333333333333333333333333333333333333333333333333"
 
 /// A one-deposit block moving the ledger root from a to b.
-fn q49_header_fixture() -> HeaderV1 {
+fn sample_header() -> HeaderV1 {
   HeaderV1 {
-    prev_utxos_root: q49_utxo_root_a,
-    utxos_root: q49_utxo_root_b,
+    prev_utxos_root: sample_utxo_root_a,
+    utxos_root: sample_utxo_root_b,
     withdrawals_root: env.empty_merkle_tree_root,
     forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: env.empty_merkle_tree_root,
-    deposits_root: q49_event_root,
-    transition_trace_root: q49_event_root,
-    event_to_step_root: q49_event_root,
+    deposits_root: sample_event_root,
+    transition_trace_root: sample_event_root,
+    event_to_step_root: sample_event_root,
     validation_traces_root: env.empty_merkle_tree_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
@@ -1834,14 +1829,14 @@ fn q49_header_fixture() -> HeaderV1 {
     expected_network_id: 0,
     min_fee_a: 0,
     min_fee_b: 0,
-    prev_header_hash: q49_header_hash_a,
-    operator_vkey: q49_operator,
+    prev_header_hash: sample_header_hash_a,
+    operator_vkey: sample_operator,
     protocol_version: protocol_version_v1,
   }
 }
 
-test q49_l295_header_shape_control_and_protocol_mutations() {
-  let control = q49_header_fixture()
+test header_shape_control_and_protocol_mutations() {
+  let control = sample_header()
   and {
     commit_block_header_output_is_valid_v1(control),
     !commit_block_header_output_is_valid_v1(
@@ -1853,11 +1848,11 @@ test q49_l295_header_shape_control_and_protocol_mutations() {
   }
 }
 
-/// The q49 block with no events: the same root move, every count zero and
+/// The one-deposit block with no events: the same root move, every count zero and
 /// every count-tied root empty.
-fn q49_zero_event_header() -> HeaderV1 {
+fn sample_zero_event_header() -> HeaderV1 {
   HeaderV1 {
-    ..q49_header_fixture(),
+    ..sample_header(),
     deposits_root: env.empty_merkle_tree_root,
     transition_trace_root: env.empty_merkle_tree_root,
     event_to_step_root: env.empty_merkle_tree_root,
@@ -1867,11 +1862,11 @@ fn q49_zero_event_header() -> HeaderV1 {
   }
 }
 
-/// Control: `q49_l295_header_shape_control_and_protocol_mutations`. The
+/// Control: `header_shape_control_and_protocol_mutations`. The
 /// zero-event header is well formed (`header_v1_is_valid`) and is refused only
 /// by `total_event_count > 0` in `commit_block_header_output_is_valid_v1`.
-test q49_l295_zero_event_header_is_refused_at_commit() {
-  let empty = q49_zero_event_header()
+test zero_event_header_is_refused_at_commit() {
+  let empty = sample_zero_event_header()
   and {
     header_v1_is_valid(empty),
     !commit_block_header_output_is_valid_v1(empty),
@@ -1882,16 +1877,16 @@ test q49_l295_zero_event_header_is_refused_at_commit() {
 }
 
 /// Each event kind alone satisfies the commit's event-count rule.
-test q49_l295_one_event_of_each_kind_commits() {
-  let empty = q49_zero_event_header()
+test one_event_of_each_kind_commits() {
+  let empty = sample_zero_event_header()
   and {
-    commit_block_header_output_is_valid_v1(q49_header_fixture()),
+    commit_block_header_output_is_valid_v1(sample_header()),
     commit_block_header_output_is_valid_v1(
       HeaderV1 {
         ..empty,
-        withdrawals_root: q49_event_root,
-        transition_trace_root: q49_event_root,
-        event_to_step_root: q49_event_root,
+        withdrawals_root: sample_event_root,
+        transition_trace_root: sample_event_root,
+        event_to_step_root: sample_event_root,
         withdrawal_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
@@ -1900,9 +1895,9 @@ test q49_l295_one_event_of_each_kind_commits() {
     commit_block_header_output_is_valid_v1(
       HeaderV1 {
         ..empty,
-        forced_transactions_root: q49_event_root,
-        transition_trace_root: q49_event_root,
-        event_to_step_root: q49_event_root,
+        forced_transactions_root: sample_event_root,
+        transition_trace_root: sample_event_root,
+        event_to_step_root: sample_event_root,
         forced_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
@@ -1911,9 +1906,9 @@ test q49_l295_one_event_of_each_kind_commits() {
     commit_block_header_output_is_valid_v1(
       HeaderV1 {
         ..empty,
-        transactions_root: q49_event_root,
-        transition_trace_root: q49_event_root,
-        event_to_step_root: q49_event_root,
+        transactions_root: sample_event_root,
+        transition_trace_root: sample_event_root,
+        event_to_step_root: sample_event_root,
         l2_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
@@ -1922,8 +1917,8 @@ test q49_l295_one_event_of_each_kind_commits() {
   }
 }
 
-test q49_l295_validation_context_scalar_control_and_mutations() {
-  let control = q49_header_fixture()
+test validation_context_scalar_control_and_mutations() {
+  let control = sample_header()
   let supported_network_and_runtime_values = HeaderV1 {
     ..control,
     block_slot: 1,
@@ -1952,46 +1947,46 @@ test q49_l295_validation_context_scalar_control_and_mutations() {
   }
 }
 
-test q49_l295_scheduled_operator_control_and_independent_mutations() {
+test scheduled_operator_control_and_independent_mutations() {
   and {
     commit_block_header_operator_is_legitimate_v1(
-      q49_operator,
-      q49_operator,
-      q49_operator,
-      q49_operator,
+      sample_operator,
+      sample_operator,
+      sample_operator,
+      sample_operator,
     ),
     !commit_block_header_operator_is_legitimate_v1(
-      q49_other_operator,
-      q49_operator,
-      q49_operator,
-      q49_operator,
+      sample_other_operator,
+      sample_operator,
+      sample_operator,
+      sample_operator,
     ),
     !commit_block_header_operator_is_legitimate_v1(
-      q49_operator,
-      q49_operator,
-      q49_other_operator,
-      q49_operator,
+      sample_operator,
+      sample_operator,
+      sample_other_operator,
+      sample_operator,
     ),
     !commit_block_header_operator_is_legitimate_v1(
-      q49_operator,
-      q49_operator,
-      q49_operator,
-      q49_other_operator,
+      sample_operator,
+      sample_operator,
+      sample_operator,
+      sample_other_operator,
     ),
     !commit_block_header_operator_is_legitimate_v1(
-      q49_operator,
-      q49_other_operator,
-      q49_operator,
-      q49_operator,
+      sample_operator,
+      sample_other_operator,
+      sample_operator,
+      sample_operator,
     ),
   }
 }
 
-test q49_l295_previous_header_control_and_independent_mutations() {
-  let previous = q49_header_fixture()
+test previous_header_control_and_independent_mutations() {
+  let previous = sample_header()
   let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_header_hash_b,
+    ..sample_header(),
+    prev_header_hash: sample_header_hash_b,
     prev_utxos_root: previous.utxos_root,
     start_time: previous.end_time,
     end_time: previous.end_time + 100,
@@ -1999,55 +1994,55 @@ test q49_l295_previous_header_control_and_independent_mutations() {
   and {
     commit_block_header_carries_previous_block_v1(
       output,
-      q49_header_hash_b,
+      sample_header_hash_b,
       previous,
     ),
     !commit_block_header_carries_previous_block_v1(
-      HeaderV1 { ..output, prev_header_hash: q49_header_hash_a },
-      q49_header_hash_b,
+      HeaderV1 { ..output, prev_header_hash: sample_header_hash_a },
+      sample_header_hash_b,
       previous,
     ),
     !commit_block_header_carries_previous_block_v1(
-      HeaderV1 { ..output, prev_utxos_root: q49_utxo_root_a },
-      q49_header_hash_b,
+      HeaderV1 { ..output, prev_utxos_root: sample_utxo_root_a },
+      sample_header_hash_b,
       previous,
     ),
     !commit_block_header_carries_previous_block_v1(
       HeaderV1 { ..output, start_time: previous.end_time - 1 },
-      q49_header_hash_b,
+      sample_header_hash_b,
       previous,
     ),
     !commit_block_header_carries_previous_block_v1(
       HeaderV1 { ..output, start_time: previous.end_time + 1 },
-      q49_header_hash_b,
+      sample_header_hash_b,
       previous,
     ),
     !commit_block_header_carries_previous_block_v1(
       HeaderV1 { ..output, protocol_version: 2 },
-      q49_header_hash_b,
+      sample_header_hash_b,
       previous,
     ),
   }
 }
 
-test q49_l295_confirmed_genesis_control_and_independent_mutations() {
+test confirmed_genesis_control_and_independent_mutations() {
   expect Some(genesis) = genesis_confirmed_state_v1(100)
   let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_genesis_header_hash,
+    ..sample_header(),
+    prev_header_hash: sample_genesis_header_hash,
     prev_utxos_root: env.empty_merkle_tree_root,
   }
   let malformed_header_hash = ConfirmedState {
     ..genesis,
-    header_hash: q49_header_hash_a,
+    header_hash: sample_header_hash_a,
   }
   let malformed_prev_hash = ConfirmedState {
     ..genesis,
-    prev_header_hash: q49_header_hash_a,
+    prev_header_hash: sample_header_hash_a,
   }
   let malformed_utxo_root = ConfirmedState {
     ..genesis,
-    utxo_root: q49_utxo_root_a,
+    utxo_root: sample_utxo_root_a,
   }
   let malformed_interval = ConfirmedState {
     ..genesis,
@@ -2056,11 +2051,11 @@ test q49_l295_confirmed_genesis_control_and_independent_mutations() {
   and {
     commit_block_header_carries_confirmed_state_v1(output, genesis),
     !commit_block_header_carries_confirmed_state_v1(
-      HeaderV1 { ..output, prev_header_hash: q49_header_hash_b },
+      HeaderV1 { ..output, prev_header_hash: sample_header_hash_b },
       genesis,
     ),
     !commit_block_header_carries_confirmed_state_v1(
-      HeaderV1 { ..output, prev_utxos_root: q49_utxo_root_b },
+      HeaderV1 { ..output, prev_utxos_root: sample_utxo_root_b },
       genesis,
     ),
     !commit_block_header_carries_confirmed_state_v1(
@@ -2089,28 +2084,28 @@ test q49_l295_confirmed_genesis_control_and_independent_mutations() {
   }
 }
 
-test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
+test confirmed_ordinary_control_and_independent_mutations() {
   let ordinary = ConfirmedState {
-    header_hash: q49_header_hash_b,
-    prev_header_hash: q49_header_hash_a,
-    utxo_root: q49_utxo_root_a,
+    header_hash: sample_header_hash_b,
+    prev_header_hash: sample_header_hash_a,
+    utxo_root: sample_utxo_root_a,
     start_time: 0,
     end_time: 100,
     protocol_version: protocol_version_v1,
   }
   let output = HeaderV1 {
-    ..q49_header_fixture(),
-    prev_header_hash: q49_header_hash_b,
+    ..sample_header(),
+    prev_header_hash: sample_header_hash_b,
   }
   and {
     commit_block_header_carries_confirmed_state_v1(output, ordinary),
     !commit_block_header_carries_confirmed_state_v1(
       output,
-      ConfirmedState { ..ordinary, header_hash: q49_header_hash_a },
+      ConfirmedState { ..ordinary, header_hash: sample_header_hash_a },
     ),
     !commit_block_header_carries_confirmed_state_v1(
       output,
-      ConfirmedState { ..ordinary, header_hash: q49_genesis_header_hash },
+      ConfirmedState { ..ordinary, header_hash: sample_genesis_header_hash },
     ),
     !commit_block_header_carries_confirmed_state_v1(
       output,

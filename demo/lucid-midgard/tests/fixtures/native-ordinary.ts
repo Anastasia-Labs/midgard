@@ -3,15 +3,11 @@
  * small, unremarkable transaction `native-tx.test.ak` uses to pin the whole
  * decode / compact / commit path for a shape a reader can hold in their head.
  *
- * This was the near-miss #588 names: the generator's ordinary branch already
- * re-derived the compact form, the transaction id and the field commitments from
- * `golden_core_native_full_tx_cbor`, but that full-CBOR literal was itself
- * hand-maintained. So the branch regenerated everything *except* its own seed,
- * and moving the seed — as #586's out-ref change had to — meant editing ~250
- * hex characters by hand inside an Aiken module.
- *
- * The construction below is what that literal now derives from. It is
- * deliberately minimal and asymmetric rather than pretty: one spend input at
+ * The generator's ordinary branch derives the compact form, the transaction id
+ * and the field commitments from `golden_core_native_full_tx_cbor`, and that
+ * full-CBOR literal derives from the construction below, so a wire change
+ * regenerates the seed too. The construction is deliberately minimal and
+ * asymmetric rather than pretty: one spend input at
  * output index 0 and one reference input at output index 1 (so the fixed-index
  * §5.3 encoding is exercised at two different indices), exactly one output
  * carrying both ada and one multi-asset entry, a non-zero fee, an upper validity

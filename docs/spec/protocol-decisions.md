@@ -221,8 +221,8 @@ A family consists of:
 2. A canonical evidence schema with strict TypeScript/Aiken codec agreement.
 3. The exact flat blake2b-256 field commitments over canonical enveloped
    preimage bytes and the canonical native codec, per
-   [`midgard-tx.md`](midgard-tx.md). No legacy PlutusData or root path, no
-   witness-encoding split and no counted field-commitment path remains.
+   [`midgard-tx.md`](midgard-tx.md), with no PlutusData or root path, no
+   witness-encoding split and no counted field-commitment path.
 4. Aiken proof steps with positive tests and negative controls showing that
    mutated evidence and a valid block both reject.
 5. A maximum and adversarial proof-fit fixture.

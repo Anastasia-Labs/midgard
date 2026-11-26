@@ -48,7 +48,7 @@ const scriptsByHash = (value: unknown): ReadonlyMap<string, Script> => {
 
 /**
  * The fixture's signed deployment over the installed scene, whose manifest
- * describes the deployment `document` (the scene's legacy deployment
+ * describes the deployment `document` (the scene's own deployment
  * document) names: each of its contracts the manifest names, with the
  * script the scene deployed under that hash and the reference the scene
  * published for it.

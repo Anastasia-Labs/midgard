@@ -162,16 +162,16 @@ fn run_tx_step_01(tx: MidgardTransaction, output_index: Int) -> Bool {
   )
 }
 
-test q27_min_ada_step_01_binds_an_accepted_transaction_output() {
+test min_ada_step_01_binds_an_accepted_transaction_output() {
   run_tx_step_01(transaction_with_output(output_at_delta(-1)), 0)
 }
 
-test q27_min_ada_step_01_rejects_an_invalid_transaction_leaf() fail {
+test min_ada_step_01_rejects_an_invalid_transaction_leaf() fail {
   let tx = transaction_with_output(output_at_delta(-1))
   run_tx_step_01(MidgardTransaction { ..tx, validity: TxIsInvalid }, 0)
 }
 
-test q27_min_ada_step_01_rejects_a_negative_output_index() fail {
+test min_ada_step_01_rejects_a_negative_output_index() fail {
   run_tx_step_01(transaction_with_output(output_at_delta(-1)), -1)
 }
 
@@ -285,11 +285,11 @@ fn run_forced_step_01(
   )
 }
 
-test q27_min_ada_step_01_binds_an_accepted_forced_output() {
+test min_ada_step_01_binds_an_accepted_forced_output() {
   run_forced_step_01(ForcedTxValid, 0, 0, 0)
 }
 
-test q27_min_ada_step_01_binds_a_rejected_forced_output() {
+test min_ada_step_01_binds_a_rejected_forced_output() {
   run_forced_step_01(
     ForcedTxInvalid { reason: OutputBelowMinAda { output_index: 0 } },
     1,
@@ -298,11 +298,11 @@ test q27_min_ada_step_01_binds_a_rejected_forced_output() {
   )
 }
 
-test q27_min_ada_step_01_rejects_an_accepted_forced_leaf_as_rejection() fail {
+test min_ada_step_01_rejects_an_accepted_forced_leaf_as_rejection() fail {
   run_forced_step_01(ForcedTxValid, 1, 0, 1)
 }
 
-test q27_min_ada_step_01_rejects_a_rejected_forced_leaf_as_acceptance() fail {
+test min_ada_step_01_rejects_a_rejected_forced_leaf_as_acceptance() fail {
   run_forced_step_01(
     ForcedTxInvalid { reason: OutputBelowMinAda { output_index: 0 } },
     0,
@@ -311,7 +311,7 @@ test q27_min_ada_step_01_rejects_a_rejected_forced_leaf_as_acceptance() fail {
   )
 }
 
-test q27_min_ada_step_01_rejects_a_mismatched_forced_reason_index() fail {
+test min_ada_step_01_rejects_a_mismatched_forced_reason_index() fail {
   run_forced_step_01(
     ForcedTxInvalid { reason: OutputBelowMinAda { output_index: 1 } },
     1,
@@ -320,19 +320,19 @@ test q27_min_ada_step_01_rejects_a_mismatched_forced_reason_index() fail {
   )
 }
 
-test q27_min_ada_step_01_rejects_an_unrelated_forced_reason() fail {
+test min_ada_step_01_rejects_an_unrelated_forced_reason() fail {
   run_forced_step_01(ForcedTxInvalid { reason: FeeBelowMinimum }, 1, 0, 1)
 }
 
-test q27_min_ada_step_01_rejects_a_negative_accepted_forced_index() fail {
+test min_ada_step_01_rejects_a_negative_accepted_forced_index() fail {
   run_forced_step_01(ForcedTxValid, 0, -1, 0)
 }
 
-test q27_min_ada_step_01_rejects_a_forced_state_with_the_wrong_direction() fail {
+test min_ada_step_01_rejects_a_forced_state_with_the_wrong_direction() fail {
   run_forced_step_01(ForcedTxValid, 0, 0, 1)
 }
 
-test q27_min_ada_step_01_binds_a_negative_rejected_forced_output() {
+test min_ada_step_01_binds_a_negative_rejected_forced_output() {
   run_forced_step_01(
     ForcedTxInvalid { reason: OutputBelowMinAda { output_index: -1 } },
     1,
@@ -341,7 +341,7 @@ test q27_min_ada_step_01_binds_a_negative_rejected_forced_output() {
   )
 }
 
-test q27_min_ada_step_01_binds_a_huge_rejected_forced_output() {
+test min_ada_step_01_binds_a_huge_rejected_forced_output() {
   run_forced_step_01(
     ForcedTxInvalid {
       reason: OutputBelowMinAda { output_index: 9_223_372_036_854_775_808 },
@@ -352,7 +352,7 @@ test q27_min_ada_step_01_binds_a_huge_rejected_forced_output() {
   )
 }
 
-test q27_min_ada_step_01_binds_the_negative_reason_index_exactly() fail {
+test min_ada_step_01_binds_the_negative_reason_index_exactly() fail {
   run_forced_step_01(
     ForcedTxInvalid { reason: OutputBelowMinAda { output_index: -1 } },
     1,
@@ -454,22 +454,22 @@ fn run_tx_finalize(
   }
 }
 
-test q27_min_ada_tx_convicts_one_lovelace_below_the_exact_floor() {
+test min_ada_tx_convicts_one_lovelace_below_the_exact_floor() {
   let output = output_at_delta(-1)
   run_tx_finalize(output, encode_midgard_tx_output(output))
 }
 
-test q27_min_ada_tx_rejects_the_exact_floor() fail {
+test min_ada_tx_rejects_the_exact_floor() fail {
   let output = output_at_delta(0)
   run_tx_finalize(output, encode_midgard_tx_output(output))
 }
 
-test q27_min_ada_tx_rejects_one_lovelace_above_the_floor() fail {
+test min_ada_tx_rejects_one_lovelace_above_the_floor() fail {
   let output = output_at_delta(1)
   run_tx_finalize(output, encode_midgard_tx_output(output))
 }
 
-test q27_min_ada_tx_rejects_a_forged_or_malformed_output_opening() fail {
+test min_ada_tx_rejects_a_forged_or_malformed_output_opening() fail {
   run_tx_finalize(output_at_delta(-1), #"ff")
 }
 
@@ -576,15 +576,15 @@ fn run_absent_step_02(
   }
 }
 
-test q27_min_ada_step_02_hands_a_negative_output_on_as_absent() {
+test min_ada_step_02_hands_a_negative_output_on_as_absent() {
   run_absent_step_02(1, -1, False, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_02_hands_an_output_at_the_count_on_as_absent() {
+test min_ada_step_02_hands_an_output_at_the_count_on_as_absent() {
   run_absent_step_02(1, 1, True, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_02_hands_a_huge_output_on_as_absent() {
+test min_ada_step_02_hands_a_huge_output_on_as_absent() {
   run_absent_step_02(
     1,
     9_223_372_036_854_775_808,
@@ -593,19 +593,19 @@ test q27_min_ada_step_02_hands_a_huge_output_on_as_absent() {
   )
 }
 
-test q27_min_ada_step_02_refuses_the_last_output_as_absent() fail {
+test min_ada_step_02_refuses_the_last_output_as_absent() fail {
   run_absent_step_02(1, 0, True, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_02_refuses_an_absent_output_before_certification() fail {
+test min_ada_step_02_refuses_an_absent_output_before_certification() fail {
   run_absent_step_02(1, 1, False, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_02_hands_a_negative_absent_output_only_to_step_03() fail {
+test min_ada_step_02_hands_a_negative_absent_output_only_to_step_03() fail {
   run_absent_step_02(1, -1, False, tx_yield_hash)
 }
 
-test q27_min_ada_step_02_hands_an_absent_output_at_the_count_only_to_step_03() fail {
+test min_ada_step_02_hands_an_absent_output_at_the_count_only_to_step_03() fail {
   run_absent_step_02(1, 1, True, tx_yield_hash)
 }
 
@@ -629,15 +629,15 @@ fn run_absent_step_03(direction: Int, successor: ByteArray) -> Bool {
   )
 }
 
-test q27_min_ada_step_03_convicts_a_rejection_of_an_absent_output() {
+test min_ada_step_03_convicts_a_rejection_of_an_absent_output() {
   run_absent_step_03(1, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_03_refuses_an_acceptance_of_an_absent_output() fail {
+test min_ada_step_03_refuses_an_acceptance_of_an_absent_output() fail {
   run_absent_step_03(0, fixture.next_step_script_hash)
 }
 
-test q27_min_ada_step_03_hands_an_absent_output_only_to_step_04() fail {
+test min_ada_step_03_hands_an_absent_output_only_to_step_04() fail {
   run_absent_step_03(1, fixture.step_script_hash)
 }
 
@@ -662,7 +662,7 @@ fn run_tx_predicate(total_length: Int, lovelace: Int) -> Bool {
   )
 }
 
-test q27_min_ada_family_binds_the_exact_production_parameter_snapshot() {
+test min_ada_family_binds_the_exact_production_parameter_snapshot() {
   let maximum_total_length = 16_384
   let floor = vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
@@ -688,7 +688,7 @@ test q27_min_ada_family_binds_the_exact_production_parameter_snapshot() {
   }
 }
 
-test q27_min_ada_step_04_finalizes_only_an_adjudicated_thread() {
+test min_ada_step_04_finalizes_only_an_adjudicated_thread() {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   step_04_validator.main.spend(
     fixture.fraud_proof_policy_id,
@@ -712,7 +712,7 @@ test q27_min_ada_step_04_finalizes_only_an_adjudicated_thread() {
   )
 }
 
-test q27_min_ada_steps_preserve_prover_cancellation() {
+test min_ada_steps_preserve_prover_cancellation() {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   let asset_name = fixture.ct_token_asset_name(block)
   let step_02_cancel_datum: Option<Step02Datum> = Some(

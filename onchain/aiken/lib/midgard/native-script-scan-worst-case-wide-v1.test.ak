@@ -33,10 +33,7 @@ test worst_case_wide_predicate() {
   )
 }
 
-/// Shape guard, and the repair of a harness defect the adversarial review
-/// found: the wide vector used to be a hand-written 5,443 leaves, seven bytes
-/// short of the budget, so it was not the wide maximum at all.
-/// `max_wide_leaves` is derived now, and this pins the derivation --
+/// Shape guard: `max_wide_leaves` is derived, and this pins the derivation --
 /// `82 01` plus a three-byte children-array header plus three bytes a leaf,
 /// filling `max_reachable_payload_bytes` to within one byte, with no room for
 /// another node.

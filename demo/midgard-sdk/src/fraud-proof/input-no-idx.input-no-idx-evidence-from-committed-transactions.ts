@@ -13,17 +13,6 @@ import {
 /** Catalogue violation identifier adjudicated by this family. */
 export const INPUT_NO_IDX_VIOLATION_ID = "input-no-idx" as const;
 
-/**
- * Release-policy boundary for direct step-02 carriage. This does not restrict
- * the consensus-valid `Complete` constructor.
- */
-export const INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT = 19;
-
-export const inputNoIdxStep02ExecutionMode = (
-  itemCount: number,
-): "direct" | "fold" =>
-  itemCount <= INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT ? "direct" : "fold";
-
 /** Catalogue category name this family is registered under (§5.1 order). */
 export const INPUT_NO_IDX_CATALOGUE_CATEGORY =
   "nonExistentInputNoIndex" as const;

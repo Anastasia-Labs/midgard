@@ -93,8 +93,8 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
     !script_proof_v1.canonical_reference_source_key(
       reference_key |> bytearray.concat(#"00"),
     ),
-    // The retired minimal-index spelling — 36 bytes, the CML `TransactionInput`
-    // form that §5.3 does not admit.
+    // The minimal-index spelling — 36 bytes, the CML `TransactionInput` form
+    // that §5.3 does not admit.
     !script_proof_v1.canonical_reference_source_key(
       #"825820"
         |> bytearray.concat(

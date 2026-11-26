@@ -1,6 +1,6 @@
 /**
- * The watcher journals' timer retries, by failure class (owner ruling
- * 2026-10-09: retry only what is transient). The background reopen of an
+ * The watcher journals' timer retries, by failure class (retry only
+ * what is transient). The background reopen of an
  * open that could not complete runs only while its cause is transient
  * (SQLite busy or locked); a file SQLite cannot open is opened again only by
  * the next use. The `journal_busy` requeue runs again on its backoff only

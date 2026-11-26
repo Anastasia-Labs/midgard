@@ -1,5 +1,4 @@
-/** Current event-relative no-reference-input stage 3; obsolete loose-root
- * and creator-transaction evidence is not an accepted input. */
+/** Event-relative no-reference-input stage 3. */
 import { createInputExistenceDeploymentStep } from "./input-existence/deployment-step.js";
 
 export const submitNoReferenceInputStep03 = createInputExistenceDeploymentStep(

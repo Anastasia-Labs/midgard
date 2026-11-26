@@ -2,10 +2,9 @@ name: Repo Tools CI
 
 # The repository's own tooling: the plain-node test suites under scripts/,
 # onchain/aiken/scripts/ and demo/scripts/lib/, the e2e acceptance runbook
-# validator, the workflow linter, and the agent-documentation checks. None of them were run by any workflow
-# before, so a red test there stayed red unseen. They are cheap, so this runs
-# on every pull request and every push to main rather than behind a path filter
-# that would need to track every file those tools read.
+# validator, the workflow linter, and the agent-documentation checks. They are
+# cheap, so this runs on every pull request and every push to main rather than
+# behind a path filter that would need to track every file those tools read.
 
 on:
   push:

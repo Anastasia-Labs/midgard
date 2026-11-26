@@ -31,8 +31,7 @@ new invocation with missing references waits through this maximum remaining
 validity, then waits for Kupo to reach the exact canonical Ogmios checkpoint.
 This includes fresh invocations: there is no persisted state that distinguishes
 a fresh start from lost submission memory. Completed canonical references can
-be reused immediately. All deployments use the bounded publisher; there is no
-legacy publication compatibility mode.
+be reused immediately. All deployments use the bounded publisher.
 
 A submit transport failure is ambiguous. A typed Ogmios rejection describes
 that attempt, and does not disprove an earlier accepted copy. Affected lanes
@@ -71,7 +70,7 @@ pnpm --dir demo run test:tx-prep:emulator
 ## Local stack comparison
 
 This is a bounded publication comparison, not L2 throughput or full deployment
-acceptance. Use a separately generated phase4-process devnet with the verified
+acceptance. Use a separately generated isolated-chain devnet with the verified
 Preprod consensus and protocol parameters. Its local identity, genesis funding,
 start time and network magic are the intended differences. Do not reset an
 existing deployment or substitute faster consensus parameters.

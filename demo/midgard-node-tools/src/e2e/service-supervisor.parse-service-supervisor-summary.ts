@@ -24,7 +24,6 @@ import {
 import {
   E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
   type HostProcessServiceSpec,
-  parseFileTerminationObservation,
   parseOutputTerminationObservation,
   parseServiceErrorClassification,
   type ServiceAttemptSummary,
@@ -48,7 +47,6 @@ const parseServiceAttemptSummary = (
     "classification",
     "cleanup",
     "outputTermination",
-    "fileTermination",
   ]);
   const parsed: ServiceAttemptSummary = {
     attempt: positiveInteger(input.attempt, `${label}.attempt`),
@@ -74,29 +72,16 @@ const parseServiceAttemptSummary = (
             input.outputTermination,
             `${label}.outputTermination`,
           ),
-    fileTermination:
-      input.fileTermination === null
-        ? null
-        : parseFileTerminationObservation(
-            input.fileTermination,
-            `${label}.fileTermination`,
-          ),
   };
   const elapsedMs =
     Date.parse(parsed.finishedAt) - Date.parse(parsed.startedAt);
-  const externalTermination =
-    parsed.outputTermination !== null || parsed.fileTermination !== null;
+  const externalTermination = parsed.outputTermination !== null;
   if (
     elapsedMs < 0 ||
     parsed.durationMs !== elapsedMs ||
-    (parsed.outputTermination !== null && parsed.fileTermination !== null) ||
     (parsed.outputTermination !== null &&
       (Date.parse(parsed.outputTermination.at) < Date.parse(parsed.startedAt) ||
         Date.parse(parsed.outputTermination.at) >
-          Date.parse(parsed.finishedAt))) ||
-    (parsed.fileTermination !== null &&
-      (Date.parse(parsed.fileTermination.at) < Date.parse(parsed.startedAt) ||
-        Date.parse(parsed.fileTermination.at) >
           Date.parse(parsed.finishedAt))) ||
     (externalTermination &&
       parsed.classification.class !== "restartable_runtime") ||
@@ -169,7 +154,6 @@ export const parseServiceSupervisorSummary = (
     terminalAttempt.signal === null &&
     !terminalAttempt.timedOut &&
     terminalAttempt.outputTermination === null &&
-    terminalAttempt.fileTermination === null &&
     !terminalAttempt.classification.restartable;
   const expectedStatus: ServiceSupervisorSummary["status"] | null =
     terminalAttempt === undefined
@@ -199,8 +183,7 @@ export const parseServiceSupervisorSummary = (
             (attempt.exitCode === 0 &&
               attempt.signal === null &&
               !attempt.timedOut &&
-              attempt.outputTermination === null &&
-              attempt.fileTermination === null))),
+              attempt.outputTermination === null))),
     )
   ) {
     throw new Error(
@@ -229,7 +212,6 @@ const FATAL_CONFIG_PATTERNS = [
   /EADDRINUSE/i,
   /unsupported provider/i,
   /missing watcher DB config/i,
-  /removed DA_MODE/i,
 ];
 
 const FATAL_PROTOCOL_PATTERNS = [

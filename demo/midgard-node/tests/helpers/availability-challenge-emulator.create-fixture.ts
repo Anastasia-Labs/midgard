@@ -52,7 +52,7 @@ let registeredScriptNames: Readonly<Record<string, string>> = {};
 export let confirmedRefusalCount = 0;
 
 /**
- * H9: asserts `attempt` is refused by local evaluation, and that the failing
+ * Asserts `attempt` is refused by local evaluation, and that the failing
  * redeemer runs the expected script under the expected purpose (or that the
  * evaluator's message matches `trace`). A refusal elsewhere, or no refusal,
  * fails the test. `attempt` is a promise the caller already started (an SDK

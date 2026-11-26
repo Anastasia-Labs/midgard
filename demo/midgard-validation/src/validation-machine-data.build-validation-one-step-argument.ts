@@ -38,7 +38,7 @@ export const encodeValidationAuxiliaryWitnessCbor = (
   );
 
 /**
- * `resolveFieldCarriage` is #600's seam: the tier every field-reading step's
+ * `resolveFieldCarriage` is the seam: the tier every field-reading step's
  * evidence names is chosen **here**, because this is where the auxiliary first
  * becomes committed evidence and the earliest point at which a transaction — and
  * therefore a reference-input set — exists. Omit it inside §8.3's tier-1 domain;

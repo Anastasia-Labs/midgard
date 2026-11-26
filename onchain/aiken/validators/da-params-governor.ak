@@ -103,23 +103,17 @@ fn sorted_unique_len_from(
 /// division. The two-thirds term is what keeps a quorum from dropping either
 /// threshold to a sub-two-thirds slice of its own set.
 ///
-/// There is no lower clamp, and there is no set-size minimum beside it. Two
-/// owner rulings brought it here:
+/// There is no lower clamp and no set-size minimum. A one-member DA committee
+/// floors at one, so the single-key attest loop is representable, and a
+/// one-owner set carrying `update_threshold == 1` is representable, so
+/// single-key *governance* — one key rotating the committee and both
+/// thresholds — is accepted behaviour.
 ///
-/// - **2026-08-11** retired the floor's `max(2, …)` clamp —
-///   "governor floors become `ceil(2n/3)` with n ≥ 1" — so a one-member DA
-///   committee floors at one and the single-key attest loop is representable.
-/// - **2026-08-13 (in-session, recorded on #602)** dropped the owner-set
-///   minimum to one. A one-owner set carrying `update_threshold == 1` is now
-///   representable, so single-key *governance* — one key rotating the committee
-///   and both thresholds — is accepted behaviour by owner decision rather than
-///   an unrepresentable state.
-///
-/// What still binds at every set size is this floor itself: it never returns
-/// less than one, so no owner set and no committee, however small, can name a
-/// threshold of zero. That is the whole of what survives of the drain
-/// protection, and `da_params_governor_invariant_owner_set_drain_protection`
-/// measures exactly it.
+/// What binds at every set size is this floor itself: it never returns less
+/// than one, so no owner set and no committee, however small, can name a
+/// threshold of zero. That is the whole of the drain protection, and
+/// `da_params_governor_invariant_owner_set_drain_protection` measures exactly
+/// it.
 ///
 /// Source: `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
 /// §4 — `da_threshold >= ceil(2*committee_len/3)` and
@@ -146,12 +140,11 @@ fn valid_datum(
   expect datum.da_threshold >= governed_threshold_floor(committee_len)
   expect datum.da_threshold <= committee_len
 
-  // No `expect owner_len >= min_owner_count` here. The 2026-08-13 owner ruling
-  // dropped that minimum to one, and at one it would be a guard that cannot
-  // fail: `sorted_unique_len_at_most` opens with `expect [first, ..rest] =
-  // keys`, so an empty owner set already aborts before a count exists to
-  // compare. The non-emptiness refusal is therefore structural rather than
-  // restated, and it is measured directly by
+  // No `expect owner_len >= min_owner_count` here. The minimum is one, and at
+  // one it would be a guard that cannot fail: `sorted_unique_len_at_most` opens
+  // with `expect [first, ..rest] = keys`, so an empty owner set already aborts
+  // before a count exists to compare. The non-emptiness refusal is therefore
+  // structural rather than restated, and it is measured directly by
   // `da_params_governor_rejects_empty_owner_set` so nothing here rests on the
   // reader trusting that argument.
   let owner_len = sorted_unique_len_at_most(
@@ -348,7 +341,7 @@ fn floor_is_satisfiable_from(set_len: Int, max_len: Int) -> Bool {
 /// True when `governed_threshold_floor` is at least `least` for every set size
 /// in `set_len..max_len`.
 ///
-/// The amended floor has no lower clamp and no set-size minimum beside it, so
+/// The floor has no lower clamp and no set-size minimum beside it, so
 /// "no set can name a threshold of zero" is the one lower bound left to
 /// measure. This walker measures it over the whole representable range rather
 /// than asserting it from the shape of the arithmetic.
@@ -465,9 +458,9 @@ fn test_governor_spend(
   )
 }
 
-/// The params the spend-seam tests start from: a 6-member committee at the F04
-/// floor, and a 3-owner set whose `update_threshold` of two is also at its
-/// floor.
+/// The params the spend-seam tests start from: a 6-member committee at the
+/// governed floor, and a 3-owner set whose `update_threshold` of two is also at
+/// its floor.
 fn test_governor_input_params() -> DaParamsDatum {
   test_params(6, 4, 3, 2)
 }
@@ -536,16 +529,14 @@ fn test_governor_mint(minted_datum: DaParamsDatum) -> Bool {
 /// majority of a committee insufficient once `valid_datum` floors
 /// `da_threshold` with it.
 ///
-/// The `1 -> 1` row is the amended floor itself, and is the row that reddens if
-/// the lower clamp is ever restored: under the retired `max(2, ceil(2n/3))` the
-/// floor at a one-member committee was two, which no such committee could name.
-/// The `2 -> 2` and `3 -> 2` rows are what show the amendment moved nothing
-/// else — they are the sizes where the retired clamp used to bind, and both
-/// still floor at two because the two-thirds ceiling already does.
+/// The `1 -> 1` row is the row that reddens if a lower clamp is added: under
+/// `max(2, ceil(2n/3))` the floor at a one-member committee would be two, which
+/// no such committee could name. The `2 -> 2` and `3 -> 2` rows floor at two
+/// because the two-thirds ceiling does.
 ///
-/// Sample-pinned, not a full sweep: the sample covers the whole lifted region
-/// and the boundary where the ceiling overtakes two (`3 -> 2`, `4 -> 3`), then
-/// reaches the top of the representable range (`100`, `255`,
+/// Sample-pinned, not a full sweep: the sample covers the whole small-set
+/// region and the boundary where the ceiling overtakes two (`3 -> 2`,
+/// `4 -> 3`), then reaches the top of the representable range (`100`, `255`,
 /// `256 == max_indexed_signer_count`) so a defect in the large-`n` arithmetic
 /// cannot hide below the sample. The off-chain floor tests sample the same
 /// sizes.
@@ -574,13 +565,6 @@ test da_params_governor_invariant_da_threshold_majority_floor() {
 /// `max_indexed_signer_count`, so the floor is a bound that admits a threshold
 /// rather than one that admits nothing. Exhaustive over that range rather than
 /// sampled.
-///
-/// This test used to be named for a "2-of-N update floor" and asserted that the
-/// floor never returns less than two over the owner-set sizes the old
-/// `min_owner_count` admitted. Both halves of that claim are gone: the
-/// 2026-08-13 owner ruling dropped the owner-set minimum to one, and at one the
-/// floor is one. Renaming rather than weakening in place, so a reader cannot
-/// mistake the surviving claim for the retired one.
 test da_params_governor_invariant_update_threshold_floor() {
   and {
     governed_threshold_floor(1) == 1,
@@ -591,16 +575,14 @@ test da_params_governor_invariant_update_threshold_floor() {
   }
 }
 
-/// Invariant 3 — what survives of owner-set drain protection.
+/// Invariant 3 — owner-set drain protection.
 ///
-/// Two owner rulings removed the rest of it. The 2026-08-11 ruling retired the
-/// floor's lower clamp; the 2026-08-13 ruling dropped the owner-set minimum to
-/// one, so a one-owner set at `update_threshold == 1` is representable and
-/// single-key governance rotation is accepted behaviour. What is left is this:
-/// the floor is at least one at *every* set size, so no owner set and no
-/// committee — however small — can name a threshold of zero. A zero threshold
-/// would be governance with no signature at all, which is the one drain neither
-/// ruling licensed.
+/// The floor has no lower clamp and the owner set has no minimum beyond one, so
+/// a one-owner set at `update_threshold == 1` is representable and single-key
+/// governance rotation is accepted behaviour. What is protected is this: the
+/// floor is at least one at *every* set size, so no owner set and no committee
+/// — however small — can name a threshold of zero. A zero threshold would be
+/// governance with no signature at all.
 ///
 /// Exhaustive over `1..max_indexed_signer_count` rather than argued from the
 /// shape of the arithmetic, and paired with the `1 -> 1` value so the bound is
@@ -617,17 +599,17 @@ test da_params_governor_invariant_owner_set_drain_protection() {
 
 // ## Valid-boundary controls
 //
-// Both controls sit exactly on the F04 floor, so they prove the governed
+// Both controls sit exactly on the governed floor, so they prove the governed
 // bound admits the smallest configuration it is meant to admit rather than
 // rejecting everything.
 
-/// Control: a 6-member committee with `da_threshold` exactly at the F04 floor
-/// `ceil(2*6/3) == 4` is accepted.
+/// Control: a 6-member committee with `da_threshold` exactly at the governed
+/// floor `ceil(2*6/3) == 4` is accepted.
 test da_params_governor_control_da_threshold_at_floor_accepted() {
   test_valid_datum(test_params(6, 4, 3, 2))
 }
 
-/// Control: a 4-owner set with `update_threshold` exactly at the F04 floor
+/// Control: a 4-owner set with `update_threshold` exactly at the governed floor
 /// `ceil(2*4/3) == 3` is accepted.
 test da_params_governor_control_update_threshold_at_floor_accepted() {
   test_valid_datum(test_params(3, 2, 4, 3))
@@ -639,21 +621,13 @@ test da_params_governor_control_update_threshold_at_floor_accepted() {
 // one under test sits at or above its own governed bound, so the failure can
 // only be the named violation.
 //
-// The third rejection has now been re-scoped twice, and the history matters
-// because the class it names kept shrinking. Originally it was "an owner set
-// drained to one key is unrepresentable", and it failed on two overlapping
-// bounds at once. The 2026-08-11 ruling removed the overlap by lowering
-// `governed_threshold_floor(1)` to one, leaving `owner_len >= min_owner_count`
-// as the single rejecting bound. The 2026-08-13 ruling then removed that
-// minimum outright, so a one-owner set is *accepted* — see the single-owner
-// governance section below, which pins the acceptance positively.
-//
-// What survives as a rejection is the drain the rulings did not license: an
-// owner set drained past one, to zero. That is refused structurally, by
+// A one-owner set is *accepted* — see the single-owner governance section
+// below, which pins the acceptance positively. The third rejection is an owner
+// set drained to zero. That is refused structurally, by
 // `sorted_unique_len_at_most`'s opening `expect [first, ..rest] = keys`, and
 // the test below is the measurement of it.
 
-/// Rejection: a bare majority `3` of a 6-member committee is below the F04
+/// Rejection: a bare majority `3` of a 6-member committee is below the governed
 /// two-thirds floor of `4`, so DA capture by a sub-two-thirds committee slice
 /// is unrepresentable.
 test da_params_governor_rejects_da_threshold_below_floor() fail {
@@ -661,17 +635,17 @@ test da_params_governor_rejects_da_threshold_below_floor() fail {
 }
 
 /// Rejection: a single-key `update_threshold` over a 3-owner set is below the
-/// F04 floor of `2`, so single-key governance capture is unrepresentable.
+/// governed floor of `2`, so single-key governance capture is unrepresentable.
 test da_params_governor_rejects_update_threshold_below_floor() fail {
   test_valid_datum(test_params(6, 4, 3, 1))
 }
 
 /// Rejection: draining the owner set to *zero* owners is unrepresentable.
 ///
-/// This is the drain neither owner ruling licensed, and the only one left. It
-/// is refused before any threshold bound is reached: `sorted_unique_len_at_most`
-/// opens with `expect [first, ..rest] = keys`, which aborts on the empty list,
-/// so there is never an `owner_len` to compare a threshold against.
+/// It is refused before any threshold bound is reached:
+/// `sorted_unique_len_at_most` opens with `expect [first, ..rest] = keys`,
+/// which aborts on the empty list, so there is never an `owner_len` to compare
+/// a threshold against.
 ///
 /// Measured rather than argued, because that refusal is structural — it is a
 /// consequence of how the length walker is written, not a line anyone declared
@@ -691,8 +665,7 @@ test da_params_governor_rejects_empty_owner_set() fail {
 /// Consequence, exhaustively: over a one-member committee exactly one
 /// `da_threshold` in `0..1` satisfies both governed bounds. Counting rather
 /// than existence-checking is deliberate — it says the admissible threshold is
-/// `1` and nothing else crept in, so the lift is the single intended value
-/// rather than a bound that stopped constraining.
+/// `1` and nothing else.
 test da_params_governor_accepts_single_member_committee_thresholds() {
   thresholds_satisfying_floor(1, 0, 0) == 1
 }
@@ -705,8 +678,9 @@ test da_params_governor_accepts_single_member_committee_datum() {
   test_valid_datum(test_params(1, 1, 4, 3))
 }
 
-/// Retained negative: the lift did not disable the upper bound. A one-member committee naming `da_threshold == 2` is still
-/// rejected because that threshold exceeds the committee. Single disposition —
+/// Negative: the upper bound holds at one member. A one-member committee
+/// naming `da_threshold == 2` is rejected because that threshold exceeds the
+/// committee. Single disposition —
 /// the owner set is at its own floor and `2 >= governed_threshold_floor(1) ==
 /// 1` holds, so `da_threshold <= committee_len` is the only bound left to
 /// fail.
@@ -721,11 +695,10 @@ test da_params_governor_rejects_single_member_committee_threshold_above_size() f
 // `update_threshold == 1` is representable and can exercise the full governance
 // power: rotating the committee and both thresholds on its own signature.
 //
-// That is *accepted behaviour by owner decision*, not an oversight, so it is
-// pinned positively rather than left to be inferred from the absence of a
-// rejection. The negative that survives is pinned beside it: one owner still
-// cannot name a threshold larger than the set, and zero owners are still
-// refused (`da_params_governor_rejects_empty_owner_set`).
+// That is *accepted behaviour*, not an oversight, so it is pinned positively
+// rather than left to be inferred from the absence of a rejection. The negative
+// is pinned beside it: one owner cannot name a threshold larger than the set,
+// and zero owners are refused (`da_params_governor_rejects_empty_owner_set`).
 
 /// Consequence, at the datum: a one-owner set governing at `update_threshold`
 /// one is accepted. The committee sits at its own floor, so the owner bounds
@@ -747,7 +720,7 @@ test da_params_governor_accepts_single_owner_datum() {
 /// one that does, and the owner-side bound is measured by the datum tests
 /// beside this one.
 ///
-/// This is the strongest positive statement of the ruling, and deliberately
+/// This is the strongest positive statement of it, and deliberately
 /// stronger than the datum test above: it runs the real `spend` handler, so it
 /// measures that one key satisfies `owner_quorum_met` at `update_threshold ==
 /// 1` *and* that the rotated params pass `valid_datum` on the continuing
@@ -760,11 +733,11 @@ test da_params_governor_accepts_single_owner_governance_rotation() {
   )
 }
 
-/// Retained negative: dropping the owner-set minimum did not disable the owner upper bound. A one-owner set naming
-/// `update_threshold == 2` is still rejected because that threshold exceeds the
-/// set. Single disposition — the committee is at its own floor and
-/// `2 >= governed_threshold_floor(1) == 1` holds, so `update_threshold <=
-/// owner_len` is the only bound left to fail.
+/// Negative: the owner upper bound holds at one owner. A one-owner set naming
+/// `update_threshold == 2` is rejected because that threshold exceeds the set.
+/// Single disposition — the committee is at its own floor and
+/// `2 >= governed_threshold_floor(1) == 1` holds, so
+/// `update_threshold <= owner_len` is the only bound left to fail.
 test da_params_governor_rejects_single_owner_threshold_above_size() fail {
   test_valid_datum(test_params(6, 4, 1, 2))
 }
@@ -774,16 +747,16 @@ test da_params_governor_rejects_single_owner_threshold_above_size() fail {
 // The mint path has its own `valid_datum` call, in
 // `params_output_datum_at_script`, and it is the one that binds the governed
 // floors to the params a deployment is *initialised* with rather than only to
-// the ones a later update continues. Since both owner rulings, single-key
-// params are not what it refuses: a one-member committee and a one-owner set
-// are mintable, and the node's single-key defaults initialise with warnings
-// rather than being rejected here. What this seam still refuses is an initial
-// datum below the governed floors. It needs its own differential pair:
+// the ones a later update continues. Single-key params are not what it
+// refuses: a one-member committee and a one-owner set are mintable, and the
+// node's single-key defaults initialise with warnings rather than being
+// rejected here. What this seam refuses is an initial datum below the governed
+// floors. It needs its own differential pair:
 // deleting that `expect` left every other selector green.
 
 /// Mint-seam control: initialising a 6-member committee whose `da_threshold`
-/// sits exactly on the F04 floor is accepted, so the negative below is not a
-/// policy that refuses every initialisation.
+/// sits exactly on the governed floor is accepted, so the negative below is not
+/// a policy that refuses every initialisation.
 test da_params_governor_mint_control_initial_params_at_floor_accepted() {
   test_governor_mint(test_params(6, 4, 3, 2))
 }

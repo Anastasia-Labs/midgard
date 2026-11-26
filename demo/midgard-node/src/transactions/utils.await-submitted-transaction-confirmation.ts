@@ -135,8 +135,7 @@ export function handleSignSubmit(
  * unbounded transaction ends at the fixed budget (`confirmationTimeoutMs`
  * for each of the `confirmationRetries + 1` attempts) with
  * {@link TxConfirmError}. Every provider read is bounded by
- * `confirmationTimeoutMs`, the deadline each status read had under the
- * retired Lucid wait. On the Lucid emulator each poll first produces the
+ * `confirmationTimeoutMs`. On the Lucid emulator each poll first produces the
  * block a pending transaction needs, and the wait runs on the emulator's
  * clock.
  */

@@ -1,5 +1,5 @@
 /**
- * First-seen input claims (design D6), over real HTTP on a real database
+ * First-seen input claims, over real HTTP on a real database
  * through the production admission writer and tx-queue processor: a second
  * `/submit` tx spending an input a pending tx claimed is refused with 409 and
  * the first is untouched; the claims go when the first tx's verdict lands or

@@ -70,8 +70,8 @@ export const ValidationPrepareSelectedSpendRedeemer =
 
 // The canonical-decode preparation commits to the transition
 // alone — the validator computes `hash_one_step_evidence(transition,
-// NoAuxiliaryWitness)` on-chain, so its `PrepareSelected` carries no auxiliary
-// and the retired `PrepareSelectedByEvidenceHash` arm is gone. Single Aiken
+// NoAuxiliaryWitness)` on-chain, so its `PrepareSelected` carries no auxiliary.
+// Single Aiken
 // constructor: modeled as Data.Object (Lucid unwraps a one-member Data.Enum),
 // which still emits the required constructor-0 wire shape.
 export const ValidationCanonicalDecodePrepareSelectedActionSchema = Data.Object(

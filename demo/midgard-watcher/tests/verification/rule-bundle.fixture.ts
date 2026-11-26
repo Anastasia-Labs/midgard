@@ -157,5 +157,5 @@ export const authorityRejected = (
     expect(authorityError.path).toBe(path);
     return authorityError;
   }
-  throw new Error("Expected signed W02 deployment-authority rejection");
+  throw new Error("Expected signed deployment-authority rejection");
 };

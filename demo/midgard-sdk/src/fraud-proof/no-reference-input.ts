@@ -1,8 +1,7 @@
 /**
- * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
- * remediation): thread state carries the §2.5 anchor rather than a per-field
- * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
- * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * Thread state carries the §2.5 anchor rather than a per-field collection
+ * commitment, and a step redeemer carries a `FieldOpeningV1` rather than a
+ * reproduced `..._preimage: List<…>`; see
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
@@ -63,8 +62,8 @@ export const NoReferenceInputStep01SpendRedeemer =
 // ## Step 02 — provide the reference-inputs preimage and select the bad input
 
 /**
- * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.State`. #604: the
- * retired `bad_tx_reference_inputs_hash` became the §2.5 anchor `bad_tx_id`.
+ * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.State`: the §2.5
+ * anchor `bad_tx_id`.
  */
 export const NoReferenceInputStep02StateSchema =
   InputExistenceSourceStateSchema;
@@ -74,19 +73,10 @@ export type NoReferenceInputStep02State = Data.Static<
 export const NoReferenceInputStep02State =
   asDataType<NoReferenceInputStep02State>(NoReferenceInputStep02StateSchema);
 
-export const NoReferenceInputStep02DatumSchema = faultProofStepDatumSchema(
-  NoReferenceInputStep02StateSchema,
-);
-export type NoReferenceInputStep02Datum = Data.Static<
-  typeof NoReferenceInputStep02DatumSchema
->;
-export const NoReferenceInputStep02Datum =
-  asDataType<NoReferenceInputStep02Datum>(NoReferenceInputStep02DatumSchema);
-
 /**
  * Mirrors `midgard/fraud_proofs/no_reference_input/step_02.Args`. Field 1, not
- * field 0 — the index is a literal at the on-chain call site, and §4 removed the
- * domain separation that used to make the two distinguishable by hash alone.
+ * field 0 — the index is a literal at the on-chain call site, and §4 has no
+ * domain separation that would make the two distinguishable by hash alone.
  */
 export const NoReferenceInputStep02ArgsSchema = InputExistenceSelectArgsSchema;
 export type NoReferenceInputStep02Args = Data.Static<

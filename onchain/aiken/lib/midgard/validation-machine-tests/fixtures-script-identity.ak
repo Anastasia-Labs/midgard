@@ -314,12 +314,11 @@ pub fn crossing_inline_source_hash_fixture() -> Pair<
 //     `verify_script_sources_non_output_semantics_v1` and
 //     `verify_one_step_evidence`.
 //
-// Two of the four confirmed production defects on this branch came from that
-// single structural cause: the stage-7 deployed successor checks demanded the
-// Plutus `serialiseData` successor encoding while the evidence path's
-// `script_sources_control_successor_is_exact` demanded the canonical
-// definite-length encoding, so the deployed stage-7 path was unsatisfiable for
-// every transaction while the evidence path worked.
+// Two routes over one rule can drift apart: if the stage-7 deployed successor
+// checks demanded the Plutus `serialiseData` successor encoding while the
+// evidence path's `script_sources_control_successor_is_exact` demanded the
+// canonical definite-length encoding, the deployed stage-7 path would be
+// unsatisfiable for every transaction while the evidence path worked.
 //
 // The controls below pin the two routes together on ONE shared fixture per
 // stage, for an accepting transition AND for a mutated transition. Agreement
@@ -327,11 +326,11 @@ pub fn crossing_inline_source_hash_fixture() -> Pair<
 // that is *wider* than the canonical rule is a soundness break of the dispute
 // game (a step `verify_one_step` rejects can be won on-chain), while a
 // deployed route that is narrower is a liveness break. A happy-path-only guard
-// would not have caught the mutated-successor half of defect 4.
+// would miss the mutated-successor half.
 //
 // Each test is deliberately built from the smallest fixture that reaches the
-// stage -- this module is under aiken#1389, so every extra fixture costs
-// compile minutes.
+// stage -- this module compiles slowly, so every extra fixture costs compile
+// minutes.
 // ====================================================================
 /// The deployed narrow route and the generic route must return the same
 /// verdict, and that verdict must be `expected`. Both arguments are evaluated

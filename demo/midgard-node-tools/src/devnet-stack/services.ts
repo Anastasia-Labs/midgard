@@ -150,7 +150,7 @@ export const preflightServiceConfigs = async (
 /**
  * Every service the stack starts is a role process (node `listen`, the DA
  * committee and its public reader, the watcher), reading L1 only through its
- * follower (option E). The harness is a tool and may use Kupmios, but none of
+ * follower. The harness is a tool and may use Kupmios, but none of
  * that reaches a role: a spec whose environment carries a Kupo, Ogmios,
  * Blockfrost or tool `L1_ACCESS` setting is refused before anything starts.
  * The supervisor passes a service only `PATH`, `HOME` and this environment.

@@ -447,9 +447,9 @@ it("sizes the authority from workload and throughput with bounded confirmation a
 
 it("resolves a canonically invalid chain and refuses replacements without mutually exclusive funding evidence", async () => {
   const f = await fixture(3);
-  const obsolete = await f.build();
+  const invalidChain = await f.build();
   const journal = await PublicationJournal.open(f.path);
-  for (const tx of obsolete) await journal.prepare(tx);
+  for (const tx of invalidChain) await journal.prepare(tx);
   await journal.close();
   // Another confirmed wallet transaction consumed the old root. Its returned
   // plain funding can safely anchor a replacement under the same live authority.
@@ -480,7 +480,7 @@ it("resolves a canonically invalid chain and refuses replacements without mutual
   try {
     expect(restored.records.size).toBe(3);
     expect(
-      obsolete.every(
+      invalidChain.every(
         ({ hash }) => restored.records.get(hash)?.outcome === "rejected",
       ),
     ).toBe(true);

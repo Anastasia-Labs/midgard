@@ -177,7 +177,7 @@ export const layOutMidgardFieldCarriage = ({
 };
 
 // ---------------------------------------------------------------------------
-// §8.3 erratum E1 — the publishable frontier
+// §8.3 signed publication capacity — the publishable frontier
 // ---------------------------------------------------------------------------
 
 /**
@@ -192,9 +192,7 @@ export const MAX_L1_TX_BYTES =
  * The transaction-side allowance separating the *exact* frontier (a
  * publication that lands on `maxTxSize` to the byte) from the *reliable* one
  * (the same publication with room for the variability a real submission path
- * introduces). Carried over from the counted era's
- * `proofItemEnvelopeReliabilityReserveBytes` so the flat frontier is
- * comparable to the counted bound it supersedes.
+ * introduces).
  */
 export const MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES = 512;
 
@@ -206,10 +204,7 @@ export const MIDGARD_CARRIAGE_RELIABILITY_RESERVE_BYTES = 512;
  * an inline datum is carried in the output as a CBOR byte string wrapping the
  * serialised Plutus Data, and that wrapper's own head grows with the datum, so
  * the third term lives in {@link midgardCarriagePublicationFramingBytes}
- * rather than here. An earlier revision folded a head of 3 into this constant
- * and published 248 as "fixed, payload-independent"; it is neither, and the
- * error ran in the unsafe direction above a 65,536-byte datum. See
- * {@link midgardCarriagePublicationFramingBytes}.
+ * rather than here.
  */
 export const MIDGARD_CARRIAGE_PUBLICATION_FIXED_FRAMING_BYTES = 245;
 
@@ -228,17 +223,16 @@ const cborHeadBytes = (length: number): number =>
  * 24-byte datum, two below 256, three below 65,536 and five above it, so the
  * non-payload cost is 246, 247, 248 and 250 bytes respectively. Across the
  * whole of the carriage ladder the datum sits in `[256, 65_536)` and the answer
- * is a flat 248 — which is why an earlier revision mistook it for a constant —
- * but the flat region is bounded on both sides, and only the lower bound is
- * safe to be wrong about. Overstating a 22-byte publication by two bytes
+ * is a flat 248, but the flat region is bounded on both sides, and only the
+ * lower bound is safe to be wrong about. Overstating a 22-byte publication by two bytes
  * refuses nothing that would have fitted; understating a publication whose
  * datum crosses 65,536 bytes would hand a caller a transaction the ledger
- * rejects, which is the exact failure §8.3 erratum E1 exists to stop. Modelling
- * the head removes the unsafe direction rather than documenting around it.
+ * rejects, which is the exact failure the §8.3 publication guard stops.
+ * Modelling the head removes the unsafe direction.
  *
  * Every value this function returns at a carriage-relevant size is pinned
  * against a real signed emulator transaction by
- * `§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound` in
+ * `§8.3 the tier-2 raw-UTxO bound` in
  * `demo/midgard-validation/tests/field-preimage-carriage-fit-emulator.test.ts`,
  * which samples both sides of the 24-, 256- and 64-byte boundaries.
  */
@@ -257,7 +251,7 @@ export const midgardCarriagePublicationFramingBytes = (
  * of 64-byte definite chunks — `5f 5840 … ff` — and each chunk pays its own
  * two-byte head. That is the ≈3.125% payload-proportional cost that makes the
  * framing of a publication a function of its payload rather than a constant,
- * and it is the cost §8.3's erratum E1 quantifies.
+ * and it is the cost §8.3's signed publication capacity accounts for.
  */
 export const midgardCarriageDataByteStringBytes = (
   payloadBytes: number,

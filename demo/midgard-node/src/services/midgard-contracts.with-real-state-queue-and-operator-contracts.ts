@@ -207,7 +207,7 @@ export const withRealStateQueueAndOperatorContracts = (
     const withRealHubOracleDepositAndTxOrder: SDKCore.MidgardValidators = {
       ...withRealHubOracleAndDeposit,
       txOrder: realTxOrderContracts.txOrder,
-      // #579 ruling A. The real certificate has to be propagated, not left as
+      // The real certificate has to be propagated, not left as
       // the always-succeeds stand-in it inherits from the base set: the tx-order
       // mint above is parameterized by THIS policy id, so a set that reported
       // the stand-in would describe a door the deployed script does not consult.

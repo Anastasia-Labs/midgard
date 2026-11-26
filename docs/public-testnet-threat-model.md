@@ -24,7 +24,7 @@ honest-operator conviction remain meaningful.
 The covered boundary includes Aiken validators, SDK and Lucid builders, native
 ledger and follower processes, node and workers, committee transport/storage,
 watcher and proof tooling, operator CLI, public/admin HTTP, deployment and
-release tooling. Legacy/reference code and third-party services are not claimed
+release tooling. Reference-only code and third-party services are not claimed
 to be deployed testnet controls. A vulnerability in their integration or dependency
 use is still reportable; no blanket dependency or trusted-role exclusion applies.
 

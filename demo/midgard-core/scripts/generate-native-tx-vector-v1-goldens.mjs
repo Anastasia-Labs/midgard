@@ -6,13 +6,11 @@
  * pin every native-V1 schema and commitment language against one small
  * transaction.
  *
- * These constants were **hand-mirrored twins** of the values
- * `tests/native-codec.test.ts` computes: the TypeScript suite pinned them in an
- * inline expectation object, the Aiken module repeated them as `n0x` literals,
- * and nothing connected the two. #588 names this as one of the five seed families
- * with no generator — greening the Aiken side after a codec change meant
- * retyping ~2 kB of hex into a `.ak` file, which is how cross-language drift is
- * born.
+ * These constants are the values `tests/native-codec.test.ts` computes.
+ * Without a generator the TypeScript suite and the Aiken module's `n0x`
+ * literals would be hand-mirrored twins, and greening the Aiken side after a
+ * codec change would mean retyping ~2 kB of hex into a `.ak` file, which is how
+ * cross-language drift is born.
  *
  * The channel is the usual one:
  *
@@ -89,8 +87,8 @@ const AIKEN_CONSTANTS = {
 };
 
 // The same self-describing envelope the sibling channels' fixtures carry: what
-// this file is, which document defines it, and — the part #588 is about — which
-// script writes it. A generated artifact that does not name its generator is one
+// this file is, which document defines it, and which script writes it. A
+// generated artifact that does not name its generator is one
 // hand-edit away from being indistinguishable from a hand-written one.
 writeOrCheck(
   generatedJsonPath,

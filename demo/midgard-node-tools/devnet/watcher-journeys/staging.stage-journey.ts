@@ -582,7 +582,7 @@ export async function stageJourney(
       let successorPredecessor = existsSync(successorPredecessorPath)
         ? await readJourneyArtifact<JourneySuccessor>(successorPredecessorPath)
         : predecessor;
-      // A historically completed proof may be resumed after another family
+      // A proof completed earlier may be resumed after another family
       // advanced the tail. Only a successor with no persisted transaction may
       // choose the new head; signed attempts keep their original predecessor.
       if (

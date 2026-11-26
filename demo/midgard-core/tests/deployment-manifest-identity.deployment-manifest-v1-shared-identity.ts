@@ -30,8 +30,8 @@ import {
 describe("DeploymentManifestV1 shared identity", () => {
   it("includes every registered fraud-proof validator in the canonical registry", () => {
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain("fraudProofZeroInput");
-    // #547 added the no-reference-input, reference-input-no-idx and
-    // invalid-signature first-step validators. Each must be present
+    // The no-reference-input, reference-input-no-idx and
+    // invalid-signature first-step validators must each be present,
     // and the catalogue order must name exactly the same set of categories in
     // the same positions.
     expect(DEPLOYMENT_MANIFEST_CONTRACT_NAMES).toContain(
@@ -528,8 +528,9 @@ describe("DeploymentManifestV1 shared identity", () => {
     expect(() =>
       parseDeploymentManifestEconomics({ ...bounded, extra: true }),
     ).toThrow(/must contain exactly/u);
-    const { proverCollateralFloorLovelace: _omitted, ...legacy } = bounded;
-    expect(() => parseDeploymentManifestEconomics(legacy)).toThrow(
+    const { proverCollateralFloorLovelace: _omitted, ...withoutFloor } =
+      bounded;
+    expect(() => parseDeploymentManifestEconomics(withoutFloor)).toThrow(
       /must contain exactly/u,
     );
     expect(() =>
@@ -705,21 +706,6 @@ describe("DeploymentManifestV1 shared identity", () => {
         parseDeploymentManifestAvailabilityChallenge(missing),
       ).toThrow(/availabilityChallenge must contain exactly/u);
     }
-    // A manifest written before the pooled bond carries the old DA bond and
-    // none of the pool amounts.
-    const {
-      daSlashPenaltyLovelace: _penalty,
-      daBondMinTopUpLovelace: _topUp,
-      daBondPoolFloorLovelace: _floor,
-      challengeRecordLovelace: _record,
-      ...legacy
-    } = availability;
-    expect(() =>
-      parseDeploymentManifestAvailabilityChallenge({
-        ...legacy,
-        daBondLovelace: 10_000_000_000,
-      }),
-    ).toThrow(/availabilityChallenge must contain exactly/u);
   });
 
   it("rejects tampering, missing fields, and extra fields", () => {

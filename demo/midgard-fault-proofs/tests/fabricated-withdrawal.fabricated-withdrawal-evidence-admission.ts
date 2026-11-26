@@ -123,7 +123,7 @@ export const withdrawalEventDatum = ({
   refund_datum: "NoDatum",
 });
 
-/** Legacy content fixture encoded canonically before conversion to a history payload. */
+/** The canonical datum bytes of a withdrawal event. */
 export const eventDatumBytes = (datum: SDK.WithdrawalOrderDatum): string =>
   SDKFraudProof.withdrawalEventDatumBytes(datum);
 

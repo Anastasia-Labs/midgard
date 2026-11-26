@@ -76,8 +76,8 @@ export const ENROLLED = [
     tools: ["cardano-node", "ogmios", "kupo", "mithril-client"],
   },
   ...[
-    "demo/midgard-node-tools/devnet/phase4-process/compose.yaml",
-    "demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh",
+    "demo/midgard-node-tools/devnet/isolated-chain/compose.yaml",
+    "demo/midgard-node-tools/devnet/isolated-chain/scripts/common.sh",
   ].map((path) => ({
     path,
     pins: images,

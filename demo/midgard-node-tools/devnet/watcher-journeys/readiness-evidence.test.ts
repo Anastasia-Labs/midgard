@@ -109,6 +109,7 @@ beforeEach(async () => {
     hubOraclePolicyId: HUB_ORACLE_POLICY_ID,
     completion: TERMINAL,
     successor: SUCCESSOR.headerHash,
+    nativeEvidencePath: join(directory, "native-chain.ndjson"),
   });
   await artifact("staged.json", { predecessor: PREDECESSOR, current: CURRENT });
   await artifact("successor.json", SUCCESSOR);

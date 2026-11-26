@@ -49,9 +49,9 @@ fn target_path() -> ByteArray {
 // The on-chain library has no prover, so the fixtures build proofs directly and
 // derive the root they prove by mirroring the library's own fold. Neighbour
 // digests are arbitrary but deterministic, which is exactly the adversarial
-// shape issue #541 describes: a ground sibling at every level forces the widest
-// `Branch` step, and the resulting root is a genuine root of a trie that holds
-// the target at that depth.
+// shape: a ground sibling at every level forces the widest `Branch` step, and
+// the resulting root is a genuine root of a trie that holds the target at that
+// depth.
 
 fn branch_neighbors(seed: Int) -> ByteArray {
   let a = blake2b_256(cbor.serialise(seed))
@@ -244,7 +244,7 @@ test mpf_chunked_proof_v1_verifies_a_single_chunk_membership_proof() {
   }
 }
 
-/// The #541 max case: a depth-32 all-`Branch` proof — the deepest a 2^128
+/// The max case: a depth-32 all-`Branch` proof — the deepest a 2^128
 /// adversary can grind — split across two publication UTxOs and verified
 /// atomically from a finalizing transaction that carries only two indices.
 test mpf_chunked_proof_v1_verifies_the_depth_32_adversarial_membership_proof() {
@@ -283,7 +283,7 @@ test mpf_chunked_proof_v1_pins_the_chunk_and_depth_arithmetic() {
   }
   let widest_chunk_bytes = bytearray.length(cbor.serialise(widest_chunk))
   and {
-    // A `Branch` step is the 139-byte shape the Q1x fixture measured; a full
+    // A `Branch` step is the 139-byte shape the fixture measures; a full
     // chunk is 16 of them plus the list and constructor headers.
     widest_chunk_bytes == 2_230,
     widest_chunk_bytes <= mpf_chunked_proof_v1.maximum_chunk_datum_byte_count,
@@ -569,10 +569,9 @@ test mpf_chunked_proof_v1_rejects_membership_against_an_empty_trie() {
 //
 // The three selectors `validators/pexcludes.ak` carries for the direct route,
 // re-run through this terminal — `verify_published_proof`'s `NonMembership`
-// arm, which is what `fraud_proofs/mpf_chunked_proof/challenge.ak` compiles.
-// Until #625 `mpf_proof_v1.does_not_have` compared against the untranslated
-// root, so an absence claim against an empty Midgard trie was unprovable here
-// while the direct route proved it. Both arms of the translation carry a
+// arm, which is what `fraud_proofs/mpf_chunked_proof/challenge.ak` compiles,
+// so an absence claim against an empty Midgard trie is provable here as on the
+// direct route. Both arms of the translation carry a
 // positive: a positive on only one of them leaves the other free to be mutated
 // silently.
 

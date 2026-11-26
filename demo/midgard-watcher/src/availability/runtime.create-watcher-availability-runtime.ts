@@ -232,7 +232,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
       return undefined;
     // The snapshot authenticated the record against the Challenged status.
     if ("Challenged" in status) return snapshot.recordDatum?.commitment;
-    // E1: an Attested node carries only the hash; the preimage is the DAAT
+    // An Attested node carries only the hash; the preimage is the DAAT
     // datum its Apply spent, recovered and checked against that hash.
     return await reader.attestedCommitment(
       observation,
@@ -349,7 +349,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
         await dropReleasedHeaders(pending, observation, input.mergedHeaders);
         report = { phase: "waiting", pendingHeaders: [...pending] };
         assertCurrent(epoch);
-        // E5: the pool is read on every reconciliation, pending headers or
+        // The pool is read on every reconciliation, pending headers or
         // not, and only reported: neither its state nor a failed read changes
         // the phase or holds back an Open, Settle, Close, Timeout or prune.
         try {
@@ -523,7 +523,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             else deferredOpenRead = cause;
           }
         }
-        // E3: every header is selected independently; no live challenge
+        // Every header is selected independently; no live challenge
         // suppresses another header's Open, including a withheld descendant of
         // a Challenged header (if that ancestor settles, the descendant would
         // otherwise merge unchallenged). Opens go first, earliest deadline
@@ -535,7 +535,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
             openWindow,
           ),
         );
-        // E5: missed-deadline, refused-Open, deferred-Timeout,
+        // Missed-deadline, refused-Open, deferred-Timeout,
         // refused-workflow and workflow-release alerts are reported, never
         // blocking.
         let alerts: Pick<

@@ -31,21 +31,6 @@ export type JsonRecordRow = {
   readonly effect_id?: unknown;
 };
 
-export const COMMITTEE_TABLES = [
-  "deployment",
-  "state_queue_headers",
-  "l1_source_state",
-  "decision_outbox",
-  "da_payloads",
-  "da_signatures",
-  "da_conflict_evidence",
-  "da_attestation_candidates",
-  "l1_submissions",
-  "peer_broadcasts",
-  "peer_health",
-  "peer_nonces",
-] as const;
-
 /** The instance lock's events; see `PostgresStoreInstanceLock`. */
 export type PostgresCommitteeStoreOptions = PostgresStoreInstanceLockEvents & {
   /** Checked, and the retirement floor re-bound, as the store opens. */

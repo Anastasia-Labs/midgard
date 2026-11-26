@@ -66,7 +66,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
           spendable: yield* MempoolLedgerDB.retrieveSpendable,
           rows: yield* sql`SELECT outref, output, source_event_id FROM mempool_ledger ORDER BY outref`,
           marker:
-            yield* sql`SELECT store_name, migration_version, root_hex, audit_diverged FROM mpf_engine_state WHERE store_name = 'ledger'`,
+            yield* sql`SELECT store_name, root_hex, audit_diverged FROM mpf_engine_state WHERE store_name = 'ledger'`,
         };
       }),
     );

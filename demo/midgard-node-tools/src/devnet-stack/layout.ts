@@ -22,7 +22,10 @@ const repoRootFromBundle = (): string => {
 export const makeLayout = (runDir: string) => {
   const repoRoot = repoRootFromBundle();
   const demo = join(repoRoot, "demo");
-  const phase4Root = join(demo, "midgard-node-tools/devnet/phase4-process");
+  const isolatedChainRoot = join(
+    demo,
+    "midgard-node-tools/devnet/isolated-chain",
+  );
   const state = join(runDir, "stack");
   return {
     runDir,
@@ -33,9 +36,9 @@ export const makeLayout = (runDir: string) => {
     transportRoot: join(demo, "l1-node-transport"),
     toolsRoot: join(demo, "midgard-node-tools"),
     userCliRoot: join(demo, "midgard-user-cli"),
-    phase4Root,
-    phase4Scripts: join(phase4Root, "scripts"),
-    composeFile: join(phase4Root, "compose.yaml"),
+    isolatedChainRoot,
+    isolatedChainScripts: join(isolatedChainRoot, "scripts"),
+    composeFile: join(isolatedChainRoot, "compose.yaml"),
     runEnv: join(runDir, "run.env"),
     /** Restart policy + socket mode for the L1 containers (written by us). */
     supervisedComposeFile: join(state, "compose.supervised.yaml"),
@@ -109,21 +112,23 @@ export const readRunEnv = (layout: Layout): RunEnv => {
       throw new Error(`${layout.runEnv} is missing ${name}`);
     return value;
   };
-  if (resolve(need("MIDGARD_PHASE4_RUN_DIR")) !== resolve(layout.runDir))
+  if (
+    resolve(need("MIDGARD_ISOLATED_CHAIN_RUN_DIR")) !== resolve(layout.runDir)
+  )
     throw new Error("run.env belongs to a different run directory");
-  const ogmiosPort = Number(need("MIDGARD_PHASE4_OGMIOS_PORT"));
+  const ogmiosPort = Number(need("MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT"));
   return {
-    runId: need("MIDGARD_PHASE4_RUN_ID"),
-    composeProject: need("MIDGARD_PHASE4_COMPOSE_PROJECT"),
-    networkMagic: Number(need("MIDGARD_PHASE4_NETWORK_MAGIC")),
+    runId: need("MIDGARD_ISOLATED_CHAIN_RUN_ID"),
+    composeProject: need("MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT"),
+    networkMagic: Number(need("MIDGARD_ISOLATED_CHAIN_NETWORK_MAGIC")),
     ogmiosPort,
-    kupoPort: Number(need("MIDGARD_PHASE4_KUPO_PORT")),
-    postgresPort: Number(need("MIDGARD_PHASE4_POSTGRES_PORT")),
-    postgresUser: need("MIDGARD_PHASE4_POSTGRES_USER"),
-    postgresPassword: need("MIDGARD_PHASE4_POSTGRES_PASSWORD"),
-    postgresDatabase: need("MIDGARD_PHASE4_POSTGRES_DATABASE"),
-    cardanoImage: need("MIDGARD_PHASE4_CARDANO_NODE_IMAGE"),
-    postgresImage: need("MIDGARD_PHASE4_POSTGRES_IMAGE"),
+    kupoPort: Number(need("MIDGARD_ISOLATED_CHAIN_KUPO_PORT")),
+    postgresPort: Number(need("MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT")),
+    postgresUser: need("MIDGARD_ISOLATED_CHAIN_POSTGRES_USER"),
+    postgresPassword: need("MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD"),
+    postgresDatabase: need("MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE"),
+    cardanoImage: need("MIDGARD_ISOLATED_CHAIN_CARDANO_NODE_IMAGE"),
+    postgresImage: need("MIDGARD_ISOLATED_CHAIN_POSTGRES_IMAGE"),
     portOffset: ogmiosPort - 2337,
   };
 };

@@ -1,6 +1,6 @@
-// W4.4: fault-proof scripts are never attached inline.
+// Fault-proof scripts are never attached inline.
 //
-// Owner ruling (2026-08-26): fault-proof step validators and the scripts that
+// Fault-proof step validators and the scripts that
 // support them deploy as published reference scripts and are referenced from
 // the transaction, whatever their compiled size. That keeps the whole L1
 // envelope for redeemers. Submitters take the hash-checked carriage in
@@ -31,7 +31,7 @@ export default defineRule({
     schema: [],
     messages: {
       inlineAttach:
-        "Fault-proof scripts deploy as published reference scripts and are never attached inline (owner ruling 2026-08-26). Fix: publish the script to a reference-script UTxO and reach it through `readFrom` with the hash-checked carriage in midgard-fault-proofs/src/witness-reference-scripts.ts (`witnessSpendingValidatorCarriage` and its siblings). An inline witness that only an emulator test needs belongs in that test's harness, not in this source tree.",
+        "Fault-proof scripts deploy as published reference scripts and are never attached inline. Fix: publish the script to a reference-script UTxO and reach it through `readFrom` with the hash-checked carriage in midgard-fault-proofs/src/witness-reference-scripts.ts (`witnessSpendingValidatorCarriage` and its siblings). An inline witness that only an emulator test needs belongs in that test's harness, not in this source tree.",
     },
   },
   create: (_context, report, file) =>

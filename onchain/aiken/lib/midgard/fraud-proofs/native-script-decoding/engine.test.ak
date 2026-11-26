@@ -2,9 +2,9 @@
 //// fold over the frozen scan primitives, the machine bind, the authenticated
 //// chunk window, and the canonical thread-state encoder.
 ////
-//// The limit classes (1, 2) are driven here with crafted controls: under
-//// #640's 16,384-byte item cap a committed descriptor can never reach
-//// 16,384 nodes or stack depth, so the validators cannot exhibit them from
+//// The limit classes (1, 2) are driven here with crafted controls: under the
+//// 16,384-byte item cap a committed descriptor can never reach 16,384 nodes or
+//// stack depth, so the validators cannot exhibit them from
 //// authentic fixtures — the engine's classification must still be exact.
 
 use aiken/primitive/bytearray
@@ -112,7 +112,7 @@ test decoding_engine_scan_refuses_a_malformed_payload() {
 }
 
 /// The frozen machine's node ceiling maps to class 1. The control is crafted
-/// at the ceiling because no #640-capped item can reach it authentically.
+/// at the ceiling because no capped item can reach it authentically.
 test decoding_engine_scan_classifies_the_node_limit() {
   let node = tf.signature_node_bytes_v1()
   let control = NativeScriptStructureControlV1 {

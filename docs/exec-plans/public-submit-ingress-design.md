@@ -1,10 +1,10 @@
 # Public submit ingress: redesign for high throughput
 
-**Status:** Active. D1–D7 and D9 are implemented; the P1–P3 release gates and the optional D8 are outstanding.
+**Status:** Active. The design below is implemented except the optional D8;
+the P1–P3 release gates are outstanding.
 
-**Last reviewed:** 2026-11-23 (outstanding gates, measurements and the D
-labels the source cites, against issues #870, #877, #884 and #889 and
-`demo/midgard-node`).
+**Last reviewed:** 2026-11-23 (outstanding gates and measurements, against
+issues #870, #877, #884 and #889 and `demo/midgard-node`).
 
 **Related:**
 
@@ -42,53 +42,50 @@ writer, and hostile traffic refused at line rate.
 
 ## Design decisions
 
-Source comments cite these labels. Behaviour and limits are in
-`PUBLIC_HTTP.md`; this section records the choice and its reason.
+Behaviour and limits are in `PUBLIC_HTTP.md`; this section records the
+choice and its reason.
 
-- **D1, fixed-memory limiter.** Public rate classes keep their buckets in
+- **Fixed-memory limiter.** Public rate classes keep their buckets in
   fixed hashed arrays keyed with a per-process secret, so memory and
   per-request cost are constant and there is no eviction or "table full"
   refusal; a collision only tightens a limit. A looser tier is keyed on the
   IPv4 /24 or IPv6 /48; a client is an IPv4 address or an IPv6 /56.
-- **D2, client tiers.** Anonymous clients and signed peer operators only.
-  There are no API keys and no fixed global tx/s cap (owner, 2026-11-06);
-  D5's shedding is the global bound and sheds anonymous traffic first.
-- **D3, cheap single-tx requests.** No batch-submit route (owner,
-  2026-11-06): wallets send one tx per call and none of the surveyed L2s
+- **Client tiers.** Anonymous clients and signed peer operators only.
+  There are no API keys and no fixed global tx/s cap; load shedding is the
+  global bound and sheds anonymous traffic first.
+- **Cheap single-tx requests.** No batch-submit route: wallets send one tx
+  per call and none of the surveyed L2s
   offers one. `/submit` has a lean handler outside the Effect router and
   samples its refusal logs. `/peer/txs` keeps its signed multi-tx body and
   admits it in one writer submission.
-- **D4, checks off the main thread, decoding once.** The submit check runs on
+- **Checks off the main thread, decoding once.** The submit check runs on
   a dedicated worker pool (`services/submit-check-pool.ts`), separate from
   block validation, and the consensus check reads the submit decode.
-- **D5, in-flight limits, group commit, load shedding.** Requests never wait
+- **In-flight limits, group commit, load shedding.** Requests never wait
   for the database. The writer refuses instead of waiting, group-commits with
-  a bounded linger, and runs admissions with asynchronous commit (owner,
-  2026-11-06). Backlog rows and bytes are in-memory gauges; `/submit` sheds
+  a bounded linger, and runs admissions with asynchronous commit. Backlog rows and bytes are in-memory gauges; `/submit` sheds
   with 503 at 80 % of the backlog and peers at 100 %. The payload is deleted
-  at the terminal mark and duplicates compare the full hash (owner,
-  2026-11-06).
-- **D6, fail fast before the durable write.** Stateless checks reuse Phase A
+  at the terminal mark and duplicates compare the full hash.
+- **Fail fast before the durable write.** Stateless checks reuse Phase A
   and refuse only on verdicts Phase A itself makes, so ingress and validation
   cannot disagree. The stateful input check is first-seen wins: a pending tx
-  claims its inputs, and an acknowledged tx is never replaced (owner,
-  2026-11-06). Peer-sourced txs skip the stateful check. Full validation
+  claims its inputs, and an acknowledged tx is never replaced. Peer-sourced txs skip the stateful check. Full validation
   stays authoritative.
-- **D7, transport.** TLS ends at the nginx edge, which talks plain HTTP to the
-  node over a Unix socket with reused connections (owner, 2026-11-06). nginx
-  rate-limits only liveness routes and connection count; the node's D1
-  limiter does the rest.
+- **Transport.** TLS ends at the nginx edge, which talks plain HTTP to the
+  node over a Unix socket with reused connections. nginx rate-limits only
+  liveness routes and connection count; the node's fixed-memory limiter does
+  the rest.
 - **D8, scale out (optional).** Extra ingress-only processes behind an
-  operator's load balancer run D1–D6 and forward pre-checked txs to their
+  operator's load balancer run the limits and checks above and forward pre-checked txs to their
   node through one internal batched route. Not built; P2 decides whether it
   is needed.
-- **D9, acknowledge from memory (owner, 2026-11-06).** `/submit` answers 202
-  once the tx has passed D6 and entered the bounded in-memory pending set;
+- **Acknowledge from memory.** `/submit` answers 202 once the tx has passed
+  the fail-fast checks and entered the bounded in-memory pending set;
   the Postgres write follows by group commit. A crash can lose txs
   acknowledged since the last commit, so a 202 means accepted, not stored,
   and a wallet resubmits a tx whose `/tx-status` turns `not_found`.
 
-The minimum fee schedule ruled with this design (`MIN_FEE_A` = 1 lovelace
+The minimum fee schedule of this design (`MIN_FEE_A` = 1 lovelace
 per byte, `MIN_FEE_B` = 2,000 lovelace) is set in
 `demo/midgard-node/config.preprod-public.example.yaml`; it is committed in
 every block header and must match across operators.

@@ -1307,22 +1307,16 @@ pub fn committed_root(root: ByteArray) -> ByteArray {
 /// invalid-proof branch aborts script evaluation.
 ///
 /// The claimed root is translated through the Midgard empty-trie sentinel
-/// (`library_root` above) before the reconstructed root is compared against it.
-/// Until #625 it was not, so for `root == env.empty_merkle_tree_root` this
-/// answered `False` for the empty proof — the only witness an empty trie can
-/// produce — and non-membership over an empty Midgard trie was unprovable
-/// through every caller of this function: `chunked_inclusion_v1`'s
-/// published-chunk carriage, `validators/mpf-chunked-verify.ak`,
+/// (`library_root` above) before the reconstructed root is compared against it,
+/// so for `root == env.empty_merkle_tree_root` the empty proof — the only
+/// witness an empty trie can produce — proves non-membership through every
+/// caller of this function: `chunked_inclusion_v1`'s published-chunk carriage,
+/// `validators/mpf-chunked-verify.ak`,
 /// `mpf_chunked_proof_v1.proof_reaches_challenged_terminal`, `insert_root`
 /// below, and `validation_machine_v1.resolve_non_membership_step` against an
-/// empty `prior_ledger_root`. The gap was liveness-only — nothing false was
-/// ever accepted — and it is closed here, so the published-chunk route now
-/// answers the same question the redeemer-carried route already answered.
-///
-/// Provenance: owner-approved 2026-08-17 and pinned to the single blueprint
-/// regeneration event, ruled into that event as R5 item 6 by the owner ruling
-/// of 2026-08-23 on #625 (decision 0005, wave #617). The `insert_root` fold-in
-/// below travels with it — both, or neither.
+/// empty `prior_ledger_root`. The published-chunk route therefore answers the
+/// same question the redeemer-carried route answers. The `insert_root` fold-in
+/// below travels with the translation — both, or neither.
 ///
 /// The terminal Leaf check (`terminal_leaf_neighbor_is_canonical`) ties the
 /// leaf's skip to the true divergence, which `insert_root` relies on. A Fork

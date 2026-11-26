@@ -20,27 +20,9 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  outRefLabel,
-  type ResolvedProverSigner,
-  type SubmitProviderConfig,
-} from "./runtime.js";
+import { outRefLabel, type ResolvedProverSigner } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly awaitConfirmation?: boolean;
-};
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export type InvalidRangeStep02Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -68,9 +50,6 @@ export type InvalidRangeStep02Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitInvalidRangeStep02Result =
-  OutsideWorkflowSubmission<InvalidRangeStep02Build>;
 
 type InvalidRangeStep02DatumWithState = InvalidRangeStep02Datum & {
   readonly data: NonNullable<InvalidRangeStep02Datum["data"]>;

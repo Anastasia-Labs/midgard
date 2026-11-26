@@ -107,7 +107,7 @@ export const watcherDeploymentReleaseFinalityPolicy = (
 /**
  * Returns the exact release-economics authority minted by signed deployment
  * verification. Structural copies cannot select a different collateral floor
- * or other F04 amount after launch.
+ * or other release economics amount after launch.
  */
 export const watcherDeploymentReleaseEconomicsAuthority = (
   identity: VerifiedWatcherDeploymentIdentity,

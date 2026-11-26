@@ -28,10 +28,11 @@ Launches are recorded before spawning; surviving managed child groups keep an
 owner's lease occupied even after its parent dies. Reclaim is explicit and
 requires a fully recorded abandoned owner with no surviving managed groups;
 it sends no signal, drops no database and deletes no deployment. Another PID
-namespace, a legacy record or an unfinished launch remains unknown and cannot
-be reclaimed. Child output and elapsed time are bounded; cancellation joins
-the invocation's process groups before releasing its lease. Killed orphan
-processes can remain zombies until the host reaps them.
+namespace, a record without a namespace or process-group tracking, or an
+unfinished launch remains unknown and cannot be reclaimed. Child output and
+elapsed time are bounded; cancellation joins the invocation's process groups
+before releasing its lease. Killed orphan processes can remain zombies until
+the host reaps them.
 
 Cancel through the owning invocation and await its exit before starting a
 replacement. Then inspect `resources list`; reclaim only a recorded abandoned

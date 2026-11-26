@@ -1,15 +1,10 @@
 /**
  * The **declared construction** of the size-balanced conformance fixture.
  *
- * `native-size-balanced-15_5k.json` used to be an opaque checked-in blob: a
- * ~16 kB `fullTxCborHex` with no producer anywhere in the repo. Every
- * derived artifact — the Aiken goldens in
+ * `native-size-balanced-15_5k.json` feeds the Aiken goldens in
  * `onchain/aiken/lib/midgard/fraud-proofs/native-tx.size-balanced.test.ak`, the
- * retained-DA boundary measurement, the `mixed-size-balanced` row of the
- * Cardano-capability corpus — hung off bytes nothing could regenerate, so a
- * wire-format change could only be absorbed by hand-editing the blob.
- *
- * This module replaces the blob with a construction stated in parameters:
+ * retained-DA boundary measurement and the `mixed-size-balanced` row of the
+ * Cardano-capability corpus. This module states its construction in parameters:
  * `SIZE_BALANCED_PARAMETERS` below says what the transaction *is*, and every
  * byte follows from it through the canonical §5.1 producers in
  * `@al-ft/midgard-core`. The fixture's identity is therefore a consequence of

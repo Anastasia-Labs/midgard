@@ -44,7 +44,7 @@
 //// `fraud_proofs/transition_trace/deposit_v1`, and
 //// `fraud_proofs/validation_trace/cek_context_step_semantic_v1`. The first two
 //// are the pair decision 0005 A3 predicted. The third is NOT named in the
-//// ruling and reaches the arm through
+//// decision and reaches the arm through
 //// `validation_machine_v1` -> `script_context_v1.tx_out_data_v1` ->
 //// `decode_canonical_output`; unlike `deposit_v1` (whose projected output is
 //// built with `script_ref: None`, `transition-trace/proof.ak:901`, so its hash

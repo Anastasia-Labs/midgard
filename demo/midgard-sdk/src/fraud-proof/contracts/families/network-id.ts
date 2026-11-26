@@ -18,9 +18,9 @@ import {
 
 /**
  * The network ids the catalogue's network-id fault proof can be parameterized
- * with: 0 for testnets and 1 for mainnet. `step_01`/`forced_step` used to
- * re-check `expected_network_id` against this domain on every execution;
- * deployment parameterization is trusted on chain, so the check lives here.
+ * with: 0 for testnets and 1 for mainnet. `step_01`/`forced_step` do not
+ * re-check `expected_network_id` against this domain: deployment
+ * parameterization is trusted on chain, so the check lives here.
  */
 export const SUPPORTED_NETWORK_IDS: ReadonlySet<bigint> = new Set([0n, 1n]);
 

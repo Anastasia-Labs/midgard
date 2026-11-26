@@ -3,7 +3,7 @@
  *
  * Binds the operator-ACCEPTED committed transaction through the header's
  * counted `transactions_root` via the shared inclusion machinery, on either
- * carriage (redeemer-carried proof, or the #545 published chunks for a proof
+ * carriage (redeemer-carried proof, or published proof chunks for a proof
  * the 16,384-byte envelope cannot hold). The acceptance predicate is re-checked
  * locally before anything is paid for: a leaf whose embedded validity scalar
  * does not claim acceptance can never bind on-chain, whatever its input sets
@@ -68,10 +68,7 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   inputSetUniquenessStepLabel,
@@ -98,9 +95,6 @@ export type InputSetUniquenessStep01Build = {
   readonly outputIndex: number;
 };
 
-export type SubmitInputSetUniquenessStep01Result =
-  OutsideWorkflowSubmission<InputSetUniquenessStep01Build>;
-
 export const buildInputSetUniquenessStep01 = async ({
   lucid,
   blueprint,
@@ -124,7 +118,7 @@ export const buildInputSetUniquenessStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
-  /** Present → the #545 published-chunk carriage; absent → redeemer-carried. */
+  /** Present → the published-chunk carriage; absent → redeemer-carried. */
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;

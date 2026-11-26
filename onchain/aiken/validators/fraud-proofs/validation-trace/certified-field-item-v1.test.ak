@@ -6,7 +6,7 @@
 //// stage-four begin (field 2) and stage-six policy begin (field 5).
 ////
 //// Through the field grammar certificate a stage reads the field's item
-//// without walking the field, so its cost no longer grows with the field's
+//// without walking the field, so its cost does not grow with the field's
 //// item count. Three things are shown here:
 ////
 //// - **Scale.** Each stage runs at a field as wide as §5.4 admits, its
@@ -1115,7 +1115,7 @@ test stage_one_begin_refuses_the_certificate_index_in_its_evidence() fail {
 }
 
 /// The walking reference machine over the same 1,724 redeemers: the cost the
-/// certified stage no longer pays.
+/// certified stage does not pay.
 test stage_one_begin_walking_reference_redeemer_1711_of_1724_at_scale() {
   let parts = stage_one_parts(1724, 1711, True, False)
   early_stages.script_sources_stage_one(
@@ -1446,7 +1446,7 @@ test stage_six_begin_policy_certified_entry_895_of_910_fixture_only() {
 }
 
 /// The walking reference machine over the same 910 entries: the cost the
-/// certified yield no longer pays.
+/// certified yield does not pay.
 test stage_six_begin_policy_walking_reference_entry_895_of_910_at_scale() {
   stage_six_by_walking(910, 895, True, False)
 }

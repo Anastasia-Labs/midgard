@@ -80,12 +80,6 @@ export const InputExistenceTerminalArgsSchema = Data.Object({
   ledger_evidence: InputExistenceLedgerEvidenceSchema,
 });
 
-export type InputExistenceSourceState = Data.Static<
-  typeof InputExistenceSourceStateSchema
->;
-export const InputExistenceSourceState = asDataType<InputExistenceSourceState>(
-  InputExistenceSourceStateSchema,
-);
 export type InputExistenceSelectedState = Data.Static<
   typeof InputExistenceSelectedStateSchema
 >;

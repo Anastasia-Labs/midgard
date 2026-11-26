@@ -11,9 +11,9 @@
 //// §5.1 with `expect` — so such a field **aborts** every consumer, including
 //// the `CanonicalDecode` phase whose job is to render a verdict about it. No
 //// step is producible by anyone and the dispute stalls rather than rejecting:
-//// an operator escape hatch, and the one path that phase exists to close. The
-//// owner ruling of 2026-08-11 closes it by direct fault rather than by
-//// softening the door, and this module is that fault's rule.
+//// an operator escape hatch, and the one path that phase exists to close. A
+//// direct fault closes it rather than a softer door, and this module is that
+//// fault's rule.
 ////
 //// ### Why the check needs no decoder
 ////

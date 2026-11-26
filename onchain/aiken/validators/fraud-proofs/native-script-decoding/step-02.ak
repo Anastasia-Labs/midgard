@@ -10,8 +10,7 @@
 //// verdict this thread disputes. Direction A requires `ForcedTxValid`;
 //// direction B requires `ForcedTxInvalid` with one of the three decoding
 //// arms, and copies the accused (source-kind, ordinal) pair verbatim from
-//// the leaf's reason (2026-08-25 ruling). Direction A's pair is
-//// prover-chosen.
+//// the leaf's reason. Direction A's pair is prover-chosen.
 
 use aiken/cbor
 use aiken/crypto.{ScriptHash}
@@ -160,7 +159,7 @@ validator main(
             when leaf.verdict is {
               ForcedTxValid -> {
                 // Direction A disputes an explicit acceptance; the accused
-                // pair is prover-chosen (2026-08-25 ruling).
+                // pair is prover-chosen.
                 expect and {
                     or {
                       chosen_outpoint_source_kind == engine.outpoint_source_spend,
@@ -182,11 +181,10 @@ validator main(
               ForcedTxInvalid { reason } -> {
                 // Direction B disputes an explicit rejection by one of this
                 // family's three arms; the accused pair and class are copied
-                // verbatim from the leaf (2026-08-25 ruling) — the chosen_*
-                // redeemer fields are ignored. Deliberately unguarded: a pair
-                // naming a subject outside the transaction's domain is
-                // step-03's `BindOutOfDomain` close, so nothing
-                // may filter it here.
+                // verbatim from the leaf — the chosen_* redeemer fields are
+                // ignored. Deliberately unguarded: a pair naming a subject
+                // outside the transaction's domain is step-03's
+                // `BindOutOfDomain` close, so nothing may filter it here.
                 let accusation = engine.scan_accusation_of_v1(reason)
                 engine.pre_bind_scan_state_v1(
                   engine.direction_wrongful_rejection,
@@ -508,10 +506,11 @@ test decoding_step_02_rejects_direction_a_on_a_rejecting_leaf() fail {
 
 /// Leaf-internal authoritativeness: a leaf whose verdict disagrees
 /// with its own compact bytes' validity scalar never opens.
-test decoding_step_02_rejects_an_obsolete_four_element_source() fail {
+test decoding_step_02_rejects_a_native_four_element_source() fail {
   let leaf = tf.forced_leaf_v1(
     tf.subject_tx_v1(native_types.TxIsInvalid),
-    // The obsolete committed scalar is injected below and must be refused.
+    // The native compact's committed scalar is injected below and must be
+    // refused.
     ForcedTxValid,
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {

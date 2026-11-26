@@ -93,25 +93,13 @@ describe("Midgard native V1 validity language", () => {
 
   it("rejects adjacent, negative, fractional, and unknown meanings", () => {
     // `2n` is the first code past the two-arm frontier — the constructor index
-    // that `d87b80` would carry, and the code the retired `InvalidSignature`
-    // arm used to own.
+    // that `d87b80` would carry.
     for (const value of [-1n, 2n, 3n, 255n, -1, 2, 1.5, "1"]) {
       expect(() => decodeValidityCode(value, "validity")).toThrow();
     }
     expect(() =>
       encodeValidityCode("UnknownValidity" as MidgardTxValidity),
     ).toThrow(/Unsupported Midgard tx validity variant/u);
-    for (const retired of [
-      "NonExistentInputUtxo",
-      "InvalidSignature",
-      "FailedScript",
-      "FeeTooLow",
-      "UnbalancedTx",
-    ]) {
-      expect(() => encodeValidityCode(retired as MidgardTxValidity)).toThrow(
-        /Unsupported Midgard tx validity variant/u,
-      );
-    }
   });
 
   it("rejects non-minimal and out-of-range compact and canonical codes", () => {

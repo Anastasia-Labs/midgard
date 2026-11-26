@@ -5,7 +5,7 @@
  * `pexcludes.exclusion.withdraw` withdrawal verifiers.
  *
  * Fault proofs and their supporting scripts deploy as published reference
- * scripts, never inline-attached (owner ruling 2026-08-26). Submitters take
+ * scripts, never inline-attached. Submitters take
  * a bundle of published reference-script UTxOs. Every required entry is
  * hash-checked against the exact script the transaction executes and joins
  * the transaction's reference inputs. Missing entries fail closed: there is

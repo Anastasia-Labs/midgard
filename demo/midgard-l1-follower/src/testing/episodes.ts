@@ -39,7 +39,7 @@ export type ForkShape = (typeof FORK_SHAPES)[number];
  * With `prune`, the store prunes to completion (`ForkStep.prune`) after the
  * old branch's last block, so the rollback rewinds over pruned rows, and
  * again after the rollback, whose cursor drop leaves the boundary below rows
- * pruned before (the review's E7 case).
+ * pruned before.
  */
 export type ForkEpisode = Readonly<{
   shape: ForkShape;

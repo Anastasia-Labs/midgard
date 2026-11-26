@@ -162,12 +162,11 @@ test fails_closed_for_a_wrong_frame_preimage() {
 
 // --- the one-shot driver's refusals ---
 //
-// `payload_structure_is_canonical_v1` is dead code, blocked on the #633
-// re-ruling by the ExUnits precondition it fails (see its doc comment). Dead
-// code that nothing tests is dead code nobody can weaken safely, so its refusals
-// are pinned here in the same `fails_closed_*` style as the staged scan's above:
-// weaken the predicate and one of these goes red rather than a wave finding it
-// three regenerations later.
+// `payload_structure_is_canonical_v1` is dead code, blocked on #633 by the
+// ExUnits precondition it fails (see its doc comment). Dead code that nothing
+// tests is dead code nobody can weaken safely, so its refusals are pinned here
+// in the same `fails_closed_*` style as the staged scan's above: weaken the
+// predicate and one of these goes red.
 
 /// Positive control. Without it every refusal below is satisfiable by a
 /// predicate that returns `False` for everything.

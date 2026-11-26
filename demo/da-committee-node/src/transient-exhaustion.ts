@@ -1,5 +1,5 @@
 /**
- * The committee's one exit after startup (owner ruling 2026-10-09): a
+ * The committee's one exit after startup: a
  * transient failure that outlived its bound. The store's instance lock that
  * could not be taken again past its reacquire budget, and the L1 follower
  * whose transient store failures outlived its budget (`exhausted`), each

@@ -108,7 +108,7 @@ describe("sign/submit wrapper recovery options", () => {
     }
   });
 
-  it("allows an exact submitted transaction to confirm after the legacy 90-second ceiling", async () => {
+  it("allows an exact submitted transaction to confirm after 90 seconds", async () => {
     vi.useFakeTimers();
     try {
       const startedAt = Date.now();

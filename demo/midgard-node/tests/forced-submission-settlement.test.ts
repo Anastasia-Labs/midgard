@@ -112,7 +112,7 @@ describe("forced submission under real order and settlement validators", () => {
     ).toHaveLength(0);
   }, 180_000);
 
-  it.each(["witness", "lengths", "body", "obsolete"] as const)(
+  it.each(["witness", "lengths", "body", "extended"] as const)(
     "refuses settled %s substitution against the immutable order",
     async (kind) => {
       const submitted = submission();
@@ -134,7 +134,7 @@ describe("forced submission under real order and settlement validators", () => {
             leaf.submitted_source.field_preimage_lengths_cbor =
               "89010101010101010102";
           if (kind === "body") leaf.tx_id = "ab".repeat(32);
-          if (kind === "obsolete") {
+          if (kind === "extended") {
             const compact = decodeSingleCbor(
               Buffer.from(leaf.submitted_source.compact_cbor, "hex"),
             );

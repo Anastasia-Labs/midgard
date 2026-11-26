@@ -29,10 +29,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { CommittedFieldShapeContracts } from "./contracts.js";
 import {
   committedFieldShapeStepLabel,
@@ -67,9 +64,6 @@ export type CommittedFieldShapeStep02Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitCommittedFieldShapeStep02Result =
-  OutsideWorkflowSubmission<CommittedFieldShapeStep02Build>;
 
 export const buildCommittedFieldShapeStep02 = async ({
   lucid,

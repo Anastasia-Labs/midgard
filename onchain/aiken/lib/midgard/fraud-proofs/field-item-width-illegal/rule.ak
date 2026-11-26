@@ -138,7 +138,7 @@ pub fn authenticate_item_legality_v1(
 /// `authenticate_item_legality_v1` for a variable-width field (2 or 5) read
 /// through its field grammar certificate: the certified count decides the
 /// domain, and the item's width is the certified extent's length, so the cost
-/// no longer grows with the field's item count. `view` and `certified` come
+/// does not grow with the field's item count. `view` and `certified` come
 /// from one `opened_certified_field` call, which bound them to each other.
 pub fn authenticate_certified_item_legality_v1(
   bound: BoundCoordinateV1,

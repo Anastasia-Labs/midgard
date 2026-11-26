@@ -3,8 +3,6 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
-use midgard/bounded_item_v1
 // Some constants in this module are GENERATED; the tests around them are written
 // by hand.
 //
@@ -47,7 +45,6 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/native_tx_machine_walk_v1
-use midgard/validation_merkle_v1
 
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
@@ -151,13 +148,9 @@ fn fixture_verified(
 
 /// Reads the single item of `field_index` back through the machine seam.
 ///
-/// Under the retired counted scheme this test opened field 6 and field 7 with
-/// `bounded_collection_v1` / `bounded_item_v1` per-item Merkle proofs. A flat
-/// hash has no leaves, so that machinery cannot be satisfied against one; the
-/// property it was proving — that field identity is positional and a field-7
-/// item does not open as a field-6 item — is now proved the way §4 and §10
-/// establish it, by extracting the expected hash from the slot and walking the
-/// authenticated preimage.
+/// Field identity is positional, so a field-7 item does not open as a field-6
+/// item. This is proved the way §4 and §10 establish it, by extracting the
+/// expected hash from the slot and walking the authenticated preimage.
 fn fixture_item_at(
   witness_set: NativeTxWitnessSetCompact,
   field_index: Int,
@@ -240,7 +233,7 @@ test v1_n11_out_of_range_compact_validity_code_rejects() fail {
   ).validity_code == 2
 }
 
-// ── Validity bounds (`docs/spec/midgard-tx.md` §2.1, #817) ─────────────────
+// ── Validity bounds (`docs/spec/midgard-tx.md` §2.1) ───────────────────────
 // A bound is `-1` (absent) or a non-negative slot. Every body decoder and
 // encoder refuses anything below `-1`, so no decoded body carries one. A
 // committed `transactions_root` leaf with such a bound is convicted by the DA
@@ -494,10 +487,8 @@ fn fixture_wide_script_item() -> ByteArray {
 const zero_28: ByteArray =
   #"00000000000000000000000000000000000000000000000000000000"
 
-/// **Rebound to the flat scheme by #570.** The ABI half of this vector — the
-/// witness-set tuple order and the field-length directory — is unchanged and
-/// still pinned byte for byte. The opening half used to be
-/// `bounded_collection_v1` / `bounded_item_v1` counted proofs and is now the
+/// The ABI half of this vector — the witness-set tuple order and the
+/// field-length directory — is pinned byte for byte. The opening half is the
 /// §10 machine seam: field 6 and field 7 each open through the one door
 /// against their own positionally-extracted hash, and each item reads back
 /// byte-identically.
@@ -682,86 +673,6 @@ test v1_proof_source_binds_compact_body_and_all_witness_field_hashes() {
         field_preimage_lengths_cbor,
       ),
     ) == 32,
-  }
-}
-
-test v1_transaction_field_chunk_is_bound_to_the_exact_proof_source() {
-  let preimage = #"80"
-  let item_leaf = bounded_item_v1.hash_chunk(0, 0, 0, preimage)
-  let item_built = validation_merkle_v1.build_frontier([item_leaf])
-  let item_commitment = bounded_item_v1.commitment(0, 0, 1, item_built.peaks)
-  let collection_leaf = bounded_collection_v1.hash_item(
-    0,
-    0,
-    1,
-    item_commitment,
-  )
-  let collection_built = validation_merkle_v1.build_frontier([collection_leaf])
-  let collection_commitment = bounded_collection_v1.commitment(
-    0,
-    1,
-    collection_built.peaks,
-  )
-  let witness_set = sample_witness_set_compact()
-  let witness_set_cbor = encode_native_tx_witness_set_compact(witness_set)
-  let compact = NativeTxCompact {
-    ..sample_compact(),
-    body: NativeTxBodyCompact {
-      ..sample_compact().body,
-      spend_inputs_hash: collection_commitment,
-    },
-    witness_set_hash: blake2b_256(witness_set_cbor),
-  }
-  let compact_cbor = encode_native_tx_compact_v1(compact)
-  let field_preimage_lengths_cbor = #"89030000000000000000"
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
-  )
-  let tx_commitment = native_tx_proof_commitment_v1(
-    compact_cbor,
-    witness_set_cbor,
-    field_preimage_lengths_cbor,
-  )
-  let collection_proof = bounded_collection_v1.ItemProofV1 {
-    version: bounded_collection_v1.version,
-    field_index: 0,
-    item_count: 1,
-    item_index: 0,
-    item_length: 1,
-    item_commitment,
-    frontier: collection_built.peaks,
-    siblings: [],
-  }
-  let proof = bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index: 0,
-    item_index: 0,
-    total_length: 1,
-    chunk_index: 0,
-    chunk: preimage,
-    frontier: item_built.peaks,
-    siblings: [],
-  }
-  and {
-    transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      tx_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      field_preimage_lengths_cbor,
-      collection_proof,
-      proof,
-    ),
-    !transaction.verify_midgard_transaction_field_chunk_v1(
-      tx_id,
-      tx_commitment,
-      compact_cbor,
-      witness_set_cbor,
-      field_preimage_lengths_cbor,
-      collection_proof,
-      bounded_item_v1.ChunkProofV1 { ..proof, field_index: 1 },
-    ),
   }
 }
 
@@ -957,30 +868,15 @@ fn fixture_script_equal_length_variant() -> MidgardVersionedScript {
   }
 }
 
-// The two cross-substitution tests below were
-// `test ... fail` over a single call to the production
-// `verify_midgard_transaction_field_preimage_v1` conjunction, so the names
-// could not establish which guard fired. Mutation controls (aiken-fork
-// v1.1.23, each mutation applied alone and reverted, both selectors run each
-// time):
-//
-//   neutralize `expect length(preimage) == field_lengths.address_witnesses`
-//   neutralize `expect length(preimage) == field_lengths.script_witnesses`
-//   neutralize the field-commitment `expect from_items(..) == expected_hash`
-//     inside decode_midgard_tx_address_witnesses_preimage
-//   ... the same inside decode_midgard_tx_script_witnesses_preimage
-//   neutralize the canonical re-encode equality of branch 7
-//   neutralize the canonical re-encode equality of branch 6
-//
-// None of the six flips either test. The runner traces name the firing guard
-// directly instead: `expect tag == 90` for the field-6 tests (the address-witness
-// constructor tag) and `expect byte_at(bytes, offset) == expected` for the field-7 tests
-// (the script-witness array header). Both fire in the canonical CBOR item
-// decoder of the target field, upstream of the committed length, the
-// field-commitment binding, and the re-encode. The equal-length construction
-// keeps the length gate out of the way; the shape incompatibility is what
-// actually rejects, so on its own this pair does not establish that field 6 and
-// field 7 are separately committed.
+// The two cross-substitution tests below are rejected in the canonical CBOR
+// item decoder of the target field: `expect tag == 90` for the field-6 tests
+// (the address-witness constructor tag) and `expect byte_at(bytes, offset) ==
+// expected` for the field-7 tests (the script-witness array header), upstream
+// of the committed length, the field-commitment binding and the re-encode.
+// Neutralizing any of those later guards flips neither test. The equal-length
+// construction keeps the length gate out of the way; the shape incompatibility
+// is what actually rejects, so on its own this pair does not establish that
+// field 6 and field 7 are separately committed.
 //
 // The two `..._binds_the_field_commitment` tests that follow close that gap:
 // they present a well-shaped, equal-length preimage of the WRONG content at the
@@ -1419,7 +1315,7 @@ test v1_script_witnesses_noncanonical_language_tag_encoding_is_not_canonical() {
   expect nc_witness_set == nc_witness_set
   expect nc_lengths == nc_lengths
   and {
-    // Field 6 now carries the same per-item byte envelope as every other
+    // Field 6 carries the same per-item byte envelope as every other
     // field, so the single PlutusV3 script is wrapped in a `46` bytes(6)
     // header rather than concatenated raw.
     canonical_preimage == #"8146820343010203",
@@ -1436,8 +1332,8 @@ test v1_script_witnesses_noncanonical_language_tag_encoding_is_not_canonical() {
   }
 }
 
-/// Under the flat scheme a non-canonical language-tag spelling no longer
-/// reaches the re-encode comparison: its bytes hash to something the compact
+/// Under the flat scheme a non-canonical language-tag spelling does not reach
+/// the re-encode comparison: its bytes hash to something the compact
 /// structure never committed, so verification fails closed at the hash check.
 test v1_script_witnesses_noncanonical_language_tag_encoding_aborts() fail {
   let script = MidgardVersionedScript {

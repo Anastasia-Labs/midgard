@@ -623,7 +623,7 @@ describe("commit block planner", () => {
     });
   });
 
-  it("registers due work even when the scheduler transition is inside the former inline wait budget", () => {
+  it("registers due work even when the scheduler transition is inside the inline wait budget", () => {
     const plan = planEarliestCommitSchedulerDueWork({
       callerLabel: "commit-scheduler-preflight",
       discoveryStage: "pre_lease",

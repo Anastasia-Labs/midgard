@@ -1,5 +1,5 @@
-//// #640 gate-5 tests: the source-authoritativeness predicates,
-//// each exercised positively and negatively.
+//// The source-authoritativeness predicates, each exercised positively and
+//// negatively.
 ////
 //// The predicate tests drive the public door
 //// `committed_claim_source_is_authenticated`, which reads only the claim's
@@ -623,18 +623,6 @@ test claim_witness_round_trips_in_its_four_field_shape() {
     decoded == witness,
     list.length(builtin.unconstr_fields(data)) == 4,
   }
-}
-
-/// The retired shape carried a validation-trace descriptor membership after
-/// the version.
-test claim_witness_refuses_the_retired_five_field_shape() fail {
-  let (_, witness) = accepted_claim(normal_source(native_types.TxIsValid))
-  let data: Data = witness
-  expect [version, ..rest] = builtin.unconstr_fields(data)
-  let descriptor: Data = witness.event_to_step_membership
-  let retired: Data = builtin.constr_data(0, [version, descriptor, ..rest])
-  expect decoded: validation_claim_v1.ValidationClaimWitnessV1 = retired
-  decoded.version == validation_claim_v1.claim_version
 }
 
 // ### The derived initial state

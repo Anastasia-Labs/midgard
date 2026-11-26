@@ -150,7 +150,7 @@ describe("stress corpus planner", () => {
     ).toThrow("below the minimum");
   });
 
-  it("sizes the exact Phase 1 continuous ten-minute corpus", () => {
+  it("sizes the exact continuous ten-minute corpus", () => {
     const plan = planStressCorpus({
       targetRateTps: 5_000,
       durationMs: 600_000,
@@ -182,7 +182,7 @@ describe("stress corpus planner", () => {
         maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         assumedAcceptanceLatencyMs: "819",
         slices: "1",
-        corpusSliceIdPrefix: "phase1",
+        corpusSliceIdPrefix: "slice",
         yes: true,
       },
       {},

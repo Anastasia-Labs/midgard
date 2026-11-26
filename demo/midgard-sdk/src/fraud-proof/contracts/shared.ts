@@ -64,8 +64,8 @@ export type SharedFaultProofContracts = {
   readonly fraudProofTokenAddressData: Data;
   readonly fieldPreimageCertificate: MintingValidator;
   /**
-   * The §8.6 field-preimage certificate minting policy id. #592 gave the
-   * step validators that consult a carried field preimage a trailing
+   * The §8.6 field-preimage certificate minting policy id. The step
+   * validators that consult a carried field preimage take a trailing
    * `field_preimage_certificate_policy_id` parameter; the certificate
    * validator itself takes no parameters, so this id is a pure function of
    * the blueprint. It is derived here rather than accepted from callers

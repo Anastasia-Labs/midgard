@@ -280,7 +280,7 @@ test canonical_decodability_door_refuses_a_trailing_byte() fail {
 }
 
 // ---------------------------------------------------------------------------
-// The residue §12.7 named, measured — and, since #601, closed elsewhere
+// The residue §12.7 names, closed by §12.8
 // ---------------------------------------------------------------------------
 //
 // §5.1's grammar is not the whole of what `whole_view` refuses, and this fault
@@ -289,13 +289,12 @@ test canonical_decodability_door_refuses_a_trailing_byte() fail {
 // door still aborts on, because the refusal is §7.4's fixed-stride arithmetic or
 // §5.4's per-field byte bound rather than the envelope.
 //
-// **The boundary is what these selectors pin now.** The owner ruling of
-// 2026-08-13 closed both shapes with the sibling fault kind of §12.8
-// (`committed_field_shape`), and this section is where the two fault kinds are
-// held apart from §12.7's side: this verdict stays 0 for both shapes — that is
-// the boundary, and it must not move — and each shape is shown convictable by
-// the sibling, so "verdict 0" is a statement about *this* fault kind rather than
-// about the block.
+// **These selectors pin the boundary.** The sibling fault kind of §12.8
+// (`committed_field_shape`) closes both shapes, and this section is where the
+// two fault kinds are held apart from §12.7's side: this verdict stays 0 for
+// both shapes — that is the boundary, and it must not move — and each shape is
+// shown convictable by the sibling, so "verdict 0" is a statement about *this*
+// fault kind rather than about the block.
 
 /// §2.5 slot 0 (spend inputs) — fixed-stride, so the door settles §5.1's count
 /// by arithmetic against `spend_input_stride` instead of walking.
@@ -454,11 +453,11 @@ test canonical_decodability_verdict_at_two_hundred_fifty_items() {
 ///
 /// These two controls are not decoration and they are what this ledger adds to
 /// §8.11's precedent. A whole-test reading includes fixture construction, and
-/// this lane's fixture is `encode_field_preimage` over a list of `count` items
-/// — a fold of `concat` whose own cost grows with the cardinality being priced.
-/// Differencing the two *rows* alone would therefore charge the walk for the
-/// producer as well, and the number would look like the door's `walk_to_end`
-/// by coincidence rather than by measurement.
+/// this module's fixture is `encode_field_preimage` over a list of `count`
+/// items — a fold of `concat` whose own cost grows with the cardinality being
+/// priced. Differencing the two *rows* alone would therefore charge the walk
+/// for the producer as well, and the number would look like the door's
+/// `walk_to_end` by coincidence rather than by measurement.
 test canonical_decodability_verdict_fixture_only_at_two_hundred_fifty_items() {
   let preimage = minimum_width_trailing_preimage(lower_item_cardinality)
   let block = committed_block(preimage)

@@ -47,8 +47,7 @@ describe("proof-transaction count cap V1 (C52)", () => {
   it("computes the required proof-transaction count as the worst-axis ceiling over the usable budget", () => {
     // A proof costing exactly the target snapshot's own per-transaction
     // ceiling on both axes needs 2 proof transactions under the 4/5 reserve
-    // (ceil(5/4) = 2 on each axis) — the retired floor framing's N, now just
-    // one unremarkable point well below the cap.
+    // (ceil(5/4) = 2 on each axis), a point well below the cap.
     const targetSnapshotScaleProof: FaultProofExecutionCost = {
       memoryUnits: BigInt(
         MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits,

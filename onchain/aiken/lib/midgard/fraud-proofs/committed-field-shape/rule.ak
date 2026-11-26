@@ -19,9 +19,8 @@
 //// Both leave the identical stall §12.7 exists to end: the door aborts, no
 //// `CanonicalDecode` step is producible by anyone, the dispute stalls rather
 //// than rejecting, and the operator has bought the outcome by committing bytes
-//// nobody can open. The owner ruling of 2026-08-13 closes them by option (a) of
-//// §12.7's own two — a **sibling** fault kind stated over `(field_index,
-//// preimage)` — and this module is that fault's rule.
+//// nobody can open. A **sibling** fault kind stated over `(field_index,
+//// preimage)` closes them, and this module is that fault's rule.
 ////
 //// ### Why a sibling and not a widening
 ////
@@ -30,8 +29,8 @@
 //// per-field rule cannot be accused of adjudicating an item. Both shapes above
 //// are functions of the bytes **and the slot** — a stride is a property of the
 //// field index, and so is the bound a `field_index`-addressed accusation must
-//// name. Folding them into §12.7 would have made that section field-index
-//// dependent and destroyed the boundary it rests on. Stating them one section
+//// name. Folding them into §12.7 would make that section field-index
+//// dependent and destroy the boundary it rests on. Stating them one section
 //// over costs one more fault kind and keeps both boundaries exact.
 ////
 //// ### The two boundaries this rule does not cross

@@ -74,7 +74,7 @@ validator stage_three_finish(dispatcher_script_hashes: List<ScriptHash>) {
 }
 
 /// The stage reads its output through the field grammar certificate when the
-/// withdraw redeemer names one, so its cost no longer grows with the field's
+/// withdraw redeemer names one, so its cost does not grow with the field's
 /// item count; the redeemer sits beside the committed evidence, not in it.
 validator stage_four_begin(
   dispatcher_script_hashes: List<ScriptHash>,
@@ -131,7 +131,7 @@ validator stage_four_finish(dispatcher_script_hashes: List<ScriptHash>) {
 }
 
 /// Reads its mint policy item through the field grammar certificate the
-/// withdraw redeemer names (`CertifiedFieldItem`), so its cost no longer grows
+/// withdraw redeemer names (`CertifiedFieldItem`), so its cost does not grow
 /// with the field's item count; the redeemer sits beside the committed
 /// evidence, not in it.
 validator stage_six_begin_policy(

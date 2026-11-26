@@ -1,8 +1,7 @@
 /**
- * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
- * remediation): thread state carries the §2.5 anchor rather than a per-field
- * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
- * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * Thread state carries the §2.5 anchor rather than a per-field collection
+ * commitment, and a step redeemer carries a `FieldOpeningV1` rather than a
+ * reproduced `..._preimage: List<…>`; see
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
@@ -33,10 +32,10 @@ export const DoubleSpendStepCancel =
   FaultProofStepCancel as unknown as DoubleSpendStepCancel;
 
 /**
- * Mirrors `midgard/fraud_proofs/double_spend/step_01.State`. #604: the retired
- * `verified_tx1_spend_inputs_hash` is gone — the §2.5 anchor alone is what a
- * downstream step needs, and the door extracts field 0's commitment positionally
- * from the compact structures that anchor authenticates.
+ * Mirrors `midgard/fraud_proofs/double_spend/step_01.State`. The §2.5 anchor
+ * alone is what a downstream step needs, and the door extracts field 0's
+ * commitment positionally from the compact structures that anchor
+ * authenticates.
  */
 export const DoubleSpendStep01StateSchema = Data.Object({
   verified_tx1_id: H32Schema,
@@ -125,10 +124,8 @@ export const DoubleSpendStep03Datum = asDataType<DoubleSpendStep03Datum>(
 );
 
 /**
- * Mirrors `midgard/fraud_proofs/double_spend/step_03.Args`. The retired
- * `tx1_spend_inputs_ref_input_index` named a bespoke publication UTxO; the §8
- * carriage ladder subsumes it — tier 2 is now the door's own `RawUtxo` arm,
- * carried inside the opening.
+ * Mirrors `midgard/fraud_proofs/double_spend/step_03.Args`. Tier 2 of the §8
+ * carriage ladder is the door's own `RawUtxo` arm, carried inside the opening.
  */
 export const DoubleSpendStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),

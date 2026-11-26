@@ -22,7 +22,7 @@
  * Proof carriage: this family's on-chain step-01 args are the flat
  * `NativeTxInclusionArgs` record (see
  * `onchain/aiken/lib/midgard/fraud-proofs/withdrawn-reference-input/step-01.ak` and
- * `WithdrawnReferenceInputStep01SpendRedeemerSchema`), i.e. the pre-#545
+ * `WithdrawnReferenceInputStep01SpendRedeemerSchema`), i.e. the
  * redeemer-carried route only. There is no `NativeTxInclusionCarriage` wrapper
  * and therefore no published-chunk route to mirror.
  */
@@ -78,10 +78,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
   requireWithdrawnReferenceInputReferenceScript,
@@ -111,8 +108,7 @@ export type WithdrawnReferenceInputStep01Build = {
   readonly secondStepAddress: string;
   /**
    * The §2.5 anchor this step wrote into thread state — what step-02 reads back
-   * and opens field 1 against. It was already reported here before #604; what
-   * changed is that it is now the thread's state rather than a convenience.
+   * and opens field 1 against.
    */
   readonly badTxId: string;
   readonly blocksWithdrawalsRoot: string;
@@ -123,9 +119,6 @@ export type WithdrawnReferenceInputStep01Build = {
   readonly stateQueueNodeRefInputIndex: number;
   readonly referenceScriptOutRef: string;
 };
-
-export type SubmitWithdrawnReferenceInputStep01Result =
-  OutsideWorkflowSubmission<WithdrawnReferenceInputStep01Build>;
 
 type WithdrawnReferenceInputStep01Layout = {
   readonly inputIndex: bigint;

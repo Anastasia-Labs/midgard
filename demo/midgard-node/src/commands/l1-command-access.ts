@@ -1,5 +1,5 @@
 /**
- * A tool's L1 access (option E): every CLI command and tool reads L1 through
+ * A tool's L1 access: every CLI command and tool reads L1 through
  * one of the tool adapters of the port (`../l1-access.ts`), chosen by
  * `--l1 node|kupmios|blockfrost` (or `L1_ACCESS`):
  *

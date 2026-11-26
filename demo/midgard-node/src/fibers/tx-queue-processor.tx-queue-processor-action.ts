@@ -267,7 +267,7 @@ export const txQueueProcessorAction = (
                     leaseOwner,
                   })).map((txId) => txId.toString("hex")),
                 );
-                // A tx's input claims (design D6) go once its row can no
+                // A tx's input claims go once its row can no
                 // longer be pending; the Phase B patch already moved its
                 // inputs and outputs into or out of the ledger view.
                 const releaseClaims = (txIdHexes: Iterable<string>) =>

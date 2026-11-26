@@ -1563,14 +1563,14 @@ test case_selection_and_constructor_argument_application_are_streamed() {
   }
 }
 
-// Issue #521 regression pins. `cek_machine_v1.MachineValueWitnessV1` used to be
-// named `ValueWitnessV1`, colliding with `cek_builtin_v1.ValueWitnessV1` in
-// stock aiken v1.1.22's generated-decoder cache, which is keyed by the local
-// type name only. The two acceptance sets are arity-disjoint at every shared
-// constructor tag, so the shared decoder was wrong in both directions: it
-// admitted malformed machine witnesses and rejected well-formed ones. This
-// first test forces both decoders into one compiled program, which is the
-// only shape in which `aiken check` can observe the collision at all.
+// Stock aiken v1.1.22 keys its generated-decoder cache by the local type name
+// only, so `cek_machine_v1.MachineValueWitnessV1` must not share a local name
+// with `cek_builtin_v1.ValueWitnessV1`. The two acceptance sets are
+// arity-disjoint at every shared constructor tag, so a shared decoder would be
+// wrong in both directions: it would admit malformed machine witnesses and
+// reject well-formed ones. This first test forces both decoders into one
+// compiled program, the only shape in which `aiken check` can observe a
+// collision.
 test machine_and_builtin_value_witness_decoders_stay_distinct() {
   expect Some(machine_data) = cbor.deserialise(#"d87b9f41004111ff")
   expect machine_value: cek_machine_v1.MachineValueWitnessV1 = machine_data

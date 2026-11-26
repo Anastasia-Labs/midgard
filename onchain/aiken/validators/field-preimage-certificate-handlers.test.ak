@@ -401,20 +401,18 @@ test field_preimage_certificate_handler_mint_rejects_a_quantity_other_than_one()
 }
 
 /// A second, fabricated certificate riding out of an honest certification —
-/// the shape #606's constant name made reachable, and the reason
+/// the shape the constant asset name makes reachable, and the reason
 /// `expect minted_quantity == 1` may never be relaxed.
 ///
-/// Under the retired derived name two certificates were two asset names and
-/// therefore two pairs in `tx.mint`, refused by the single-pair destructuring.
-/// Under the constant name they are the same asset: `tx.mint` aggregates them
-/// into one pair at quantity 2 and the destructuring sees nothing wrong. This
-/// transaction is balanced (two minted, two carried) and every other conjunct
-/// holds — `output_index` names the honest certificate at index 0, so steps
-/// 1–6 read the honest datum, step 8 sees exactly one token in that output,
-/// and step 10's content proof passes against the real carriage. The second
-/// unit lands at index 1, at this same script address, on a datum whose
-/// `field_hash` and `owner` the policy never examined; nothing but the
-/// quantity check refuses it.
+/// Under the constant name two certificates are the same asset: `tx.mint`
+/// aggregates them into one pair at quantity 2 and the destructuring sees
+/// nothing wrong. This transaction is balanced (two minted, two carried) and
+/// every other conjunct holds — `output_index` names the honest certificate at
+/// index 0, so steps 1–6 read the honest datum, step 8 sees exactly one token
+/// in that output, and step 10's content proof passes against the real
+/// carriage. The second unit lands at index 1, at this same script address, on
+/// a datum whose `field_hash` and `owner` the policy never examined; nothing
+/// but the quantity check refuses it.
 ///
 /// Mutation-proved: with `expect minted_quantity == 1` deleted from
 /// `validators/field-preimage-certificate.ak` this vector passes the handler
@@ -702,13 +700,12 @@ test field_preimage_certificate_handler_spend_rejects_a_surviving_certificate_to
   )
 }
 
-/// The same guard, at the corner #606's constant name makes reachable: every
-/// certificate token is now the same asset, so "the token survives" and "the
+/// The same guard, at the corner the constant asset name makes reachable: every
+/// certificate token is the same asset, so "the token survives" and "the
 /// token migrates onto a fresh datum" are one move. The owner spends their own
 /// certificate and tries to send the constant-name token out on an output
 /// wearing a *different* datum — a certificate the minting policy never saw.
-/// "No output carries the name" refuses it per-token and order-independently
-/// (invariant a of the 2026-08-16 ruling).
+/// "No output carries the name" refuses it per-token and order-independently.
 test field_preimage_certificate_handler_spend_rejects_the_token_migrating_onto_a_fresh_datum() fail {
   run_spend(
     Some(certificate_for(publisher_hash)),
@@ -776,7 +773,7 @@ test field_preimage_certificate_handler_retire_rejects_a_mint() fail {
 }
 
 // ---------------------------------------------------------------------------
-// Phase-4 exit measurement — certificate mint and spend (spec §8.10, rows 7–12)
+// Certificate mint and spend cost (spec §8.10)
 // ---------------------------------------------------------------------------
 //
 // What a certification and a retirement actually cost, at both sizes the ladder

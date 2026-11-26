@@ -66,8 +66,8 @@ deliberately left hunks uncommitted.
    `commit-paths` accepts only explicit file paths. With plain git nothing
    stops a sweep; the hook refuses only the blueprint. [review]
 2. **Never derive a destructive command's arguments from `git status`.**
-   Status lines carry prefixes (`A `, ` M`, `??`, `R  old -> new`); on
-   2026-09-09 status prefixes became `rm` arguments and deleted real files.
+   Status lines carry prefixes (`A `, ` M`, `??`, `R  old -> new`); fed to
+   `rm`, they name the wrong files and delete real ones.
    List candidates with `git ls-files --others --exclude-standard` or `ls`,
    read the list, then delete by explicit path. [review]
 3. **`onchain/aiken/plutus.json` is never committed.** It is a build output

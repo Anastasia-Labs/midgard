@@ -628,8 +628,7 @@ describe("coordinator witness and candidate planning", () => {
   });
 });
 
-// The 2026-08-11 owner ruling: the single-key attest loop is
-// accepted "with a rate-limited explanatory log". A threshold of one is exactly
+// The single-key attest loop runs with a rate-limited explanatory log. A threshold of one is exactly
 // the single-key configuration — the governor floors `da_threshold` at
 // `ceil(2*committee_len/3)`, which is >= 2 for every committee of two or more —
 // so it is the trigger rather than a proxy for one.

@@ -27,7 +27,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   resolveCertificateFromLedger,
   standInCertificatePolicy,
-} from "./field-preimage-carriage-fit-emulator.8-6-exit-measurement-certificate-min-ada-and-the-one-transaction-question.js";
+} from "./field-preimage-carriage-fit-emulator.8-6-certificate-min-ada-and-the-one-transaction-question.js";
 import {
   FIELD_INDEX,
   fieldPreimage,
@@ -48,9 +48,6 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
   let harness: Harness;
 
   beforeAll(async () => {
-    // Inflated for the chunk publications only (§8.3 E1); the certification
-    // transaction itself is small and its size is asserted against the real
-    // limit below.
     harness = await setupEmulator();
   });
 
@@ -178,14 +175,12 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // certificate over the same chunks. Only the `owner` differs, and no
     // consuming step reads it.
     //
-    // **Healing is pinned on the datum, not the token.** Under the
-    // retired derivation the token name was `blake2b_256(field_index ‖ tx_id)`
-    // and "same name" was the healing property. Since the owner ruling of
-    // 2026-08-16 `deriveFieldPreimageCertification` returns a module-level
-    // constant unconditionally, so an assertion that two plans agree on
-    // `assetNameHex` holds for *any* two plans in the repo and says nothing
-    // about healing. What the ruling actually promises is "same bytes ⇒ same
-    // datum (modulo `owner`)", and that is what these rows check.
+    // **Healing is pinned on the datum, not the token.**
+    // `deriveFieldPreimageCertification` returns a module-level constant name
+    // unconditionally, so an assertion that two plans agree on `assetNameHex`
+    // holds for *any* two plans in the repo and says nothing about healing.
+    // The promise is "same bytes ⇒ same datum (modulo `owner`)", and that is
+    // what these rows check.
     const healedPlan = healMidgardFieldCarriage({
       healer: keyHash(HEALER_KEY),
       txId: TX_ID,
@@ -244,7 +239,7 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
 
     // The burn half of §8.7's yank mode is **not** exercised here and cannot
     // be: retirement spends the certificate output, and that needs the compiled
-    // spend handler #579's blueprint carries. `certificate_spend_cost` and
+    // spend handler. `certificate_spend_cost` and
     // `certificate_spend_*` in the Aiken suite are where the burn path is
     // proved. What is checked here is that the off-chain half of it — the
     // `Retire` redeemer an off-chain burner emits — is the frozen Constr tag 1

@@ -149,7 +149,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
 }
 
 test value_and_mint_uses_authenticated_native_mint_frontier() {
-  // §5.6 — the enveloped list of per-policy items, not the retired raw map.
+  // §5.6 — the enveloped list of per-policy items, not a raw map.
   let mint_cbor = native_tx_field_access_v1.encode_field_preimage(
     [
       #"82581c"
@@ -396,7 +396,7 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
 // The canonical parameterized minimum-fee rule is
 // `body.fee >= min_fee_a * canonical_tx_size + min_fee_b`, evaluated by
 // `static_rules_rejection` (validation-machine-v1.ak) over
-// `native_tx_canonical_size_v1`. This selector instantiates it at the C70
+// `native_tx_canonical_size_v1`. This selector instantiates it at the
 // target snapshot (`minFeeA = 44`, `minFeeB = 155_381`) and pins the two
 // ADJACENT transactions at the boundary: a fee exactly at the floor advances to
 // InputSets, a fee one lovelace below it is an exact `E_MIN_FEE` rejection.
@@ -427,7 +427,7 @@ test parameterized_min_fee_boundary_matches_target_snapshot() {
 }
 
 // The canonical parameterized minimum-Ada floor,
-// `min_ada_lovelace_v1` (validation-machine-v1.ak), instantiated at the C70
+// `min_ada_lovelace_v1` (validation-machine-v1.ak), instantiated at the
 // target snapshot `coinsPerUtxoByte = 4_310` over a concrete serialized ledger
 // output. The boundary is pinned adjacently: an output funded at exactly the
 // floor satisfies it, one lovelace below does not.
@@ -510,12 +510,12 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
   and {
     target_snapshot_coins_per_utxo_byte == 4_310,
     vm_shared.min_ada_output_overhead_bytes == 160,
-    // 1. C70 snapshot rate, zero-byte intercept.
+    // 1. Target snapshot rate, zero-byte intercept.
     min_ada_absolute_vector_is_exact(4_310, 0, 689_600),
-    // 2. C70 snapshot rate, the 41-byte enterprise output holding 2 ADA.
+    // 2. Target snapshot rate, the 41-byte enterprise output holding 2 ADA.
     min_ada_absolute_vector_is_exact(4_310, enterprise_bytes, 866_310),
     min_ada_absolute_vector_is_exact(4_310, 41, 866_310),
-    // 3. C70 snapshot rate, the 196-byte multi-asset/datum/script_ref output.
+    // 3. Snapshot rate, the 196-byte multi-asset/datum/script_ref output.
     min_ada_absolute_vector_is_exact(4_310, rich_bytes, 1_534_360),
     min_ada_absolute_vector_is_exact(4_310, 196, 1_534_360),
     // 4. Unit rate, zero-byte intercept -- the overhead standing alone.
@@ -525,23 +525,24 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
     // 6. A synthetic 5_000 rate at the 196-byte canonical output: the rate is a
     //    free parameter, so moving it moves the floor.
     min_ada_absolute_vector_is_exact(5_000, 196, 1_780_000),
-    // 7. C70 snapshot rate at a 5_000-byte output -- no sub-cap at size.
+    // 7. Target snapshot rate at a 5_000-byte output -- no sub-cap at size.
     min_ada_absolute_vector_is_exact(4_310, 5_000, 22_239_600),
   }
 }
 
 // ---------------------------------------------------------------------------
-// E_MIN_ADA wiring (R8 of decision 0005). Everything above this line exercises the floor as ARITHMETIC. The
-// vectors below exercise it as a CONVICTION: the ValueAndMint output-descriptor
-// step, at `output_asset_cursor == 0`, now rejects an under-funded output with
-// `E_MIN_ADA` instead of folding its lovelace into the accumulator.
+// E_MIN_ADA wiring. Everything above this line exercises the floor as
+// ARITHMETIC. The vectors below exercise it as a CONVICTION: the ValueAndMint
+// output-descriptor step, at `output_asset_cursor == 0`, rejects an
+// under-funded output with `E_MIN_ADA` instead of folding its lovelace into the
+// accumulator.
 // ---------------------------------------------------------------------------
 
 /// The compiled deployment pin itself. The rate the output-descriptor step
 /// convicts with is `env.coins_per_utxo_byte`, held identical in
 /// `env/default.ak` and `env/testnet.ak` and mirrored by
 /// `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`; no vector above pins its
-/// absolute value now that the local test constant reads it.
+/// absolute value, because the local test constant reads it.
 ///
 /// ZERO-RATE: no on-chain guard rejects a zero rate, and one must not be added
 /// -- at a compiled constant the rate cannot be zero at runtime, so the guard
@@ -600,7 +601,7 @@ test value_and_mint_output_descriptor_admits_exact_min_ada_floor() {
 
 /// FLOOR MISSED BY ONE LOVELACE. The adjacent boundary: the same descriptor,
 /// one lovelace short, is convictable with `E_MIN_ADA` and -- second conjunct
-/// -- is no longer provable as an advancing step, which is the clause that
+/// -- is not provable as an advancing step, which is the clause that
 /// makes the rejection mandatory rather than merely available to a challenger.
 test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
   let f = value_output_descriptor_fixture_at(
@@ -625,9 +626,7 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
   }
 }
 
-/// ZERO LOVELACE, RE-AUTHORED NOT SUPPRESSED. This is the shape
-/// the output-descriptor fixture used to carry (3 lovelace over a 16 KiB
-/// output) taken to its limit. Before the wiring it advanced; now it convicts.
+/// ZERO LOVELACE. An under-funded output taken to its limit convicts.
 test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
   let f = value_output_descriptor_fixture_at(0)
   and {
@@ -720,7 +719,7 @@ test parameterized_ada_and_multi_asset_conservation_matches_typescript() {
 // authorized, so no leaf exists for it -- can therefore never move value, in
 // either direction.
 //
-// ATTRIBUTION (post-#532). This is not a bare `test ... fail`: each leg is a
+// ATTRIBUTION. This is not a bare `test ... fail`: each leg is a
 // full one-step evaluation and the fixture differs between the passing and
 // failing legs in exactly one field, `policy_id` in the auxiliary witness.
 // Every other conjunct of the stage-four arm survives that substitution --

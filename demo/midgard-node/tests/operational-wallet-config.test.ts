@@ -168,12 +168,11 @@ describe("operational wallet topology at config load", () => {
 });
 
 /**
- * Two later checks were deleted as covered by the config refusal: the Lucid
- * layer's operational-wallet overlap check and the public listener's
- * publisher/operator separation check. Both run on a loaded NodeConfig, so a
- * topology config load refuses never reaches them.
+ * The config refusal is the only operational-wallet overlap and
+ * publisher/operator separation check: the Lucid layer and the public listener
+ * run on a loaded NodeConfig, which a refused topology never reaches.
  */
-describe("config refusal covers the deleted wallet-overlap checks", () => {
+describe("config refusal covers the wallet-overlap checks", () => {
   const reachedAfterLoad = async () => {
     let reached = false;
     const exit = await Effect.runPromiseExit(

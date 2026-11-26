@@ -82,7 +82,7 @@ const BINDING_FIELDS = [
 
 /**
  * Re-binds a stored retirement floor to the current L1 source-authority
- * digest (whose formula no longer covers the L1 origin), under the instance
+ * digest, under the instance
  * lock and idempotently: only `sourceAuthoritySha256` is rewritten, only on
  * a floor whose every other binding field equals the current binding, and
  * the floor keeps its generation, points and breach. A floor differing in

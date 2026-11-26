@@ -22,10 +22,4 @@ describe("canonical Aiken MPF proof ABI", () => {
     expect(Data.to(canonicalProof, Proof)).toBe(CANONICAL_PROOF_CBOR);
     expect(Data.from(CANONICAL_PROOF_CBOR, Proof)).toEqual(canonicalProof);
   });
-
-  it("rejects the obsolete double-wrapped Fork neighbor", () => {
-    const obsoleteDoubleWrapped = "9fd87a9f01d8799fd8799f0241bb41ccffffffff";
-
-    expect(() => Data.from(obsoleteDoubleWrapped, Proof)).toThrow();
-  });
 });

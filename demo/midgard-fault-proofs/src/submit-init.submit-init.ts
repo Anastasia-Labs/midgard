@@ -6,7 +6,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseContractDeploymentInfo } from "./inspect-contracts.parse-contract-deployment-info.js";
-import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   makeLucidForSubmit,
   readJsonFile,
@@ -15,6 +14,7 @@ import {
   resolveFaultProofDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
+import { rejectUnadmittedSubmissionRoute } from "./submission-route-admission.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import {
   fraudCategoryLabel,

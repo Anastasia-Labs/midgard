@@ -1,40 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  loadCommitteeConfig,
-  parseNativeLedgerConfig,
-  rejectRetiredWatcherEnvNames,
-} from "../src/config.js";
+import { loadCommitteeConfig, parseNativeLedgerConfig } from "../src/config.js";
 import { tempDir } from "./helpers.js";
 import {
   libp2pConfigEnv,
   libp2pManifest,
   writeConfigFiles,
 } from "./helpers/committee-config-files.js";
-
-describe("rejectRetiredWatcherEnvNames", () => {
-  it("refuses the pre-split WATCHER_* names and points at the DA_COMMITTEE_* replacements", () => {
-    expect(() =>
-      rejectRetiredWatcherEnvNames({
-        WATCHER_DATABASE_URL: "postgres://x",
-        WATCHER_API_PORT: "8787",
-        DA_COMMITTEE_API_HOST: "127.0.0.1",
-      }),
-    ).toThrow(
-      /retired environment variable\(s\) WATCHER_API_PORT, WATCHER_DATABASE_URL: .*use DA_COMMITTEE_API_PORT, DA_COMMITTEE_DATABASE_URL/u,
-    );
-  });
-
-  it("accepts an environment that uses only the current names", () => {
-    expect(() =>
-      rejectRetiredWatcherEnvNames({
-        DA_COMMITTEE_DATABASE_URL: "postgres://committee",
-        DA_COMMITTEE_API_PORT: "8787",
-        WATCHER_UNRELATED_PREFIX_ELSEWHERE: "ignored",
-      }),
-    ).not.toThrow();
-  });
-});
 
 describe("local node ledger settings", () => {
   const nativeLedgerEnv = {

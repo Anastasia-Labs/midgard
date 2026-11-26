@@ -292,12 +292,8 @@ export const decodeMidgardNativeTxWitnessPreimages = (
  * walk). It runs where given bytes become a committed transaction — the encoder,
  * the canonical decoder, and materialisation — so a caller cannot obtain a
  * commitment for a preimage no decoder would accept, while a caller that already
- * holds producer-built bytes pays only for the hash.
- *
- * The retired counted derivation provided this incidentally: building a bounded
- * collection had to split every preimage into items first, so this function used
- * to be a bare `deriveMidgardNativeTxCompact` call kept for its exceptions.
- * Under §4 nothing forces the split, so the check is stated rather than borrowed.
+ * holds producer-built bytes pays only for the hash. §4 hashing alone never
+ * splits a preimage into items, so the check is stated here explicitly.
  */
 export const validateMidgardNativeTxCanonical = (
   tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,

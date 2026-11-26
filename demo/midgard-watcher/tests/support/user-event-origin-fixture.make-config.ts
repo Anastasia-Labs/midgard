@@ -27,7 +27,7 @@ import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fi
 // Explicitly synthetic local test chain. The initialization and reference frames
 // are the real node initialization on a deterministic emulator, derived once per
 // run from the current blueprint. Header keys/signatures are dummy
-// fixture data: this proves native framing/W12/application authority wiring only,
+// fixture data: this proves native framing, source-agreement and application authority wiring only,
 // and makes no consensus validity, public-chain inclusion or historical claim.
 export const GENESIS_BYTES = JSON.stringify({ networkMagic: 1 });
 

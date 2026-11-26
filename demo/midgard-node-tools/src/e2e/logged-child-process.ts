@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -24,7 +24,6 @@ export type LoggedChildProcessResult = {
   readonly timedOut: boolean;
   readonly cleanup: ChildProcessCleanupResult | null;
   readonly outputTermination: OutputTerminationObservation | null;
-  readonly fileTermination: FileTerminationObservation | null;
   readonly stdout: string;
   readonly combinedOutput: string;
   readonly error: Error | null;
@@ -32,26 +31,11 @@ export type LoggedChildProcessResult = {
 
 export type OutputTerminationSpec = {
   readonly marker: string;
-  readonly additionalMarkers?: readonly string[];
-  readonly occurrence?: number;
   readonly signal: NodeJS.Signals;
 };
 
 export type OutputTerminationObservation = {
   readonly marker: string;
-  readonly occurrence: number;
-  readonly signal: NodeJS.Signals;
-  readonly at: string;
-};
-
-export type FileTerminationSpec = {
-  readonly path: string;
-  readonly signal: NodeJS.Signals;
-  readonly pollIntervalMs?: number;
-};
-
-export type FileTerminationObservation = {
-  readonly path: string;
   readonly signal: NodeJS.Signals;
   readonly at: string;
 };
@@ -64,7 +48,6 @@ export type LoggedChildProcessInput = {
   readonly rawLogPath: string;
   readonly timeoutMs?: number;
   readonly terminateOnOutput?: OutputTerminationSpec;
-  readonly terminateOnFile?: FileTerminationSpec;
   readonly ownership?: OwnedProcessGroupSpec;
   readonly startedAtDate?: Date;
   readonly startEvent: (input: {
@@ -88,7 +71,6 @@ export const runLoggedChildProcessAttempt = async ({
   startEvent,
   cleanupEvent,
   terminateOnOutput,
-  terminateOnFile,
   ownership,
 }: LoggedChildProcessInput): Promise<LoggedChildProcessResult> => {
   const startedAt = startedAtDate.toISOString();
@@ -115,31 +97,13 @@ export const runLoggedChildProcessAttempt = async ({
   let timedOut = false;
   let cleanup: ChildProcessCleanupResult | null = null;
   let outputTermination: OutputTerminationObservation | null = null;
-  let fileTermination: FileTerminationObservation | null = null;
   let outputScanTail = "";
-  const outputMarkerOccurrences = new Map<string, number>();
-
-  const outputTerminationMarkers =
-    terminateOnOutput === undefined
-      ? []
-      : [
-          terminateOnOutput.marker,
-          ...(terminateOnOutput.additionalMarkers ?? []),
-        ];
-  if (outputTerminationMarkers.some((marker) => marker.length === 0)) {
-    throw new Error("terminateOnOutput markers must not be empty");
-  }
-  const terminateOnOccurrence = terminateOnOutput?.occurrence ?? 1;
-  if (
-    !Number.isSafeInteger(terminateOnOccurrence) ||
-    terminateOnOccurrence <= 0
-  ) {
-    throw new Error("terminateOnOutput.occurrence must be a positive integer");
+  if (terminateOnOutput?.marker.length === 0) {
+    throw new Error("terminateOnOutput.marker must not be empty");
   }
 
   return await new Promise<LoggedChildProcessResult>((resolve) => {
     let settled = false;
-    let filePoll: NodeJS.Timeout | undefined;
     const settle = (
       exitCode: number | null,
       signal: NodeJS.Signals | null,
@@ -149,7 +113,6 @@ export const runLoggedChildProcessAttempt = async ({
         return;
       }
       settled = true;
-      if (filePoll !== undefined) clearInterval(filePoll);
       // Derive the persisted wall-clock tuple from monotonic elapsed time so a
       // host clock correction cannot make an observation precede its attempt.
       const finished = coherentNow();
@@ -163,7 +126,6 @@ export const runLoggedChildProcessAttempt = async ({
         timedOut,
         cleanup,
         outputTermination,
-        fileTermination,
         stdout,
         combinedOutput,
         error,
@@ -238,76 +200,27 @@ export const runLoggedChildProcessAttempt = async ({
             Math.max(1, timeoutMs),
           );
 
-    if (terminateOnFile !== undefined) {
-      const pollIntervalMs = Math.max(
-        10,
-        Math.floor(terminateOnFile.pollIntervalMs ?? 50),
-      );
-      filePoll = setInterval(() => {
-        if (fileTermination !== null || !existsSync(terminateOnFile.path)) {
-          return;
-        }
-        fileTermination = {
-          path: terminateOnFile.path,
-          signal: terminateOnFile.signal,
-          at: coherentNow().at,
-        };
-        cleanup = terminateChildProcessGroup({
-          pid,
-          signal: terminateOnFile.signal,
-          ownership,
-        });
-        log.write(
-          JSON.stringify(cleanupEvent({ cleanup, at: fileTermination.at })) +
-            "\n",
-        );
-      }, pollIntervalMs);
-    }
-
     const appendOutput = (text: string): void => {
       combinedOutput += text;
       log.write(text);
       if (terminateOnOutput === undefined || outputTermination !== null) {
         return;
       }
+      const { marker, signal } = terminateOnOutput;
       const searchable = outputScanTail + text;
-      const matchedMarker = outputTerminationMarkers.find((marker) => {
-        let found = 0;
-        let fromIndex = 0;
-        while (true) {
-          const index = searchable.indexOf(marker, fromIndex);
-          if (index < 0) break;
-          found += 1;
-          fromIndex = index + marker.length;
-        }
-        const observed = (outputMarkerOccurrences.get(marker) ?? 0) + found;
-        outputMarkerOccurrences.set(marker, observed);
-        return observed >= terminateOnOccurrence;
-      });
-      if (matchedMarker !== undefined) {
-        outputTermination = {
-          marker: matchedMarker,
-          occurrence: outputMarkerOccurrences.get(matchedMarker) ?? 1,
-          signal: terminateOnOutput.signal,
-          at: coherentNow().at,
-        };
-        cleanup = terminateChildProcessGroup({
-          pid,
-          signal: terminateOnOutput.signal,
-          ownership,
-        });
+      if (searchable.includes(marker)) {
+        outputTermination = { marker, signal, at: coherentNow().at };
+        cleanup = terminateChildProcessGroup({ pid, signal, ownership });
         log.write(
           JSON.stringify(cleanupEvent({ cleanup, at: outputTermination.at })) +
             "\n",
         );
         return;
       }
-      const retainedCharacters = Math.max(
-        0,
-        Math.max(...outputTerminationMarkers.map((marker) => marker.length)) -
-          1,
+      // Keep enough to find a marker split across two chunks.
+      outputScanTail = searchable.slice(
+        Math.max(0, searchable.length - (marker.length - 1)),
       );
-      outputScanTail = searchable.slice(-retainedCharacters);
     };
 
     child.stdout.on("data", (chunk: Buffer) => {

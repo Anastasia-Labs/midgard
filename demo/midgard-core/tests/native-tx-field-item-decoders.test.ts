@@ -25,7 +25,7 @@ import {
 /**
  * These decoders are the read-back half of §5.3's per-field item grammar, and
  * the property that makes them correct is not "they parse" — it is that they are
- * **exact inverses of the #569 producers on bytes Aiken already agrees with**.
+ * **exact inverses of the §5.3 producers on bytes Aiken already agrees with**.
  *
  * So the vectors are not rebuilt here. They are loaded from
  * `tests/fixtures/native-tx-field-items-v1.generated.json`, the same checked-in
@@ -161,7 +161,7 @@ describe("fixed-item legality leaves repeated items to later phases", () => {
   );
 });
 
-describe("§5.3 field item decoders are the inverse of the #569 producers", () => {
+describe("§5.3 field item decoders are the inverse of the field item producers", () => {
   it("covers all nine fields, in the fixture's positional order", () => {
     expect(fixture.fields).toHaveLength(MIDGARD_FIELD_NAMES.length);
     expect(fixture.fields.map((field) => field.fieldIndex)).toStrictEqual([

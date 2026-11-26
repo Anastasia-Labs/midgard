@@ -108,7 +108,6 @@ export default defineConfig({
             include: ["./tests/**/*.test.ts"],
             exclude: [
               ...configDefaults.exclude,
-              "./tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
               ...preprodPublicTests,
               ...preprodPublicStackTests,
               ...preprodRehearsalStackTests,

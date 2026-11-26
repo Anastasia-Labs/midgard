@@ -106,8 +106,8 @@ const reconstructRetainedClassification = ({
 
   // §4: each field authenticates once against the hash its compact structure
   // carries, and `reconstructMidgardTransaction` performs all nine checks. The
-  // machine's chunk steps are still counted here, and still measured — they are
-  // its trace, not a publication claim (see `countedMachineFieldChunkStepsV1`).
+  // machine's chunk steps are counted and measured here — they are its trace,
+  // not a publication claim (see `countedMachineFieldChunkSteps`).
   const chunkProofs = countedMachineTransactionChunkSteps(
     retainedCanonicalCbor,
     sourceKind,

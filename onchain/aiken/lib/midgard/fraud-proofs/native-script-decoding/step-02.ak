@@ -35,7 +35,7 @@ pub type Args {
       ledger_state.ForcedInclusionTxV1,
     >,
   >,
-  /// Direction A: the prover-chosen accused pair (2026-08-25 ruling).
+  /// Direction A: the prover-chosen accused pair.
   /// Ignored for direction B, whose pair is copied from the forced leaf.
   chosen_outpoint_source_kind: Int,
   chosen_outpoint_cursor: Int,

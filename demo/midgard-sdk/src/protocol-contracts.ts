@@ -229,7 +229,7 @@ export const buildDaBondPoolValidator = (
 /**
  * Bondless DA attestation. Apply checks the commitment's deployment identity
  * against the hub policy and reads the pool (by its policy) as a reference
- * input; the attestation no longer depends on the availability policy.
+ * input; the attestation does not depend on the availability policy.
  */
 export const buildDaAttestationValidator = (
   blueprint: FaultProofBlueprint,

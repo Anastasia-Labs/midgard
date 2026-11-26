@@ -1,9 +1,7 @@
 # L1 publication and execution acceptance
 
 The [resolver decomposition decision](../decisions/0003-publishable-semantic-resolvers.md)
-records the design choices from delivered size work. The
-[availability-challenge plan](availability-challenge.md) records that contract's
-split.
+records the design choices for resolver size.
 
 ## Limits and evidence
 

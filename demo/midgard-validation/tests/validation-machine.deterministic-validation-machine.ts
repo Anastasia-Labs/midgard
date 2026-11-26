@@ -132,7 +132,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
-        // #597: the item constructor carries the field's whole §5.1 preimage as
+        // The item constructor carries the field's whole §5.1 preimage as
         // tier-1 `Inline` carriage, so the step's envelope is its control plus
         // that preimage. Tier 1 is bounded by construction — the producer
         // refuses above the cap — so this measures the whole admitted domain.
@@ -244,7 +244,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     ).toBe(true);
     expect(scriptSourceWitnesses[4]?.auxiliary).toBeNull();
-    // C21-STAGE4 Option A: the stage-4 fold witness is proof-only.
+    // The stage-4 fold witness is proof-only.
     expect(scriptSourceWitnesses[5]?.auxiliary?.kind).toBe(
       "transactionRedeemerItemBegin",
     );
@@ -1228,8 +1228,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       mintFoldWitnesses.every((witness) => {
         if (witness.kind === "transactionFieldChunk") {
           // Tier-1 carriage is bounded by §8.4's own cap, which the producer
-          // refuses above; the 4,095-byte chunk bound was the retired
-          // `ChunkProofV1`'s and has no wire surface left.
+          // refuses above.
           return (
             stepFieldPreimage(witness).length <=
             MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
@@ -1407,8 +1406,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       mintFoldWitnesses.every((witness) => {
         if (witness.kind === "transactionFieldChunk") {
           // Tier-1 carriage is bounded by §8.4's own cap, which the producer
-          // refuses above; the 4,095-byte chunk bound was the retired
-          // `ChunkProofV1`'s and has no wire surface left.
+          // refuses above.
           return (
             stepFieldPreimage(witness).length <=
             MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES
@@ -1703,8 +1701,8 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     );
 
-    // #597: an item's index and length are derived from the authenticated
-    // preimage now, not claimed by the prover, so what a step can be checked for
+    // An item's index and length are derived from the authenticated
+    // preimage, not claimed by the prover, so what a step can be checked for
     // is that it names field 2 (from its own control) and delivers exactly the
     // committed field-2 preimage.
     const outputsPreimage = transaction.tx.body.outputsPreimageCbor;
@@ -1724,10 +1722,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           stepFieldPreimage(auxiliary).equals(outputsPreimage),
       ),
     ).toBe(true);
-    // C21-STAGE4 Option A: stage-4 emits the carriage-only witness. The stage-1
-    // redeemer begin shares the kind, so the outputs field is pinned by the
-    // bytes the carriage delivers rather than by a field index the constructor
-    // no longer carries.
+    // Stage 4 emits the carriage-only witness. The stage-1 redeemer begin
+    // shares the kind, so the outputs field is pinned by the bytes the carriage
+    // delivers rather than by a field index the constructor does not carry.
     const outputItems = trace.witnesses
       .filter((witness) => witness.phase === "scriptSources")
       .flatMap((witness) =>

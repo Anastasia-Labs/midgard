@@ -1,5 +1,5 @@
 /**
- * Load shedding (design D5) over real HTTP on a real database: past 80 % of
+ * Load shedding over real HTTP on a real database: past 80 % of
  * either durable admission backlog bound an anonymous `/submit` gets 503
  * with `Retry-After`, answered while the database refuses every connection,
  * and a peer's `/peer/txs` is still admitted up to the full bound.

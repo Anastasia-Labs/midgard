@@ -3,7 +3,7 @@ import type { RoleFailureClass } from "../role-failure.js";
 /**
  * One conformance row of the shared failure classification
  * (`classifyRoleFailure`): an error as a dependency throws it, and the class
- * the owner ruling of 2026-10-09 gives it. Every role's adapter test runs
+ * the classification gives it. Every role's adapter test runs
  * these rows and asserts that the adapter does what its class says.
  */
 export type RoleFailureRow = Readonly<{

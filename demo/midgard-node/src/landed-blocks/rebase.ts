@@ -263,7 +263,7 @@ export const rebaseSql = (target: RebaseTarget) =>
       removed.map((row) => row.headerHash),
     );
     yield* markApplied(chained.map((row) => row.headerHash));
-    yield* MpfEngineStateDB.stampLedgerMigration(targetRoot(target));
+    yield* MpfEngineStateDB.stampLedgerRoot(targetRoot(target));
     return {
       ...rebuilt,
       landedCommits: new Set(landedCommits),

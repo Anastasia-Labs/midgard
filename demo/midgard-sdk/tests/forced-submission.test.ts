@@ -125,7 +125,7 @@ describe("immutable forced submission SDK boundary", () => {
     ).toEqual(payload);
   });
 
-  it("refuses the obsolete four-element submitted encoding and unknown outer constructors", () => {
+  it("refuses a native submitted encoding and unknown outer constructors", () => {
     expect(() =>
       SDK.deriveTxOrderMaterial({
         submittedTxCbor: encodeMidgardNativeTxCanonical(native),

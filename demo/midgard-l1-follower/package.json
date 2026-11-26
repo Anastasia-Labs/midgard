@@ -66,8 +66,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/events",
     "test": "node ../scripts/package-test.mjs",
-    "test:fork-sim": "vitest run tests/fork-sim",
-    "bench": "vitest run --config vitest.bench.config.ts"
+    "test:fork-sim": "vitest run tests/fork-sim"
   },
   "author": "Anastasia Labs",
   "license": "ISC",

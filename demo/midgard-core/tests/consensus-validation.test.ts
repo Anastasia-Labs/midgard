@@ -117,11 +117,9 @@ describe("canonical V1 consensus transaction bounds", () => {
   });
 
   it("carries §4 flat commitments in the compact structure and nothing else", () => {
-    // What the retired counted publication chain's tests were for: proving the
-    // compact's nine hashes are reachable from the revealed bytes. Under §4 that
-    // is one `blake2b_256` per field with no domain tag, version prefix or field
-    // index in the input, so the property is stated directly instead of through
-    // per-item openings — which §4 leaves nothing to check against.
+    // The compact's nine hashes are reachable from the revealed bytes: under §4
+    // that is one `blake2b_256` per field with no domain tag, version prefix or
+    // field index in the input.
     const tx = materializeMidgardNativeTxFromCanonical(canonical());
     const txCbor = encodeMidgardNativeTxCanonical(tx);
 

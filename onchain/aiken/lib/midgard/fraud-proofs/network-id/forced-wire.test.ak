@@ -132,7 +132,7 @@ fn pinned_step_02_state() -> step_02.State {
 
 /// The handoff datum step 01 writes and the forced door re-authenticates.
 /// `ForcedNetworkIdMismatch` is `NetworkIdFaultV1` constructor 2.
-test q35_forced_step_datum_wire_is_pinned() {
+test forced_step_datum_wire_is_pinned() {
   let datum: Datum = ct.StepDatum {
     fraud_prover,
     data: Some(ForcedNetworkIdMismatch),
@@ -141,12 +141,12 @@ test q35_forced_step_datum_wire_is_pinned() {
 }
 
 /// The same datum with an empty state — the shape the forced door refuses.
-test q35_forced_step_empty_datum_wire_is_pinned() {
+test forced_step_empty_datum_wire_is_pinned() {
   let datum: Datum = ct.StepDatum { fraud_prover, data: None }
   cbor.serialise(datum) == empty_forced_step_datum_cbor
 }
 
-test q35_forced_step_redeemer_wire_is_pinned() {
+test forced_step_redeemer_wire_is_pinned() {
   let redeemer: SpendRedeemer = ct.Continue(
     Args {
       input_index: 0,
@@ -160,11 +160,11 @@ test q35_forced_step_redeemer_wire_is_pinned() {
 
 /// The terminal state in its forced flavour: `forced_source_key` populated
 /// and `committed_tx_network_id` carrying Cardano's absent value 255.
-test q35_forced_step_02_state_wire_is_pinned() {
+test forced_step_02_state_wire_is_pinned() {
   cbor.serialise(pinned_step_02_state()) == forced_step_02_state_cbor
 }
 
-test q35_forced_step_02_datum_wire_is_pinned() {
+test forced_step_02_datum_wire_is_pinned() {
   let datum: step_02.Datum = ct.StepDatum {
     fraud_prover,
     data: Some(pinned_step_02_state()),
@@ -265,13 +265,13 @@ fn pinned_scan_opening() -> field_opening_v1.FieldOpeningV1 {
   }
 }
 
-test q35_forced_scan_bound_wire_is_pinned() {
+test forced_scan_bound_wire_is_pinned() {
   cbor.serialise(pinned_scan_bound()) == forced_scan_bound_cbor
 }
 
 /// The three thread states, in constructor order — the same order the SDK's
 /// discriminant must use.
-test q35_forced_scan_state_wire_is_pinned() {
+test forced_scan_state_wire_is_pinned() {
   let ready: forced_scan.State = forced_scan.Ready {
     bound: pinned_scan_bound(),
   }
@@ -290,7 +290,7 @@ test q35_forced_scan_state_wire_is_pinned() {
   }
 }
 
-test q35_forced_scan_datum_wire_is_pinned() {
+test forced_scan_datum_wire_is_pinned() {
   let datum: forced_scan.Datum = ct.StepDatum {
     fraud_prover,
     data: Some(
@@ -309,7 +309,7 @@ test q35_forced_scan_datum_wire_is_pinned() {
 
 /// Every action in constructor order, each carrying the same pinned opening so
 /// the vectors differ only where the action shapes differ.
-test q35_forced_scan_action_wire_is_pinned() {
+test forced_scan_action_wire_is_pinned() {
   let open_action: forced_scan.ActionV1 = forced_scan.Open {
     input_index: 0,
     output_index: 0,
@@ -351,7 +351,7 @@ test q35_forced_scan_action_wire_is_pinned() {
   }
 }
 
-test q35_forced_scan_redeemer_wire_is_pinned() {
+test forced_scan_redeemer_wire_is_pinned() {
   let continue_redeemer: forced_scan.SpendRedeemer = ct.Continue(
     forced_scan.Advance {
       input_index: 0,
@@ -373,7 +373,7 @@ test q35_forced_scan_redeemer_wire_is_pinned() {
 
 /// The batch caps are wire too: the SDK never proposes an `item_budget` above
 /// them, so a drift here is a drift in every scan transaction it builds.
-test q35_forced_scan_batch_caps_are_pinned() {
+test forced_scan_batch_caps_are_pinned() {
   and {
     forced_scan.scan_batch == 64,
     forced_scan.grammar_batch == 128,

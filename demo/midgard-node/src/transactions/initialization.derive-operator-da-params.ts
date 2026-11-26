@@ -52,8 +52,7 @@ import { TxExpiredError } from "./utils.tx-expiry.js";
  *
  * The warnings are per-bootstrap rather than time-limited, because this is a
  * one-shot path: it runs once per deployment initialisation, so it cannot flood
- * a log the way a loop can. The rate limiter that the ruling asks for lives
- * where the repetition is — the attest loop in
+ * a log the way a loop can. The rate limiter lives where the repetition is — the attest loop in
  * `demo/da-committee-node/src/coordinator/on-chain.ts`.
  *
  * What still fails closed is genuinely malformed configuration: a set that is
@@ -155,9 +154,8 @@ const resolveDaOwners = (
           "packed 28-byte payment key hashes",
         );
       }
-      // No arity refusal, symmetric with the committee path. The 2026-08-13
-      // owner ruling dropped the governor's owner-set minimum to one, so a
-      // locally derived owner set of one produces a datum the governor admits;
+      // No arity refusal, symmetric with the committee path. The governor's
+      // owner-set minimum is one, so a locally derived owner set of one produces a datum the governor admits;
       // `deriveOperatorDaParams` warns about it rather than failing closed.
       return [...new Set(signers.map((signer) => signer.keyHashHex))].sort();
     },

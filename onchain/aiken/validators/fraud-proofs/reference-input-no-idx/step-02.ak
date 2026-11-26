@@ -73,15 +73,14 @@ validator main(
         // 2. The challenged reference input is read out of field 1's preimage
         //    through the §8.8 door. The field index is a literal here, never a
         //    redeemer argument, so a step meaning to read field 1 cannot be
-        //    steered onto field 0 — which matters because §4 removed the domain
-        //    separation that used to make reference- and spend-input preimages
+        //    steered onto field 0 — which matters because §4 has no domain
+        //    separation that would make reference- and spend-input preimages
         //    distinguishable by hash.
         //
         //    Reference inputs share field 0's fixed 38-byte stride (§5.3/§10.5),
         //    so `spend_input_at` locates item `n` by one multiplication and one
         //    slice: no walk is entered and the cost does not grow with the
-        //    disputed transaction. This is where the family's counted
-        //    `field_commitment_from_items` re-hash of a reproduced list lived.
+        //    disputed transaction.
         let reference_inputs_view = opened_field_view(
           reference_inputs_opening,
           BodyAnchor { tx_id: verified_tx_id, source_kind: 0 },

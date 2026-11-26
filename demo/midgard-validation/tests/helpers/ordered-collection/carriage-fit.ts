@@ -38,8 +38,9 @@ export type MidgardCompleteItemCarriageFit = {
  * necessary only when both complete routes are measured to overflow.
  *
  * The publication side builds a real signed Conway transaction carrying the
- * published inline datum, using the validation-proof item publication framing. Since #597 that datum holds the field's
- * whole §5.1 preimage rather than one item beside an opening into it, so what is
+ * published inline datum, using the validation-proof item publication framing.
+ * That datum holds the field's whole §5.1 preimage rather than one item beside
+ * an opening into it, so what is
  * published here is the single-item envelope of `itemCbor` — the smallest
  * genuine field a complete-item step can name, which keeps the measurement a
  * lower bound on the publication transaction rather than an invented shape.

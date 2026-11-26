@@ -1,4 +1,4 @@
-// W4.8: the operator binary registers operator commands only.
+// The operator binary registers operator commands only.
 //
 // demo/midgard-node/AGENTS.md: keep `midgard-node` focused on operating the
 // node; test, demo, benchmark and acceptance commands belong to

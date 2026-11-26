@@ -11,7 +11,7 @@
  * field-preimage certificate is required, the complete replayer, the adapter
  * arm (a linear transaction port, or a cursor spec with its step contract
  * names, action refiner and cursor transaction port) and the optional
- * prerequisites. The assembly owns everything the families used to restate:
+ * prerequisites. The assembly owns everything the families share:
  * deployment binding, signer assertion, certificate requirement,
  * reference-script resolution over the step contract names, L1 observation
  * port, adapter, prerequisite decoration order, terminal verifier and

@@ -1,10 +1,7 @@
 /**
  * Canonical spend-input witness decoding, plus the min-Ada helpers the
- * publication builders share.
- *
- * **#604 removed this module's own publication path.** The banner it used to
- * carry pointed at `ensureSpendInputsReferenceWitness`, whose replacement is
- * §8's carriage ladder — see the note where that function stood.
+ * publication builders share. Field preimages are published by
+ * `publishFaultProofFieldCarriageV1` in `field-opening.ts`.
  */
 
 import {
@@ -126,22 +123,3 @@ export const spendInputsWitnessFromCbors = (
 
   return { inputs };
 };
-
-/*
- * `ensureSpendInputsReferenceWitness` stood here and is **deleted by #604**, not
- * re-pointed.
- *
- * It published a bespoke typed spend-input list at the prover's own address so
- * that `double-spend` steps 03 and 04 could name it by reference-input index.
- * §8's carriage ladder replaced the whole mechanism: tier 2 publishes the §5.1
- * preimage as a nothing-but-bytes inline datum (§8.5) that the door reads
- * directly, located by *content* rather than by out-ref (§8.7), and the
- * `tx1_spend_inputs_ref_input_index`/`tx2_spend_inputs_ref_input_index` redeemer
- * fields it fed no longer exist on-chain. Publishing is now
- * `publishFaultProofFieldCarriageV1` in `field-opening.ts`, which is one
- * mechanism for all nine families instead of one per family.
- *
- * What survives here is what was never about that publication: the canonical
- * spend-input witness decoding used by `prepare-non-existent-input`, and the
- * min-Ada helpers `publish-proof-chunks.ts` still uses.
- */

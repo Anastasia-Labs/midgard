@@ -185,8 +185,8 @@ export const outputMeetsMinAda = (
  * The floor itself stays parameterized -- both twins take
  * `coinsPerUtxoByte` as an argument and remain linear in the serialized size,
  * which is what decision 0003 protects when it forbids replacing the floor
- * with a flat constant. What is compiled is only the *rate's source*: per the
- * owner ruling on #627 (option B), `coins_per_utxo_byte` is a deployment
+ * with a flat constant. What is compiled is only the *rate's source*:
+ * `coins_per_utxo_byte` is a deployment
  * constant rather than a block-header field or a validation-context element,
  * because the rate that convicts a block is not the block producer's to
  * declare. Its Aiken counterpart is `env.coins_per_utxo_byte`

@@ -6,18 +6,15 @@
   the three-tier field-preimage carriage convention.
 - **Authority:** per `docs/spec/README.md`, this document wins over
   `technical-spec/` on concrete detail. Rationale lives in
-  `docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`;
-  decision trail: wayfinder map
-  [#552](https://github.com/Anastasia-Labs/midgard/issues/552).
+  `docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`.
 - **Owner/approver:** repository owner (Philip DiSarro).
-- **Last semantic review:** 2026-08-09, with subsequent owner-approved errata
-  incorporated in the affected sections. Git records their amendment history.
+- **Last semantic review:** 2026-08-09, with errata incorporated in the
+  affected sections.
 - **Documentation maintenance:** 2026-11-23 for the implementation statements
   of §§5.5, 8.2, 10.7, 10.9, 11 and 12, without changing wire rules or
-  rerunning acceptance. §13 was amended 2026-11-24 to the implemented
-  rejection hash.
-- **Version:** `native_tx_version_v1 = 1`. This is the sole pre-launch format;
-  there is no compatibility path to the counted bounded-collection scheme.
+  rerunning acceptance; §13 on 2026-11-24 against the implemented rejection
+  hash.
+- **Version:** `native_tx_version_v1 = 1`. This is the sole pre-launch format.
 - **Carriage limits:** §8.3 defines the current constants and execution
   limitations. Their rationale is in the
   [carriage decision](../midgard/decisions/field-carriage-authentication-and-budgeting.md).
@@ -173,7 +170,7 @@ and `witness_set_hash`, encoded as
 transaction is exactly `[1, full_body, full_witness_set]`; the normal full
 transaction remains `[1, full_body, full_witness_set, validity_code]`.
 Both reuse the same body and witness encodings. A forced decoder MUST refuse
-the obsolete four-element envelope, including one whose extra scalar is zero.
+a four-element envelope, including one whose extra scalar is zero.
 
 The committed `ForcedTxProofSourceV1` is the triple of canonical CBOR byte
 strings `(compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor)`.
@@ -256,7 +253,7 @@ order:
   and MUST change the submission commitment.
 
 All fixtures and golden vectors that embed any of the nine hashes, the
-witness-set hash, or a tx-id regenerate under this document; none migrate.
+witness-set hash, or a tx-id regenerate under this document.
 
 ## 4. The nine field commitments
 
@@ -267,10 +264,10 @@ field_hash_i = blake2b_256(preimage_i)
 ```
 
 **Plain hashing.** No domain tag, no version prefix, no field index in the
-hash input. The retired counted scheme's domains
-(`MidgardBoundedCollectionItemV1`, `MidgardBoundedCollectionCommitmentV1`,
-`MidgardBoundedItemChunkV1`, `MidgardBoundedItemCommitmentV1`,
-`MidgardValidationMerkle*V1`) are prohibited legacy surface.
+hash input. The counted-scheme domains (`MidgardBoundedCollectionItemV1`,
+`MidgardBoundedCollectionCommitmentV1`, `MidgardBoundedItemChunkV1`,
+`MidgardBoundedItemCommitmentV1`, `MidgardValidationMerkle*V1`) are
+prohibited in field commitments.
 
 **Field identity is positional.** A field hash's meaning comes solely from
 its slot in `NativeTxBodyCompact` / `NativeTxWitnessSetCompact` (§2.5).
@@ -300,10 +297,9 @@ wrapped_item_i = definite_bytes_header(len(enc_i)) ‖ enc_i
   minimal width, fail closed.
 - An **empty field encodes as exactly `80`** — all nine fields, including
   mint.
-- The per-item byte-string envelope applies to **all nine fields**. (Under
-  the retired scheme fields 6 and 8 concatenated raw item CBOR and field 5
-  hashed a raw map; those forms are prohibited. The envelope is what buys
-  O(1) top-level skips: one head decode plus a byte jump per item.)
+- The per-item byte-string envelope applies to **all nine fields**; raw
+  concatenated item CBOR and a raw mint map are prohibited. (The envelope is
+  what buys O(1) top-level skips: one head decode plus a byte jump per item.)
 
 Decoders fail closed on any deviation: wrapper/length mismatch,
 non-minimal header, item count disagreeing with the walked content, or
@@ -369,7 +365,7 @@ Item-level rules:
   the index and so yields 36 bytes for indices 0–23 and 37 for 24–255, keys
   the on-chain side never computes. (From 256 up the minimal index is
   already `19 XXXX`, so the two agree there and only indices below 256 can
-  carry a stale key.) Decoders of a trie key or `outref` column are
+  carry a mismatched key.) Decoders of a trie key or `outref` column are
   `decode_midgard_tx_input_cbor` / `decodeMidgardSpendInputItem`, which
   both enforce the exact 38-byte width and the `0x19` index head — the
   width is what rejects a non-minimal `59 0020` tx_id header, which a
@@ -377,9 +373,7 @@ Item-level rules:
 
   Consequences that follow from the table rather than from any separate
   rule: `maxTransactionAggregateFieldBytes` bounds trie keys too (§5.4);
-  the 0–65,535 index domain is the ledger's index domain; and a
-  development ledger written under any other spelling must be reset, not
-  migrated (pre-mainnet, per `AGENTS.md`).
+  and the 0–65,535 index domain is the ledger's index domain.
 
 - **Fields 3/4 — asserted 28-byte width.** Every observer/signer item MUST
   be exactly 28 bytes (wrapper `58 1C`, **stride 30**,
@@ -446,17 +440,14 @@ Item-level rules:
 
 ### 5.4 Field-level byte bounds
 
-- `maxTransactionAggregateFieldBytes = 32,768` (retained; owner ruling —
-  tightening it would be a capability change outside the reversion's
-  scope). No field preimage exceeds it, and
+- `maxTransactionAggregateFieldBytes = 32,768`. No field preimage exceeds it, and
   `maxSpendInputsPreimageBytes = 32,768` equals it for field 0.
 - Admissible item cardinality per field is the minimum of the 16,384-item
   consensus guardrail, the field's byte bound under this grammar (e.g.
   fields 0/1: `header_len + 40·N ≤ 32,768` ⇒ N ≤ 819 at the preimage
   bound), and any Cardano shape bound (spend inputs:
   `maximum_cardano_spend_redeemer_count = 296`, the operative spend
-  maximum). Derived cardinality numbers are re-derived from this grammar,
-  never migrated from counted-era tables.
+  maximum). Derived cardinality numbers come from this grammar.
 
 ### 5.5 Output items (field 2)
 
@@ -484,16 +475,16 @@ native-script CBOR under the structure-scan bounds
 (`native_script_scan_v1` / `native-script.ts`), and
 `decode_canonical_output` is `None` for any output whose tag-0 payload is
 not — no descriptor exists for such an output, and no transaction carrying
-one is admissible into `transactions_root` as valid. (Ruled on #633. The
-one-shot decoder `decode_canonical_output` does not enforce this clause; the
-staged machine (`ledger_output_proof_v1` → `native_script_scan_v1`) and the
+one is admissible into `transactions_root` as valid. (The one-shot decoder
+`decode_canonical_output` does not enforce this clause
+([#633](https://github.com/Anastasia-Labs/midgard/issues/633)); the staged
+machine (`ledger_output_proof_v1` → `native_script_scan_v1`) and the
 off-chain codec do.)
 
 ### 5.6 Mint items (field 5)
 
 The field-5 preimage is the **enveloped list of per-policy items** under the
-§5.1 grammar — this replaces the retired raw-map `encode_mint_preimage`
-form. Each item is `encode_mint_policy_item`:
+§5.1 grammar, not a raw map. Each item is `encode_mint_policy_item`:
 `82 ‖ 58 1C policy_id ‖ map(k) ‖ asset entries`, where each asset entry is
 `bytes(asset_name ≤ 32) ‖ int(quantity ≠ 0)`. Policy items appear in
 canonical key order (plain byte order, as in §5.5), assets likewise within
@@ -513,8 +504,8 @@ picks a different canon — it does not create a second admissible spelling.
 The canonicity predicate for `datum_cbor` (output items) and
 `redeemer_cbor` (redeemer-witness items) is **membership in the image of
 the Plutus `serialiseData` builtin** — exactly the byte forms `serialiseData`
-emits and cardano-ledger's `decodeData` accepts. In particular, and
-overriding the retired Aiken-stdlib-v3.1.0 round-trip pin:
+emits and cardano-ledger's `decodeData` accepts, not the Aiken stdlib
+round-trip. In particular:
 
 - **canonical tag-2/3 bignums are canonical-acceptable**: integers with
   `i ≥ 2⁶⁴` (tag 2) or `i < −2⁶⁴` (tag 3), with encoded magnitude
@@ -625,7 +616,7 @@ memory units and 8,000,000,000 CPU units. Publication uses the 16,384-byte L1
 transaction floor with a 512-byte reliability reserve. Current implementation
 and cost-model inputs are linked in §8.10.
 
-#### Erratum E1 — signed publication capacity
+#### Signed publication capacity
 
 `K` is the reliable signed publication frontier. An implementation MUST refuse
 to publish a chunk larger than 15,148 bytes by default. Pure chunk planning stays
@@ -649,7 +640,7 @@ For the recorded fixture, the exact and reliable frontiers are respectively
 transaction. §8.10 identifies the tests that derive and check them, including
 one-byte boundary controls; these are fixture-bound measurements.
 
-#### Erratum E2 — whole-field walks and witness-set authentication
+#### Whole-field walks and witness-set authentication
 
 The current measurement input is the
 `fraud_proofs/spend_input_cardinality.test` entries of
@@ -930,12 +921,12 @@ by this document. The profile retains
 publication surface. Neither is §8's field-carriage chunk size or tier boundary;
 field-carriage producers and consumers use §8.3's `K`.
 
-### 8.10 Cost claims — the carriage exit measurements
+### 8.10 Cost claims — the carriage measurements
 
 Carriage acceptance requires complete signed publication and execution
 measurements against the release compiler, applied blueprint, parameters, and
-fixture. Historical measurements are not copied here: the following artifacts
-remain because current checks consume them.
+fixture. The following artifacts hold those measurements, and current checks
+consume them.
 
 | Required artifact or observation                                                                                                                | Current consumer and property                                                                                                                                                                                          |
 | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -985,8 +976,8 @@ must be measured under the real L1 limits.
 
 #### The tier-2 raw-UTxO bound
 
-§8.3's `K` follows the reliable signed publication frontier, not a retired
-policy cap or an unsigned estimate. The emulator suite checks both frontiers at
+§8.3's `K` follows the reliable signed publication frontier, not a policy
+cap or an unsigned estimate. The emulator suite checks both frontiers at
 one-byte resolution. Re-measure the complete signed shape when transaction
 framing, witness configuration, parameters, or serialization changes.
 
@@ -995,8 +986,7 @@ framing, witness configuration, parameters, or serialization changes.
 An **L1 forced order** commits to an L2 transaction it wants included: its datum
 is `TxOrderPayload { tx_id, transaction_commitment, submitted_source }`, and its
 validity-free `submitted_source` compact structures carry §4's nine field commitments. This subsection
-is normative for how that transaction's material reaches L1. (Owner ruling,
-2026-08-11; it supersedes the earlier all-fields-empty stopgap.)
+is normative for how that transaction's material reaches L1.
 
 **Durable availability is L1 history plus digest addressing, not a live UTxO.**
 The order **mint** is the only on-chain reader of the material. The order's spend
@@ -1143,7 +1133,7 @@ both readers.
 2. Decoders are fail-closed everywhere: non-minimal heads (outside the
    pinned fixed-width index), wrapper/length mismatches, count/length
    inconsistency, trailing bytes, non-canonical datum/redeemer payloads,
-   and any retired counted-scheme surface all reject. Each of the four §8.6/§8.8
+   and any counted-scheme surface all reject. Each of the four §8.6/§8.8
    frozen wire types carries at least one trailing-bytes vector and at least two
    wrong-shape vectors, and each negative vector names the layer that must
    refuse it, so a vector that would be rejected by the CBOR parse anyway
@@ -1987,8 +1977,7 @@ the integer-to-bytes builtin, and a fraud proof cannot cite that.
 Normative for the dispute machine. §10 says how a consumer reaches one item's
 bytes and carries its place between transactions; §11 says what a rule may do
 inside them. This section says what a challenger **claims**, and it exists
-because the two layers below it make a much smaller claim possible than the
-counted scheme did.
+because the two layers below it make a small claim possible.
 
 Sections 12.1–12.6 have no implementation. They are the design an
 implementation must meet. Sections 12.7 and 12.8 are implemented
@@ -2269,7 +2258,7 @@ discharge them at compile time (§12.4, "The two sides are two types").
 
 ### 12.7 Canonical decodability of a committed field preimage
 
-**\*Normative.** Owner ruling, 2026-08-11. It adds a fault kind and changes nothing else — in
+**\*Normative.** It adds a fault kind and changes nothing else — in
 particular it does not change §8.8's doors, §12.1's statement type, or any
 verdict the validation machine renders.
 
@@ -2364,12 +2353,10 @@ the fault kind field-index-dependent and would put a claim about §5.3's stride
 table inside a section whose whole boundary against §12.3 is that it applies no
 per-field rule.
 
-**Both are closed by §12.8, and closed as a sibling rather than here.** The
-owner ruling of 2026-08-13 took the first of the two mechanisms this section
-had named — a sibling fault kind stated over `(field_index, preimage)` — and
-§12.8 is it; the second, the machine rendering `reject_invalid_field_type`
-from a non-aborting reader, was not taken. Nothing in this
-section moves: its verdict stays a function of the bytes alone and stays
+**Both are closed by §12.8, and closed as a sibling rather than here.**
+§12.8 is a sibling fault kind stated over `(field_index, preimage)`; the
+machine does not render `reject_invalid_field_type` from a non-aborting
+reader. Nothing in this section moves: its verdict stays a function of the bytes alone and stays
 `grammatical` for both shapes above, which is exactly what §12.8 requires of
 it, because §12.8 convicts only bytes this section calls grammatical and
 renders a non-convicting `not_an_envelope` for everything else. The two fault
@@ -2622,11 +2609,8 @@ above; source registration alone does not establish release acceptance.
 
 ### 12.8 Committed field shape at a slot
 
-**Normative.** Owner ruling, 2026-08-13, taking the first — option (a) — of
-the two closure mechanisms §12.7's residue paragraph named: a sibling fault
-kind stated over `(field_index, preimage)`. It adds a fault
-kind and changes
-nothing else — in particular it does not change §8.8's doors, §12.1's
+**Normative.** A sibling fault kind to §12.7, stated over
+`(field_index, preimage)`. It adds a fault kind and changes nothing else — in particular it does not change §8.8's doors, §12.1's
 statement type, §12.7's verdict or its family, or any verdict the validation
 machine renders.
 
@@ -2865,8 +2849,7 @@ Five further conditions are normative:
 **All three §8 tiers are admissible, at all nine fields**, on §12.7's
 argument: this path materialises the carriage and hashes it once against the
 committed commitment, so a §8.6 manifest authenticates nothing about content
-and a substituted chunk changes the hash. That argument is inherited rather
-than re-derived — this family reuses §12.7's door entry point unchanged, and
+and a substituted chunk changes the hash. That argument is inherited — this family reuses §12.7's door entry point unchanged, and
 its own tier-3 vector is taken at a body field, so the witness-set half of the
 claim rests on §12.7's reasoning; every door admits the witness-set fields
 under tier 3.

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -281,10 +281,10 @@ describe("e2e host process supervisor", () => {
     }
   });
 
-  it("externally SIGKILLs a service when a checkpoint marker spans output chunks", async () => {
+  it("externally SIGKILLs a service when its output marker spans output chunks", async () => {
     const dir = await makeTempDir();
     const marker =
-      "pipeline_trace phase=e2e_crash_checkpoint checkpoint=journal_prepared_before_submit";
+      "accept_committed_before_write_behind service=checkpoint-node";
     const script = await writeScript(
       dir,
       "checkpoint-service.mjs",
@@ -318,36 +318,6 @@ describe("e2e host process supervisor", () => {
       class: "restartable_runtime",
       restartable: true,
     });
-  });
-
-  it("externally stops a supervised service when the operator creates a stop file", async () => {
-    const dir = await makeTempDir();
-    const stopFile = join(dir, "stop", "node.stop");
-    const script = await writeScript(
-      dir,
-      "stop-file-service.mjs",
-      ["console.log('ready');", "setInterval(() => {}, 1000);"].join("\n"),
-    );
-    const summaryPromise = superviseHostProcess({
-      service: "stop-file-node",
-      command: process.execPath,
-      args: [script],
-      cwd: dir,
-      timeoutMs: 2_000,
-      rawLogPath: join(dir, "logs", "stop-file-node.log"),
-      maxRestarts: 0,
-      terminateOnFile: { path: stopFile, signal: "SIGTERM" },
-    });
-    await mkdir(join(dir, "stop"), { recursive: true });
-    await writeFile(stopFile, "stop\n", "utf8");
-    const summary = await summaryPromise;
-
-    expect(summary.attempts[0]?.signal).toBe("SIGTERM");
-    expect(summary.attempts[0]?.fileTermination).toMatchObject({
-      path: stopFile,
-      signal: "SIGTERM",
-    });
-    expect(summary.status).not.toBe("exited_success");
   });
 });
 

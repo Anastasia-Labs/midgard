@@ -1,13 +1,7 @@
 /**
- * `input-no-idx` step-02's carriage route, after #604 replaced the family's
- * bespoke publication with §8's ladder.
- *
- * The file this replaces tested `PublishedSpendInputsV1` internals — fee
- * selection around a typed publication UTxO, and that publication transaction's
- * exact typed output. None of it survives: the step has one redeemer route, and
- * the preimage travels under a §8 carriage tier chosen by its own length rather
- * than by this builder. What is worth pinning now is what replaced it, so that is
- * what this file pins.
+ * `input-no-idx` step-02's carriage route through §8's ladder: the step has
+ * one redeemer route, and the preimage travels under a §8 carriage tier
+ * chosen by its own length rather than by this builder.
  *
  * Every negative asserts that its mutation genuinely landed before concluding
  * anything from the refusal.
@@ -103,9 +97,7 @@ describe("input-no-idx step-02 §8 carriage", () => {
     expect(published.commitment).toBe(inline.commitment);
     expect(published.preimage).toStrictEqual(inline.preimage);
 
-    // §8.5: a nothing-but-bytes inline datum — not the retired
-    // `PublishedSpendInputsV1`, which bound the publication to one computation
-    // thread and one prover and so could not be healed by anyone else (§8.7).
+    // §8.5: a nothing-but-bytes inline datum, which anyone can heal (§8.7).
     expect(published.plan.publications).toHaveLength(1);
     const publication = published.plan.publications[0]!;
     expect(publication.bytes).toStrictEqual(published.preimage);

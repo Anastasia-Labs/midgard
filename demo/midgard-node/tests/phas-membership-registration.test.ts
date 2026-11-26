@@ -90,7 +90,7 @@ describe("PHAS membership reward registration", () => {
     );
 
     for (const mutation of [
-      { ...capture.evidence, schemaVersion: "legacy-phas-registration" },
+      { ...capture.evidence, schemaVersion: "unknown-phas-registration" },
       { ...capture.evidence, unknown: true },
       {
         ...capture.evidence,
@@ -101,7 +101,7 @@ describe("PHAS membership reward registration", () => {
         certificate: { ...capture.evidence.certificate, unknown: true },
       },
       {
-        schemaVersion: "midgard-phase4-unrelated-proof-v1",
+        schemaVersion: "midgard-unrelated-proof-v1",
         txHash: capture.evidence.txHash,
         cborSha256: capture.evidence.cborSha256,
         cborSizeBytes: capture.evidence.cborSizeBytes,

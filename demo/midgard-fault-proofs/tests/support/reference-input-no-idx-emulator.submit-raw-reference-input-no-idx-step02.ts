@@ -41,9 +41,8 @@ import { type ReferenceInputNoIdxHarness } from "./reference-input-no-idx-emulat
 import { publishFieldCarriage } from "./submit-steps.js";
 
 /**
- * Publishes all four step validators as reference scripts, the deployment
- * shape the standing owner ruling requires: a fault proof is always read from
- * a published reference script, never inline-attached.
+ * Publishes all four step validators as reference scripts: a fault proof is
+ * always read from a published reference script, never inline-attached.
  */
 export const publishReferenceInputNoIdxReferenceScripts = async ({
   lucid,

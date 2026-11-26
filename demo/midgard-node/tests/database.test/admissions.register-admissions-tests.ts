@@ -1220,7 +1220,7 @@ export const registerAdmissionsTests = () => {
                     rejected: txs.map((tx) => ({
                       txId: tx.txId,
                       code: RejectCodes.InvalidSignature,
-                      detail: "phase1 pool-isolation hold",
+                      detail: "pool-isolation hold",
                     })),
                   }),
                 ),
@@ -1982,7 +1982,7 @@ export const registerAdmissionsTests = () => {
         isolatedDb(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            yield* sql`CREATE OR REPLACE FUNCTION phase1_admission_order_barrier()
+            yield* sql`CREATE OR REPLACE FUNCTION admission_order_barrier()
             RETURNS trigger
             LANGUAGE plpgsql
             AS $$
@@ -1994,10 +1994,10 @@ export const registerAdmissionsTests = () => {
               RETURN NEW;
             END;
             $$`;
-            yield* sql`CREATE TRIGGER phase1_admission_order_barrier
+            yield* sql`CREATE TRIGGER admission_order_barrier
             BEFORE INSERT ON tx_admissions
             FOR EACH ROW
-            EXECUTE FUNCTION phase1_admission_order_barrier()`;
+            EXECUTE FUNCTION admission_order_barrier()`;
             const requestA = {
               txId: databaseTxHash("admission.reserved-order-a"),
               txCanonicalCbor: databaseFixtureBytes(
@@ -2439,7 +2439,7 @@ export const registerAdmissionsTests = () => {
               txCanonicalCbor: tx.txCanonicalCbor,
               submitSource: "native",
             });
-            const leaseOwner = "phase1-write-behind-crash";
+            const leaseOwner = "write-behind-crash";
             const claimed = yield* TxAdmissionsDB.claimBatch({
               limit: 1,
               leaseOwner,
@@ -2448,7 +2448,7 @@ export const registerAdmissionsTests = () => {
             expect(claimed).toHaveLength(1);
 
             const helper = bundleChildProcessHelper(
-              "./helpers/phase1-write-behind-crash-process.ts",
+              "./helpers/write-behind-crash-process.ts",
             );
             const crashInput = JSON.stringify({
               txIdHex: tx.txIdHex,
@@ -2464,16 +2464,16 @@ export const registerAdmissionsTests = () => {
                 address: entry[LedgerUtils.Columns.ADDRESS],
               })),
             });
-            const crashMarker = "phase1_accept_committed_before_write_behind";
+            const crashMarker = "accept_committed_before_write_behind";
             const supervised = yield* Effect.promise(() =>
               superviseHostProcess({
-                service: "phase1-write-behind-crash",
+                service: "write-behind-crash",
                 command: process.execPath,
                 args: [helper],
                 cwd: path.resolve(databaseTestDirectory, ".."),
                 env: {
                   ...databaseChildProcessEnv(),
-                  PHASE1_WRITE_BEHIND_CRASH_INPUT: crashInput,
+                  WRITE_BEHIND_CRASH_INPUT: crashInput,
                 },
                 envInheritance: "none",
                 rawLogPath: `${helper}.log`,

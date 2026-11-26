@@ -4,12 +4,12 @@ Status: no-go. Statuses and pointers reviewed 2026-11-23 against `5c3963c5b`.
 
 The first public testnet is a stage-0 network on Cardano Preprod, run from the
 `preprod-public` deployment profile. Its launch date follows its scope: the full
-scope ships and the dates move (owner, 2026-10-25). A regenesis is planned for
+scope ships and the dates move. A regenesis is planned for
 December 2026 and lifts the limits listed below.
 
 This checklist owns the launch decision. It lists the implementation work that
 must merge before launch and the release gates that need evidence from the
-release revision. Proof coverage is tracked in the
+release revision. Proof coverage is in the
 [fault-proof catalogue](fault-proofs/catalogue-status.md),
 [coverage matrix](fault-proofs/coverage-matrix.md),
 [remaining gaps](fault-proofs/remaining-gaps.md) and
@@ -57,7 +57,7 @@ each one:
   and all in the catalogue; `excluded_fraud_proof_categories` in
   [`preprod-public.yaml`](../config/deployments/preprod-public.yaml) is empty.
   The Plutus execution dispute (`validationTraceDispute`) is in the catalogue
-  too (owner, 2026-10-21); `mainnet` excludes it.
+  too; `mainnet` excludes it.
 - A node or watcher that joins takes the ledger at the confirmed state from a
   node of the deployment, checked against the UTxO root on L1, and replays the
   blocks above it from retained payloads (retained for 120 days). Only nodes
@@ -123,9 +123,9 @@ Every contract item merges before the validator freeze.
 | Deposit datum decoding in the L1 follower                                               | Done   | `3c6af325f`, merged in `3654a21a5`                                                                                                                                                                                                                                                                       |
 | Withdrawal payability and settlement retries                                            | Done   | Merges `a97f50266`, `3654a21a5`: the prover sizes the payout from the committed bytes (`1c93ed3e8`), and a failing status read backs off (`64bd913cc`)                                                                                                                                                   |
 | DA payloads carry no UTxO set                                                           | Done   | Payload and producers (`bb888bb2a`); fault-proof ledgers by replay (`f49a882cc`); shared node and watcher replay and the watcher's replayed ledger (`5190e0235`); stack replayed-ledger journeys in node CI (`f15f327b6`); 120-day retention on the public profile (`91538258f`)                         |
-| Unattended-liveness musts (#696)                                                        | Done   | Merges `66cb1b6dc`, `aa18a9264`. The final unattended run is a release drill                                                                                                                                                                                                                             |
+| Unattended-liveness musts                                                               | Done   | Merges `66cb1b6dc`, `aa18a9264`. The final unattended run is a release drill                                                                                                                                                                                                                             |
 | The operator watchdog holds takeovers while the queue is progressing or cannot progress | Done   | `ff9dde981`, merged in `3654a21a5`                                                                                                                                                                                                                                                                       |
-| L1 reads for deployment, operator and user commands (owner, 2026-11-03 and 2026-11-04)  | Done   | Deployment commands read their own outputs and the wallet straight from the Cardano node (`3fe2bcc97`); operator commands read the running node's index (`4fe49bfb7`); deposits and withdrawals go through `midgard-user` (`8242971b4`)                                                                  |
+| L1 reads for deployment, operator and user commands                                     | Done   | Deployment commands read their own outputs and the wallet straight from the Cardano node (`3fe2bcc97`); operator commands read the running node's index (`4fe49bfb7`); deposits and withdrawals go through `midgard-user` (`8242971b4`)                                                                  |
 
 ## Release verification
 
@@ -135,7 +135,7 @@ Every contract item merges before the validator freeze.
   announcement and the SDK, operator and challenger docs: the launch model and
   every limit above, the enabled fault-proof families, challenge windows, trust
   assumptions, and the sunset and regenesis notice, stating what the first
-  public testnet disables (owner, 2026-10-12, two-stage launch). The
+  public testnet disables. The
   [claim](public-testnet-security-claim.md) is in the tree (`b5d5ea700`).
 - **Curated operators.** In progress. The allow-list is enforced on-chain at
   registration and off-chain by the SDK and node; proof threads and
@@ -178,11 +178,10 @@ Every contract item merges before the validator freeze.
   CI, plus the values set outside the profile. Release tooling must refuse
   placeholder keys and unexplained zero economics.
   - Settled: the 10-minute event validity range (`faee6e018`); 120-day
-    payload retention (`91538258f`); the public operator and DA bond figures
-    (owner, 2026-10-22); no excluded category; DA slash grace 2 d and pool
-    floor 5 ADA (owner, 2026-10-28); the unused dispute response window
-    removed (`67f390618`); a 2,500 ADA rehearsal challenger bond (owner,
-    2026-10-31, `21b21cb07`).
+    payload retention (`91538258f`); the public operator and DA bond figures;
+    no excluded category; DA slash grace 2 d and pool floor 5 ADA; no dispute
+    response window (`67f390618`); a 2,500 ADA rehearsal challenger bond
+    (`21b21cb07`).
   - Open: the block ex-units budget, which defaults to 33,000,000 memory and
     20,000,000,000 steps (`demo/midgard-node/src/services/config.block-ex-units-budget.ts`)
     and is to be re-measured on an idle machine.
@@ -191,7 +190,7 @@ Every contract item merges before the validator freeze.
 - **Pooled DA bond.** Done
   ([decision record](midgard/decisions/da-committee-bond-pool.md)). An attestation applies only while one bonded pool holds at least
   one DA bond; a timeout slashes the pool, and a top-up after a slash is manual
-  (owner, 2026-11-04, `964ce21b9`).
+  (`964ce21b9`).
 - **Store identity.** Done. Every persistent store binds to the deployment's
   single identity (`hubOraclePolicyId`) or is content-addressed and anchored
   to a bound store, checked once at startup and failing closed on mismatch:
@@ -221,15 +220,15 @@ Every contract item merges before the validator freeze.
   settings, blank admin keys, demo seeds, default database credentials, mutable
   images, exposed internal services, missing identity or placeholder economics.
   Define image policy, sizing and retention capacity. The public stack checks
-  every public input before it spends (`8f6c8f948`). The owner-set production
-  hardware floor from the
+  every public input before it spends (`8f6c8f948`). The production hardware
+  floor from the
   [economics decision](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
-  is accepted and carried here verbatim:
+  is:
 
-  | Role                                         | Floor                                                                                                             |
-  | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-  | midgard-node (operator)                      | ≥ 32 GiB RAM, ≥ 16 vCPU (2026 gaming-PC class), NVMe storage                                                      |
-  | DA committee node, midgard-watcher, Postgres | sized from C74/C86 measured usage plus ≥ 2× headroom; the §5.1 ceilings are containment caps, not recommendations |
+  | Role                                         | Floor                                                                                                                       |
+  | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+  | midgard-node (operator)                      | ≥ 32 GiB RAM, ≥ 16 vCPU (2026 gaming-PC class), NVMe storage                                                                |
+  | DA committee node, midgard-watcher, Postgres | sized from measured prover and stress usage plus ≥ 2× headroom; the §5.1 ceilings are containment caps, not recommendations |
 
   Bounded-stress results refine the non-node role sizing but cannot lower the
   node floor.
@@ -260,7 +259,7 @@ Every contract item merges before the validator freeze.
 
 These run first in a full rehearsal on `preprod-rehearsal` (`preprod-public`
 with testing economics, `7ac572868`), then on the fresh `preprod-public`
-deployment (owner, 2026-10-29). Status: Open. So far only the fast-timer
+deployment. Status: Open. So far only the fast-timer
 `preprod-testing` twin (`4e5cb615f`) has run: a full wallet journey with
 automatic merge and finality, three cycles on 2026-11-04. That covers the
 wallet steps of the clean acceptance sequence and a fast-timer payout, not

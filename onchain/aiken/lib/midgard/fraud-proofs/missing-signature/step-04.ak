@@ -7,9 +7,8 @@ use midgard/ledger_state.{MidgardTxId}
 /// transaction id preimage is the body alone, so the id authenticates fields
 /// 0–5 and says nothing about the witness set; step-01 read the real
 /// `witness_set_hash` off the compact structure the block's counted
-/// `transactions_root` committed, and step-04 needs it to open field 7. It costs
-/// the 32 bytes the retired `verified_addr_tx_wits_hash` cost, and covers all
-/// three witness-set fields instead of one.
+/// `transactions_root` committed, and step-04 needs it to open field 7. It is 32
+/// bytes and covers all three witness-set fields.
 pub type State {
   missing_required_signer_vkey: VerificationKey,
   verified_tx_id: MidgardTxId,

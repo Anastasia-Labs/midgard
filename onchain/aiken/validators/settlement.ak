@@ -604,14 +604,10 @@ test settlement_mint_redeemer_parser_rejects_remove_wrong_type() fail {
   )
 }
 
-// The four tests below were named `exact_settlement_policy_mint_*`
-// but execute no settlement code at all — they build a `Value` with
-// `assets.from_asset`/`assets.merge` and assert properties of the Aiken stdlib
-// `assets`/`dict` modules. The "exactly one settlement NFT" invariant they
-// appeared to cover lives inside the `mint` handler at the top of this file,
-// which no test in this repository invokes. They are renamed to state what they
-// actually pin (the stdlib token-shape restatement the handler relies on); the
-// handlers' own coverage is `settlement-handlers.test.ak`.
+// The four tests below execute no settlement code: they build a `Value` with
+// `assets.from_asset`/`assets.merge` and pin the stdlib token shape the `mint`
+// handler relies on. The handlers' own coverage is
+// `settlement-handlers.test.ak`.
 test stdlib_token_shape_yields_only_the_settlement_nft() {
   let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
   expect [Pair(minted_settlement_id, 1)] = mint

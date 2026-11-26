@@ -10,7 +10,7 @@
  * from the same parameterized chain whose step-01 hash the tests register as an
  * extra catalogue category.
  *
- * Blueprint-declared parameter order per step (the #609 arity guard checks
+ * Blueprint-declared parameter order per step (the arity guard checks
  * count, not order, so the order is pinned here and asserted by the envelope
  * suite via distinct-hash checks):
  *

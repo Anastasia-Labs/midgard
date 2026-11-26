@@ -232,8 +232,8 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
       fieldPreimageLengthsCborHex:
         witnessField.terminalFoldVector.fieldPreimageLengthsCborHex,
       signerFieldTerminalFoldVector: signerField.terminalFoldVector,
-      // #592: the field-4 terminal fixture in `validation-machine-tests/`
-      // carries §8's tier-1 carriage now, which is the field's whole §5.1
+      // The field-4 terminal fixture in `validation-machine-tests/`
+      // carries §8's tier-1 carriage, which is the field's whole §5.1
       // preimage rather than a per-item opening. Published from the same
       // measurement the pinned expectations above already checked.
       signerFieldPreimageCborHex: signerField.fieldPreimageCborHex,

@@ -369,8 +369,8 @@ fn parse_script_ref(data: Data) -> Option<MidgardVersionedScript> {
 /// Spec section 6.2: canonicity is membership in the image of the Plutus
 /// serialiseData builtin, so every datum L1 would accept is canonical here
 /// too -- bignums at or above 2^64 and constructor alternatives at or above
-/// 128 included. The retired round-trip pin through the stdlib decoder
-/// rejected both and cost Midgard that parity.
+/// 128 included. A round-trip pin through the stdlib decoder would reject
+/// both.
 fn datum_is_canonical(datum_cbor: ByteArray) -> Bool {
   canonical_plutus_data_v1.is_canonical_plutus_data_v1(datum_cbor)
 }

@@ -1,8 +1,7 @@
 # Endpoints, ports and logs
 
-Verified against the tree as of 2026-09-25. Ports are the defaults; a phase4 run
-and the acceptance harness override them, so read the run's `run.env` or the
-harness environment before building a URL.
+Verified against the tree as of 2026-09-25. Ports are the defaults; an isolated-chain
+run overrides them, so read the run's `run.env` before building a URL.
 
 ## Endpoints
 
@@ -16,9 +15,8 @@ harness environment before building a URL.
 | DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/readyz`                              | Ready | 200 or 503 with the readiness snapshot: `l1Source.status` (`uninitialized`, `healthy`, `intervention` with `l1Source.intervention` naming the follower's reason), `counts.signatures`, `counts.submittedOrConfirmedL1Attestations`, `reasons` |
 | DA committee node       | `DA_COMMITTEE_API_PORT`, 8787                                                     | `/v1/manifest`                         | -     | The committee's runtime manifest                                                                                                                                                                                                              |
 | Watcher operations      | `WATCHER_OPERATIONS_PORT`, 7402                                                   | `/readyz`, `/v1/status`, `/v1/metrics` | Ready | `/readyz` 200, or 503 with `reasons` (see the watcher section below); `/v1/status` 200 whenever the server runs, which is before the L1-dependent startup stages; no bearer                                                                   |
-| Kupo                    | 1442 (demo stack `KUPO_PORT`), 2442 (phase4)                                      | `/health`                              | Ready | 202 while replaying, 200 once caught up; JSON body with `connection_status` and `most_recent_checkpoint`                                                                                                                                      |
-| Ogmios                  | 1337 (demo stack `OGMIOS_PORT`), 2337 (phase4)                                    | `/health`                              | Ready | Ogmios health JSON                                                                                                                                                                                                                            |
-| Phase4 acceptance nodes | `MIDGARD_PHASE4_NODE_A_PORT` 3101, `_B_PORT` 3102; metrics `_A_METRICS_PORT` 4101 | `/readyz`, `/metrics`                  | Ready | As midgard-node                                                                                                                                                                                                                               |
+| Kupo                    | 1442 (demo stack `KUPO_PORT`), 2442 (isolated chain)                                      | `/health`                              | Ready | 202 while replaying, 200 once caught up; JSON body with `connection_status` and `most_recent_checkpoint`                                                                                                                                      |
+| Ogmios                  | 1337 (demo stack `OGMIOS_PORT`), 2337 (isolated chain)                                    | `/health`                              | Ready | Ogmios health JSON                                                                                                                                                                                                                            |
 
 Sources:
 
@@ -31,11 +29,10 @@ Sources:
   `demo/da-committee-node/src/config.ts`.
 - Watcher: the healthchecks in `demo/midgard-watcher/compose.yaml`.
 - Kupo and Ogmios: `demo/midgard-node/docker-compose.kupmios.yaml` and
-  `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`.
+  `demo/midgard-node-tools/devnet/isolated-chain/scripts/common.sh`.
 - Demo-stack host ports in the table are the main checkout's. A linked
   worktree running the stack through `demo/midgard-node/scripts/operator-compose.sh`
   publishes every one of them elsewhere; `--print-env` lists its ports.
-- Acceptance ports: `demo/midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.run-journal-kill-recovery-acceptance.ts`.
 
 ### What each healthcheck really proves
 
@@ -44,10 +41,9 @@ Sources:
 - The kupmios Kupo healthcheck greps for `HTTP/… 200`, so a replaying Kupo
   (202) is unhealthy. The node does not wait on it: its compose service
   depends on Postgres and cardano-node only.
-- Phase4 `bootstrap.sh` waits with `wait_http`, which is `curl --fail`: any
-  status below 400 passes, **including Kupo's 202**. Bootstrap's wait is bar 2
-  for Kupo; the later snapshot step demands `connection_status: "connected"`
-  (`parse_kupo_checkpoint`). `[review]`
+- The isolated-chain `up.sh` waits with `wait_http`, which is `curl --fail`:
+  any status below 400 passes, **including Kupo's 202**, so its wait is bar 2
+  for Kupo. `[review]`
 - Both watcher healthchecks accept 200 **or 401**, so they prove only that the
   HTTP server answers (bar 2); `/readyz` shows watcher readiness. The server
   checks no bearer (`demo/midgard-watcher/src/runtime/operations-http.ts`),
@@ -973,9 +969,7 @@ is alerted on.
 | Demo stack Postgres                                                   | Docker json-file                                                                                                                                                                 | Three 10 MB files                                                   |
 | Demo stack, aggregated                                                | Promtail ships container logs to Loki; browse them in Grafana on host port 3001                                                                                                  | Per the Loki configuration                                          |
 | Kupmios cardano-node, Ogmios, Kupo                                    | Docker default logging for their services in `docker-compose.kupmios.yaml`                                                                                                       | Docker default                                                      |
-| Phase4 cardano-node, Ogmios, Kupo, Postgres                           | Docker default logging; read with `docker compose --project-name "$MIDGARD_PHASE4_COMPOSE_PROJECT" --file …/phase4-process/compose.yaml logs <service>` after sourcing `run.env` | Until the container is removed; `restart: "no"` keeps a crashed one |
-| Phase4 script compose output                                          | A transient `work/compose.<pid>.log` in the run directory, printed when a compose command fails and then deleted                                                                 | Only on failure, on the terminal                                    |
-| Phase4 acceptance nodes                                               | `<MIDGARD_PHASE4_PROCESS_RUN_DIR>/<scenario label>/<nodeId>.log`; default run dir `logs/phase4-process-<timestamp>` resolved against the command's working directory             | Kept                                                                |
+| Isolated-chain cardano-node, Ogmios, Kupo, Postgres                   | Docker default logging; read with `docker compose --project-name "$MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT" --file …/isolated-chain/compose.yaml logs <service>` after sourcing `run.env` | Until the container is removed; `restart: "no"` keeps a crashed one |
 | Watcher journeys                                                      | `<run dir>/work/journeys/sessions/session-*/<command>.log`, opened in append mode, next to each attempt's JSON record (`devnet/watcher-journeys/process.ts`)                     | Kept; append mode, so earlier attempts are in the same file         |
 | A process you started with `e2e-start-service`                        | The `--raw-log` path you gave, with the PID in `--pid-file`                                                                                                                      | Kept                                                                |
 | DA committee node run by hand                                         | Its stdout and stderr                                                                                                                                                            | Wherever you redirected it                                          |

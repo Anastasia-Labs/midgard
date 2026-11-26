@@ -537,11 +537,11 @@ export const createLiveDaBondPoolJourneyPort = async (
       manifest,
     });
   const postgres = {
-    database: context.runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE,
-    user: context.runEnv.MIDGARD_PHASE4_POSTGRES_USER,
-    password: context.runEnv.MIDGARD_PHASE4_POSTGRES_PASSWORD,
-    port: context.runEnv.MIDGARD_PHASE4_POSTGRES_PORT,
-    project: context.runEnv.MIDGARD_PHASE4_COMPOSE_PROJECT,
+    database: context.runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE,
+    user: context.runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_USER,
+    password: context.runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD,
+    port: context.runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT,
+    project: context.runEnv.MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT,
   };
   const postgresMissing = Object.entries(postgres)
     .filter(([, value]) => value === undefined || value === "")
@@ -550,7 +550,7 @@ export const createLiveDaBondPoolJourneyPort = async (
     throw new DaBondPoolCommitteeUnavailableError(
       `run.env lacks the devnet Postgres ${postgresMissing.join(", ")}`,
     );
-  // The CLI is a tool (option E): the local node's ledger, no store.
+  // The CLI is a tool: the local node's ledger, no store.
   const cliL1Env: Record<string, string> = {
     L1_ACCESS: "node",
     L1_NODE_SOCKET_PATH: nativeLedgerPaths.socket,

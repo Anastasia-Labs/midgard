@@ -41,10 +41,7 @@ import {
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
   valueNotPreservedFaultIsEstablished,
@@ -82,9 +79,6 @@ export type ValueNotPreservedStep04Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitValueNotPreservedStep04Result =
-  OutsideWorkflowSubmission<ValueNotPreservedStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;

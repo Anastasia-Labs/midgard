@@ -64,8 +64,8 @@ const undecodable: MidgardVersionedScript = {
   language: "PlutusV3",
   scriptBytes: encodeCbor(Buffer.from("0101004c0101000003", "hex")),
 };
-// Bytes in the retired program-envelope shape: a CBOR array, not a Flat
-// program wrapped in a CBOR byte string.
+// Bytes shaped as a program envelope: a CBOR array, not a Flat program wrapped
+// in a CBOR byte string.
 const envelopeShaped: MidgardVersionedScript = {
   language: "PlutusV3",
   scriptBytes: Buffer.from(
@@ -239,7 +239,7 @@ describe("carried Plutus scripts are Cardano bytes", () => {
     },
   );
 
-  it("names the witness whose bytes are in the retired envelope shape", async () => {
+  it("names the witness whose bytes are shaped as a program envelope", async () => {
     const verdict = await admit({ witnesses: [envelopeShaped] });
     expect(verdict).toMatchObject({
       code: RejectCodes.ScriptProgramEncoding,

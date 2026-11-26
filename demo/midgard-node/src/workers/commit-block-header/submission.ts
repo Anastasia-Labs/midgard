@@ -13,7 +13,6 @@ import "../../da/hardening-config.js";
 import "../../database/index.js";
 import "../../database/utils/common.js";
 import "../../database/utils/tx.js";
-import "../../e2e/commit-crash-checkpoint.js";
 import "../../mpf/index.js";
 import "../../services/follower-write-gate.js";
 import "../../services/history-commit-window.js";

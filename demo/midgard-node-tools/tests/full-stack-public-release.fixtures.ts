@@ -61,7 +61,7 @@ export const ROLE_IMAGES = {
 /**
  * A preprod-public stack whose deployment is final: the blueprint above the
  * node directory, the finalized manifest in it, the node's secrets in the
- * stack environment as phase 1 leaves them, and a release input naming the
+ * stack environment as `checkPublicInputs` leaves them, and a release input naming the
  * signing key and the operator's provenance, which leaves out the parameter
  * registry digest the stack completes.
  */
@@ -196,7 +196,7 @@ export async function publicStack(
       .join(""),
     { mode: 0o600 },
   );
-  // Phase 1 moves them from the private node configuration into the stack's
+  // `checkPublicInputs` moves them from the private node configuration into the stack's
   // in-memory environment only.
   for (const secret of PUBLIC_NODE_SECRET_NAMES)
     env[secret] ??= randomBytes(24).toString("base64url");

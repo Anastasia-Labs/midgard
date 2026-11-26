@@ -953,7 +953,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
 /// item control; every subsequent item transition is handled by the shared chain.
 ///
 /// The stage reads the redeemer item through the field grammar certificate at
-/// reference input `cert_ref_input_index`, so its cost no longer grows with the
+/// reference input `cert_ref_input_index`, so its cost does not grow with the
 /// field's item count. It takes that route alone: the walking route does not
 /// fit beside it in the validator's publication margin.
 pub fn verify_script_sources_stage_one_begin_raw_semantics(

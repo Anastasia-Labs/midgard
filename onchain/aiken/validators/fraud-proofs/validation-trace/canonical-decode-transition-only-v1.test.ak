@@ -1,26 +1,18 @@
-//// The canonical-decode complete-item path
-//// commits to the transition alone. These are the validator-level vectors for
-//// the adversarial-matrix rows this change owns — wrong-content door aborts
-//// through every carriage tier and the publication arm (row A), retired-shape
-//// replays and the old carriage-committed preimage (row D), and transition
-//// swaps against the work-root and successor pins (row E) — plus wire-layout
-//// goldens pinning the constructor indices after the arm retirements (the
-//// 9f191e9a dead-arm lesson: an ABI that moves without a golden moves again,
-//// silently).
+//// The canonical-decode complete-item path commits to the transition alone.
+//// These are the validator-level vectors for it: wrong-content door aborts
+//// through every carriage tier and the publication arm, refusal of a
+//// carriage-committed evidence hash, and transition swaps against the
+//// work-root and successor pins — plus wire-layout goldens pinning the
+//// constructor indices.
 ////
 //// Division of labour: the §8.8 door's own tier ladder — certificates for
 //// another transaction or field, the mint-welded field-hash equality, chunk
 //// substitution on lazy reads, the §8.4 shape partition — is exercised against
-//// the door itself in `native-tx-field-access-v1.test.ak` and none of that
-//// code moves here. What these vectors prove is the property Option B
-//// newly relies on: the observe validator reaches that door with the right
+//// the door itself in `native-tx-field-access-v1.test.ak`. What these vectors
+//// prove is that the observe validator reaches that door with the right
 //// arguments (the pre-state's own transaction id, the consuming transaction's
 //// reference inputs, the certificate policy parameter) and has no content
-//// path around it now that the frozen-hash equality is gone.
-////
-//// Every negative here was first run without its `fail` marker and shown
-//// aborting (or returning False) for its stated reason — the red-then-green
-//// record lives with the change.
+//// path around it.
 
 use aiken/builtin
 use aiken/cbor
@@ -87,7 +79,7 @@ const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const context_cbor = #"80"
 
-const ct_asset = "option-b-thread"
+const ct_asset = "transition-only-thread"
 
 const proof_item_hash =
   #"9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c"
@@ -99,14 +91,14 @@ const test_grammar_certificate_policy_id =
 /// from a real `MidgardTransaction` so every anchor — transaction id, proof
 /// commitment, witness-set hash, field commitment, preimage lengths — is the
 /// value the committed structures themselves produce.
-type OptionBStepFixtureV1 {
+type TransitionOnlyStepFixtureV1 {
   pre: validation_trace_v1.ValidationMachineStateV1,
   post: validation_trace_v1.ValidationMachineStateV1,
   transition: ValidationOneStepWitnessV1,
   resolution: ValidationResolutionStateV1,
   base: PreparedValidationResolutionStateV1,
   field_preimage: ByteArray,
-  old_evidence_hash: ByteArray,
+  carriage_committed_evidence_hash: ByteArray,
 }
 
 fn scripted_tx(script_bytes: ByteArray) -> MidgardTransaction {
@@ -128,8 +120,9 @@ fn transition_only_hash(transition: ValidationOneStepWitnessV1) -> ByteArray {
   hash_one_step_evidence(transition_data, auxiliary_data)
 }
 
-/// The retired preimage: the hash the pre-Option-B pipeline committed for an
-/// inline-carried item — `(transition, TransactionFieldItemWitness{Inline{…}})`.
+/// The carriage-committed preimage for an inline-carried item —
+/// `(transition, TransactionFieldItemWitness{Inline{…}})` — which the pipeline
+/// must not accept.
 fn carriage_committed_hash(
   transition: ValidationOneStepWitnessV1,
   preimage: ByteArray,
@@ -141,7 +134,7 @@ fn carriage_committed_hash(
   hash_one_step_evidence(transition_data, auxiliary_data)
 }
 
-fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
+fn step_fixture(script_bytes: ByteArray) -> TransitionOnlyStepFixtureV1 {
   let tx = scripted_tx(script_bytes)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -204,7 +197,7 @@ fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
       ),
     ],
   )
-  OptionBStepFixtureV1 {
+  TransitionOnlyStepFixtureV1 {
     pre,
     post,
     transition,
@@ -215,22 +208,25 @@ fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
       evidence_hash: transition_only_hash(transition),
     },
     field_preimage,
-    old_evidence_hash: carriage_committed_hash(transition, field_preimage),
+    carriage_committed_evidence_hash: carriage_committed_hash(
+      transition,
+      field_preimage,
+    ),
   }
 }
 
-fn small_fixture() -> OptionBStepFixtureV1 {
+fn small_fixture() -> TransitionOnlyStepFixtureV1 {
   step_fixture(fixture.sample_native_script_bytes())
 }
 
 /// A field-6 preimage past `chunk_bytes_k`, so tier 3 is its only reference
 /// carriage — the §8.4 partition is a lower bound as well as an upper one.
-fn boundary_fixture() -> OptionBStepFixtureV1 {
+fn boundary_fixture() -> TransitionOnlyStepFixtureV1 {
   step_fixture(fixture.repeated_bytes_v1(#"ab", 15_400))
 }
 
 fn resolver_datum(
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
 ) -> ct.StepDatum<ValidationResolutionStateV1> {
   ct.StepDatum {
     fraud_prover: fixture.fraud_prover_key_hash,
@@ -254,7 +250,7 @@ fn observe_datum(
 }
 
 fn prepared_stage(
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   base: PreparedValidationResolutionStateV1,
 ) -> staging.PreparedCanonicalDecodeItemV1 {
   staging.prepare(
@@ -270,7 +266,7 @@ fn inline_door() -> field_door.MachineFieldDoorV1 {
   }
 }
 
-fn honest_observation(f: OptionBStepFixtureV1) {
+fn honest_observation(f: TransitionOnlyStepFixtureV1) {
   observe_canonical_decode_item_v1(
     f.pre,
     f.transition,
@@ -311,7 +307,9 @@ fn publication_input(datum: ValidationProofItemDatumV1) -> Input {
   }
 }
 
-fn honest_publication(f: OptionBStepFixtureV1) -> ValidationProofItemDatumV1 {
+fn honest_publication(
+  f: TransitionOnlyStepFixtureV1,
+) -> ValidationProofItemDatumV1 {
   ValidationProofItemDatumV1 {
     version: 1,
     transaction_id: f.pre.transaction_id,
@@ -321,48 +319,11 @@ fn honest_publication(f: OptionBStepFixtureV1) -> ValidationProofItemDatumV1 {
 }
 
 // ---------------------------------------------------------------------------
-// Wire-layout goldens and retired-shape replays (row D1)
+// Wire-layout goldens
 // ---------------------------------------------------------------------------
 
-/// The pre-Option-B prepare ABI, mirrored constructor for constructor. The
-/// mirror is what lets a replay vector state its bytes precisely: upcasting a
-/// mirror value to `Data` reproduces the retired wire encoding exactly.
-type RetiredPrepareActionV1 {
-  RetiredPrepareSelected {
-    input_index: Int,
-    output_index: Int,
-    semantic_resolver_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    auxiliary: Data,
-  }
-  RetiredPrepareSelectedByEvidenceHash {
-    input_index: Int,
-    output_index: Int,
-    semantic_resolver_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    evidence_hash: ByteArray,
-  }
-}
-
-/// The pre-Option-B authenticate ABI.
-type RetiredVerifyActionV1 {
-  RetiredVerify {
-    input_index: Int,
-    output_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    carriage: field_access.FieldCarriageV1,
-  }
-  RetiredVerifyReference {
-    input_index: Int,
-    output_index: Int,
-    transition: ValidationOneStepWitnessV1,
-    reference_input_index: Int,
-  }
-}
-
-/// Field-for-field mirrors of the shipped shapes, used to pin that the
-/// shipped constructors sit at the indices and arities the off-chain twins
-/// emit.
+/// Field-for-field mirrors of the redeemer shapes, used to pin that the
+/// constructors sit at the indices and arities the off-chain twins emit.
 type PrepareWireMirrorV1 {
   PrepareSelectedMirror {
     input_index: Int,
@@ -469,10 +430,9 @@ test verify_wire_layout_is_pinned() {
   }
 }
 
-/// The observe redeemer did not move: both delivery arms stay at the same
-/// indices with their fields in place; each gains only the item route after
-/// them, whose walk arm is the empty constructor.
-test observe_wire_layout_is_unmoved() {
+/// Both observe delivery arms carry their fields in order, then the item
+/// route, whose walk arm is the empty constructor.
+test observe_wire_layout_is_pinned() {
   let direct: observe_validator.SpendRedeemer = ct.Continue(
     observe_validator.Observe {
       input_index: 1,
@@ -511,125 +471,24 @@ test observe_wire_layout_is_unmoved() {
   }
 }
 
-/// Positive control for the replay vectors below: the retired shapes are
-/// well-formed under the retired ABI, so their refusal under the shipped ABI
-/// is the narrowing at work, not malformed test data.
-test retired_shapes_decode_under_the_retired_abi() {
-  let aux_bearing: ct.StepRedeemer<RetiredPrepareActionV1> = ct.Continue(
-    RetiredPrepareSelected {
-      input_index: 1,
-      output_index: 2,
-      semantic_resolver_index: 1,
-      transition: golden_transition(),
-      auxiliary: NoAuxiliaryWitness,
-    },
-  )
-  let aux_bearing_data: Data = aux_bearing
-  expect _decoded_aux: ct.StepRedeemer<RetiredPrepareActionV1> = aux_bearing_data
-  let by_hash: ct.StepRedeemer<RetiredPrepareActionV1> = ct.Continue(
-    RetiredPrepareSelectedByEvidenceHash {
-      input_index: 1,
-      output_index: 2,
-      semantic_resolver_index: 1,
-      transition: golden_transition(),
-      evidence_hash: zero,
-    },
-  )
-  let by_hash_data: Data = by_hash
-  expect _decoded_by_hash: ct.StepRedeemer<RetiredPrepareActionV1> = by_hash_data
-  let carriage_bearing: ct.StepRedeemer<RetiredVerifyActionV1> = ct.Continue(
-    RetiredVerify {
-      input_index: 1,
-      output_index: 2,
-      transition: golden_transition(),
-      carriage: field_access.Inline { preimage: #"" },
-    },
-  )
-  let carriage_bearing_data: Data = carriage_bearing
-  expect _decoded_carriage: ct.StepRedeemer<RetiredVerifyActionV1> = carriage_bearing_data
-  True
-}
-
-/// D1: the old five-field aux-bearing `PrepareSelected` no longer decodes.
-test retired_aux_bearing_prepare_selected_is_refused() fail {
-  let retired: ct.StepRedeemer<RetiredPrepareActionV1> = ct.Continue(
-    RetiredPrepareSelected {
-      input_index: 1,
-      output_index: 2,
-      semantic_resolver_index: 1,
-      transition: golden_transition(),
-      auxiliary: NoAuxiliaryWitness,
-    },
-  )
-  let retired_data: Data = retired
-  expect _replayed: prepare_validator.SpendRedeemer = retired_data
-  True
-}
-
-/// D1: the retired by-hash arm's constructor index no longer exists.
-test retired_by_hash_prepare_arm_is_refused() fail {
-  let retired: ct.StepRedeemer<RetiredPrepareActionV1> = ct.Continue(
-    RetiredPrepareSelectedByEvidenceHash {
-      input_index: 1,
-      output_index: 2,
-      semantic_resolver_index: 1,
-      transition: golden_transition(),
-      evidence_hash: zero,
-    },
-  )
-  let retired_data: Data = retired
-  expect _replayed: prepare_validator.SpendRedeemer = retired_data
-  True
-}
-
-/// D1: the old four-field carriage-bearing `Verify` no longer decodes.
-test retired_carriage_bearing_verify_is_refused() fail {
-  let retired: ct.StepRedeemer<RetiredVerifyActionV1> = ct.Continue(
-    RetiredVerify {
-      input_index: 1,
-      output_index: 2,
-      transition: golden_transition(),
-      carriage: field_access.Inline { preimage: #"" },
-    },
-  )
-  let retired_data: Data = retired
-  expect _replayed: authenticate_validator.SpendRedeemer = retired_data
-  True
-}
-
-/// D1: the retired `VerifyReference` arm's constructor index no longer exists.
-test retired_verify_reference_arm_is_refused() fail {
-  let retired: ct.StepRedeemer<RetiredVerifyActionV1> = ct.Continue(
-    RetiredVerifyReference {
-      input_index: 1,
-      output_index: 2,
-      transition: golden_transition(),
-      reference_input_index: 0,
-    },
-  )
-  let retired_data: Data = retired
-  expect _replayed: authenticate_validator.SpendRedeemer = retired_data
-  True
-}
-
-/// The narrowed commitment and the retired one cannot collide: their
-/// serialized auxiliary constructors differ, so the preimages differ at every
-/// transition. What the pipeline commits after Option B is exactly the
+/// The transition-only commitment and the carriage-committed one cannot
+/// collide: their serialized auxiliary constructors differ, so the preimages
+/// differ at every transition. What the pipeline commits is exactly the
 /// empty-path shape the cross-language fixture pins.
-test transition_only_commitment_diverges_from_the_retired_preimage() {
+test transition_only_commitment_differs_from_the_carriage_committed_hash() {
   let f = small_fixture()
   and {
-    f.base.evidence_hash != f.old_evidence_hash,
+    f.base.evidence_hash != f.carriage_committed_evidence_hash,
     f.base.evidence_hash == transition_only_hash(f.transition),
   }
 }
 
 // ---------------------------------------------------------------------------
-// Prepare vectors (rows E1/E2 and the D-class at the output boundary)
+// Prepare vectors
 // ---------------------------------------------------------------------------
 
 fn run_prepare(
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   resolver_hashes: List<ByteArray>,
   semantic_resolver_index: Int,
   transition: ValidationOneStepWitnessV1,
@@ -649,7 +508,7 @@ fn run_prepare(
 /// `thread_census_fixture_v1`).
 fn shaped_prepare(
   shape: fn(Transaction) -> Transaction,
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   resolver_hashes: List<ByteArray>,
   semantic_resolver_index: Int,
   transition: ValidationOneStepWitnessV1,
@@ -672,7 +531,7 @@ fn shaped_prepare(
   )
 }
 
-fn expected_prepared_output(f: OptionBStepFixtureV1) -> Data {
+fn expected_prepared_output(f: TransitionOnlyStepFixtureV1) -> Data {
   let expected: Data = f.base
   expected
 }
@@ -689,7 +548,7 @@ test prepare_selected_advances_with_the_transition_only_commitment() {
 }
 
 /// The resolver-index pin serves both slots; slot 0 (the empty-diff semantic)
-/// is untouched by Option B and stays reachable through the same single arm.
+/// is reachable through the same single arm.
 test prepare_selected_serves_the_empty_semantic_slot_unchanged() {
   let f = small_fixture()
   run_prepare(
@@ -701,7 +560,7 @@ test prepare_selected_serves_the_empty_semantic_slot_unchanged() {
   )
 }
 
-/// E1: same claimed successor, different work witness — the work-root pin in
+/// Same claimed successor, different work witness — the work-root pin in
 /// `structural_transition_is_valid` refuses the swap.
 test prepare_refuses_a_swapped_work_witness() fail {
   let f = small_fixture()
@@ -717,7 +576,7 @@ test prepare_refuses_a_swapped_work_witness() fail {
   )
 }
 
-/// E2: structurally valid witness, wrong claimed successor — the
+/// Structurally valid witness, wrong claimed successor — the
 /// challenger-successor hash pin refuses it. The forged successor steps to
 /// `CompactBinding`, a legal phase transition, so the *only* guard between it
 /// and the prepared state is the successor equality.
@@ -738,23 +597,22 @@ test prepare_refuses_a_wrong_claimed_successor() fail {
   )
 }
 
-/// D at the output boundary: a prepared datum carrying the retired
-/// carriage-committed hash is not producible any more — the validator computes
-/// the transition-only hash itself and requires the output to carry exactly
-/// that.
-test prepare_refuses_an_output_carrying_the_retired_commitment() fail {
+/// A prepared datum carrying the carriage-committed hash is not producible:
+/// the validator computes the transition-only hash itself and requires the
+/// output to carry exactly that.
+test prepare_refuses_an_output_carrying_the_carriage_committed_hash() fail {
   let f = small_fixture()
-  let retired_output: Data = PreparedValidationResolutionStateV1 {
+  let carriage_committed_output: Data = PreparedValidationResolutionStateV1 {
     version: prepared_resolution_version,
     resolution: f.resolution,
-    evidence_hash: f.old_evidence_hash,
+    evidence_hash: f.carriage_committed_evidence_hash,
   }
   run_prepare(
     f,
     [fixture.step_script_hash, fixture.next_step_script_hash],
     1,
     f.transition,
-    retired_output,
+    carriage_committed_output,
   )
 }
 
@@ -890,7 +748,7 @@ test prepare_refuses_a_degenerate_resolution_state() fail {
 }
 
 // ---------------------------------------------------------------------------
-// Authenticate vectors (rows D2 and E at the commitment recompute)
+// Authenticate vectors
 // ---------------------------------------------------------------------------
 
 fn run_authenticate(
@@ -941,24 +799,24 @@ test authenticate_installs_the_transition_under_the_narrowed_commitment() {
   )
 }
 
-/// D2: a hand-written prepared datum whose hash was computed over the retired
-/// `(transition, TransactionFieldItemWitness{…})` preimage. The narrowed
-/// recompute refuses it — the two preimages differ by their serialized
+/// A hand-written prepared datum whose hash is computed over the
+/// carriage-committed `(transition, TransactionFieldItemWitness{…})` preimage.
+/// The recompute refuses it — the two preimages differ by their serialized
 /// auxiliary constructor at every transition.
-test authenticate_refuses_the_retired_carriage_committed_hash() fail {
+test authenticate_refuses_the_carriage_committed_hash() fail {
   let f = small_fixture()
-  let retired_base = PreparedValidationResolutionStateV1 {
+  let carriage_committed_base = PreparedValidationResolutionStateV1 {
     ..f.base,
-    evidence_hash: f.old_evidence_hash,
+    evidence_hash: f.carriage_committed_evidence_hash,
   }
   run_authenticate(
-    retired_base,
+    carriage_committed_base,
     f.transition,
-    authenticated_output(retired_base, f.transition),
+    authenticated_output(carriage_committed_base, f.transition),
   )
 }
 
-/// E1 at authenticate: the commitment recompute pins the witness bytes.
+/// At authenticate, the commitment recompute pins the witness bytes.
 test authenticate_refuses_a_swapped_work_witness() fail {
   let f = small_fixture()
   let swapped = ValidationOneStepWitnessV1 {
@@ -968,7 +826,7 @@ test authenticate_refuses_a_swapped_work_witness() fail {
   run_authenticate(f.base, swapped, authenticated_output(f.base, swapped))
 }
 
-/// E2 at authenticate: the commitment recompute pins the claimed successor.
+/// At authenticate, the commitment recompute pins the claimed successor.
 test authenticate_refuses_a_swapped_claimed_successor() fail {
   let f = small_fixture()
   let swapped = ValidationOneStepWitnessV1 {
@@ -993,12 +851,12 @@ test authenticate_refuses_a_mismatched_installation() fail {
 }
 
 // ---------------------------------------------------------------------------
-// Observe vectors (row A: the door is the sole content gate, on every tier
-// and through the publication arm)
+// Observe vectors (the door is the sole content gate, on every tier and
+// through the publication arm)
 // ---------------------------------------------------------------------------
 
 fn run_observe(
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   base: PreparedValidationResolutionStateV1,
   action: observe_validator.ActionV1,
   reference_inputs: List<Input>,
@@ -1010,7 +868,7 @@ fn run_observe(
 /// `run_observe`, its L1 transaction reshaped by `shape`.
 fn shaped_observe(
   shape: fn(Transaction) -> Transaction,
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   base: PreparedValidationResolutionStateV1,
   action: observe_validator.ActionV1,
   reference_inputs: List<Input>,
@@ -1031,7 +889,7 @@ fn shaped_observe(
 }
 
 fn observed_output(
-  f: OptionBStepFixtureV1,
+  f: TransitionOnlyStepFixtureV1,
   base: PreparedValidationResolutionStateV1,
 ) -> Data {
   let output: Data = staging.observe(
@@ -1128,7 +986,7 @@ test observe_certified_carriage_opens_a_boundary_item() {
   )
 }
 
-/// A1: wrong content inline — the door's flat-hash check aborts the step.
+/// Wrong content inline — the door's flat-hash check aborts the step.
 test observe_aborts_a_byte_flipped_inline_preimage() fail {
   let f = small_fixture()
   run_observe(
@@ -1147,7 +1005,7 @@ test observe_aborts_a_byte_flipped_inline_preimage() fail {
   )
 }
 
-/// A2: wrong content behind a raw reference — same check, tier 2 route.
+/// Wrong content behind a raw reference — same check, tier 2 route.
 test observe_aborts_a_byte_flipped_raw_reference() fail {
   let f = small_fixture()
   run_observe(
@@ -1164,7 +1022,7 @@ test observe_aborts_a_byte_flipped_raw_reference() fail {
   )
 }
 
-/// A7-class: a certified manifest whose chunk carriage substitutes one chunk
+/// A certified manifest whose chunk carriage substitutes one chunk
 /// of equal length — every shape check passes, and the materialized
 /// concatenation's re-hash against the anchored commitment aborts.
 test observe_aborts_a_substituted_certified_chunk() fail {
@@ -1206,7 +1064,7 @@ test observe_aborts_a_substituted_certified_chunk() fail {
   )
 }
 
-/// A3: a publication that names the right transaction and commitment but
+/// A publication that names the right transaction and commitment but
 /// carries flipped bytes — the reconstruction feeds tier 1 and the door
 /// aborts on content.
 test observe_aborts_a_publication_with_flipped_bytes() fail {
@@ -1232,7 +1090,7 @@ test observe_aborts_a_publication_with_flipped_bytes() fail {
   )
 }
 
-/// A4: a publication for another transaction is refused by the arm before the
+/// A publication for another transaction is refused by the arm before the
 /// door ever runs.
 test observe_refuses_a_publication_for_another_transaction() fail {
   let f = small_fixture()
@@ -1257,7 +1115,7 @@ test observe_refuses_a_publication_for_another_transaction() fail {
   )
 }
 
-/// A4: same refusal on the commitment pin.
+/// The same refusal on the commitment pin.
 test observe_refuses_a_publication_with_a_wrong_commitment() fail {
   let f = small_fixture()
   run_observe(
@@ -1281,22 +1139,22 @@ test observe_refuses_a_publication_with_a_wrong_commitment() fail {
   )
 }
 
-/// Documented consequence of the deletion, asserted so the deletion cannot
-/// silently regress into a recheck: a staged datum whose `evidence_hash` is
-/// the *retired* carriage-committed value still observes. On L1 such a datum
-/// is unreachable — the authenticate stage upstream refuses the retired hash
-/// (see `authenticate_refuses_the_retired_carriage_committed_hash`), and the
+/// Observe does not recheck the evidence hash, asserted so it cannot silently
+/// regress into a recheck: a staged datum whose `evidence_hash` is the
+/// carriage-committed value observes. On L1 such a datum is unreachable — the
+/// authenticate stage upstream refuses that hash
+/// (see `authenticate_refuses_the_carriage_committed_hash`), and the
 /// staging chain's script-hash hand-off is the provenance of everything this
 /// stage consumes. Content is the door's question, answered above.
-test observe_no_longer_rechecks_the_evidence_hash() {
+test observe_does_not_recheck_the_evidence_hash() {
   let f = small_fixture()
-  let retired_base = PreparedValidationResolutionStateV1 {
+  let carriage_committed_base = PreparedValidationResolutionStateV1 {
     ..f.base,
-    evidence_hash: f.old_evidence_hash,
+    evidence_hash: f.carriage_committed_evidence_hash,
   }
   run_observe(
     f,
-    retired_base,
+    carriage_committed_base,
     observe_validator.Observe {
       input_index: 0,
       output_index: 0,
@@ -1304,7 +1162,7 @@ test observe_no_longer_rechecks_the_evidence_hash() {
       route: field_door.WalkFieldItem,
     },
     [],
-    observed_output(f, retired_base),
+    observed_output(f, carriage_committed_base),
   )
 }
 

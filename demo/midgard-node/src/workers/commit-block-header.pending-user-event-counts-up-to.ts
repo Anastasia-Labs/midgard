@@ -65,7 +65,7 @@ export const provideCommitBlockWorkerServices = <A, E>(
 /**
  * The Lucid a commit program builds and submits with. There is no default:
  * every caller chooses, so a role's follower Lucid is never built in a
- * command by omission (option E). The commit worker thread `listen` starts
+ * command by omission. The commit worker thread `listen` starts
  * passes `followerCommitLucidFactory`.
  */
 export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;

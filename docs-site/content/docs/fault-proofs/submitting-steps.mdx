@@ -1,6 +1,6 @@
 ---
 title: "Submitting Proof Workflows"
-description: "Chain-derived fraud-proof execution, retired manual routes, and the computation-thread lifecycle."
+description: "Chain-derived fraud-proof execution, admitted manual routes, and the computation-thread lifecycle."
 ---
 
 A supported fraud-proof workflow authenticates evidence, opens a computation
@@ -33,16 +33,12 @@ retained-DA/L1 authority, funding and signer infrastructure. Follow the
 [challenger runbook](https://github.com/Anastasia-Labs/midgard/blob/main/docs/fault-proofs/challenger-runbook.md)
 for the full versioned configuration and readiness checks.
 
-## Retired manual routes
+## Admitted manual routes
 
-The generic `submit-step-01` through `submit-step-04`, invalid-range,
-zero-input, and non-existent-input file submitters are rejected by
-`legacy-submission-boundary.ts`. `submit-init` is also rejected without a
-category and for the categories listed in that boundary. The stable error is
-`RF-043_LEGACY_SUBMISSION_RETIRED`, raised before provider or wallet access.
-
-A name in CLI help or a historical JSON artifact is not evidence that the route
-can submit. Other low-level routes, including transition-trace, have their own
+Every submission route must be on the allow-list in
+`submission-route-admission.ts`. `submit-init` is admitted only with an
+admitted category. Anything else fails with `SUBMISSION_ROUTE_NOT_ADMITTED`,
+raised before provider or wallet access. Other low-level routes, including transition-trace, have their own
 authenticated inputs and category-specific steps. Use their current help/schema together with the installed runner.
 
 ## Thread and proof lifecycle

@@ -65,10 +65,6 @@ vi.mock("../src/services/index.js", async (importOriginal) => {
 vi.mock("../src/services/settlement.js", () => ({
   settlementWalletAddress: () => "unused-before-the-instance-lock",
 }));
-vi.mock("../src/e2e/phase1-accept-crash-checkpoint.js", async () => {
-  const { Effect: E } = await import("effect");
-  return { assertPhase1AcceptCrashCheckpointConfiguration: E.void };
-});
 vi.mock("../src/services/native-mpf-startup.js", async (importOriginal) => {
   const { Effect: E } = await import("effect");
   return {

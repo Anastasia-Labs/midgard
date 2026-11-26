@@ -199,11 +199,11 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
           ok: true,
           provenance: {
             trustClass: "public_or_permissionless_da",
-            sourceId: "libp2p/q17-peer",
+            sourceId: "libp2p/canonical-decodability-peer",
             grade: "security",
           },
           sourceId: "libp2p",
-          sourcePeerId: "q17-peer",
+          sourcePeerId: "canonical-decodability-peer",
           payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
           attempts: [],
         };

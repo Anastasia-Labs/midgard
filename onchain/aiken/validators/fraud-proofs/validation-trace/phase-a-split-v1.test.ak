@@ -68,7 +68,7 @@ const validation_context_cbor =
 // (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts:78),
 // which is the same snapshot every TypeScript Cardano boundary corpus is built
 // against. These three numbers are the only free parameters in the min-fee and
-// min-Ada formulas; a C70 parameter change re-derives both.
+// min-Ada formulas; a snapshot parameter change re-derives both.
 
 fn empty_v1_transaction() -> MidgardTransaction {
   let empty_mint: Data = builtin.list_data([])
@@ -339,15 +339,13 @@ fn next_phase_a_native_state(
 
 /// The single-chunk `bounded_item_v1` proof over item 0 of a single-item field.
 ///
-/// This is what survives of the retired `singleton_field_item_proofs`. Its
-/// collection half is gone: no step opens a per-item collection proof against a
-/// §4 flat field commitment any more, and the carriage that replaced it is
-/// `inline_field_carriage([key])`. The **chunk** half stays because four phases
-/// hand a partially-read item forward across steps and their control state
-/// carries a genuine `bounded_item_v1` root the later step opens against
-/// (`NativeScriptTokenWitness`, `NativeExecutionScanWitness.first_chunk_proof`,
-/// the redeemer item proof) — a satisfiable opening the flat reversion never
-/// touched.
+/// No step opens a per-item collection proof against a §4 flat field
+/// commitment; the carriage is `inline_field_carriage([key])`. The **chunk**
+/// proof exists because four phases hand a partially-read item forward across
+/// steps and their control state carries a genuine `bounded_item_v1` root the
+/// later step opens against (`NativeScriptTokenWitness`,
+/// `NativeExecutionScanWitness.first_chunk_proof`, the redeemer item proof) — a
+/// satisfiable opening.
 fn native_item_yield_transaction(mutation: Int) -> Bool {
   shaped_native_item_yield_transaction(mutation, census.honest)
 }

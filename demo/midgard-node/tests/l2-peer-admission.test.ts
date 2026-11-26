@@ -148,7 +148,7 @@ describe("peer admission forget rule", () => {
     );
     forged[signatureAt + 2] ^= 0x01;
 
-    // Peers pass the same stateless checks as `/submit` (design D6).
+    // Peers pass the same stateless checks as `/submit`.
     expect(await offer(node, [forged])).toEqual({
       admitted: 0,
       duplicates: 0,

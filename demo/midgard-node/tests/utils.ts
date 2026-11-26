@@ -7,7 +7,6 @@ import { Effect, Layer } from "effect";
 
 import schemaSql from "../src/database/schema.sql";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
-import { AdmissionWriterLive } from "../src/services/admission-writer.make-admission-writer.js";
 import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
@@ -47,17 +46,12 @@ const AdmissionWriterTestLive = Layer.scoped(
   }),
 );
 
-const admissionWriterLayer =
-  process.env.PHASE1_ADMISSION_OPERATOR === "1"
-    ? AdmissionWriterLive
-    : AdmissionWriterTestLive;
-
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(
     Effect.provideService(FollowerWriteFixture, true),
     Effect.provide(WriteBehindLive),
     Effect.provide(HttpReadSqlLive),
-    Effect.provide(admissionWriterLayer),
+    Effect.provide(AdmissionWriterTestLive),
     Effect.provide(Database.layer),
     Effect.provide(NodeConfig.layer),
   );

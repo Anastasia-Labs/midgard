@@ -88,7 +88,7 @@ export const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       stateIndex: lowIndex,
       resolveCekDecodeRecord: decodeRecordResolverOf(scripts),
     });
-    // #579 regenerated: the blueprint carries `ValidationOneStepWitnessV1`
+    // The blueprint carries `ValidationOneStepWitnessV1`
     // (the transition surface every dispatcher's checked redeemer decode
     // pins) but no definition for `ValidationAuxiliaryWitnessV1` — the
     // auxiliary crosses the wire as `Data` into the yield dispatchers'

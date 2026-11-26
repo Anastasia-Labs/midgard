@@ -169,9 +169,8 @@ describe("prepare-reference-input-no-idx", () => {
       badTxId: badTxPayload.nodeTxId,
     });
 
-    // The step-02 opening is `bounded_collection_v1.from_items(1, ...)` over the
-    // canonical per-input CBOR; the prepared preimage must reproduce exactly the
-    // hash step-01 forwards.
+    // Step 02 hashes the §5.1 preimage of the canonical per-input CBOR; the
+    // prepared preimage must reproduce exactly the hash step-01 forwards.
     expect(
       SDKFraudProof.referenceInputNoIdxReferenceInputsCommitment(
         output.referenceInputsPreimage.map((entry) => ({

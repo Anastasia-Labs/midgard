@@ -604,7 +604,7 @@ test network_id_step_02_certified_route_rejects_an_in_progress_certificate() fai
 // operator's forced leaf claimed `NetworkIdMismatch`, so the thread convicts
 // exactly when the complete network predicate is false — the optional body
 // field agrees with the deployment and every output address does too. Neither
-// half is decided here any more. `forced_step` decides the body half at the
+// half is decided here: `forced_step` decides the body half at the
 // door, and `forced_scan` walks field 2 in batches and writes the state below
 // only when every output agreed; both refuse the honest-rejection direction
 // where they see it. What is left for this step is the shape that state must
@@ -689,8 +689,8 @@ test network_id_step_02_convicts_a_forced_state_over_an_untagged_tx() {
   )
 }
 
-/// There is no field to open here any more, so an opening is evidence for a
-/// check this step no longer performs.
+/// The forced claim has no field to open, so an opening is evidence for a check
+/// this step does not perform.
 test network_id_step_02_rejects_a_forced_claim_carrying_an_outputs_opening() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   run_forced_finalize(

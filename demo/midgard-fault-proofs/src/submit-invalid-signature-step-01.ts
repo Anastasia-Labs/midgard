@@ -1,8 +1,7 @@
 /**
- * **Re-derived onto the flat field commitments by #604.** Thread state carries
- * `WitnessAnchor`'s two components — the disputed transaction's id and the
- * `witness_set_hash` this step reads off the compact structure the block
- * committed — where it used to carry field 7's own collection commitment. §3's
+ * Thread state carries `WitnessAnchor`'s two components — the disputed
+ * transaction's id and the `witness_set_hash` this step reads off the compact
+ * structure the block committed. §3's
  * id preimage is the body alone, so this step is the last place that hash is
  * authenticated rather than asserted. See
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
@@ -16,11 +15,10 @@
  *   view, which the on-chain step re-opens against the block header's counted
  *   `transactions_root`; and
  * - the committed `witness_set_hash`, by re-encoding the supplied witness-set
- *   compact exactly as the on-chain §8.8 field-access door does. The standalone
- *   `verify_native_tx_witness_set` helper this mirrored was deleted by #575;
+ *   compact exactly as the on-chain §8.8 field-access door does:
  *   `authenticated_field_view`
- *   (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) now makes the
- *   same `blake2b_256(encode_native_tx_witness_set_compact(...))` check inline
+ *   (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) makes the
+ *   `blake2b_256(encode_native_tx_witness_set_compact(...))` check inline
  *   and will not read any of fields 6–8 until it passes.
  *
  * A prepared file whose witness-set compact is not the preimage of the
@@ -150,9 +148,9 @@ export type InvalidSignatureStep01Build = {
   readonly nativeTxId: string;
   /**
    * The `witness_set_hash` this step read off the compact structure the block's
-   * `transactions_root` committed, and — since #604 — wrote into thread state as
-   * the second half of `WitnessAnchor`. Field 7's own commitment is no longer
-   * forwarded: §3's id preimage is the body alone, so a witness-set field can
+   * `transactions_root` committed, and wrote into thread state as the second
+   * half of `WitnessAnchor`. Field 7's own commitment is not forwarded: §3's id
+   * preimage is the body alone, so a witness-set field can
    * only be anchored through this value.
    */
   readonly badTxWitnessSetHash: string;
@@ -266,8 +264,7 @@ export const buildInvalidSignatureStep01 = async ({
 
   requireNativeTxMatchesCompactCbor(txInclusion);
   // Twin of the on-chain §8.8 field-access door: the supplied compact must
-  // re-encode to the `witness_set_hash` the committed transaction pins. The
-  // standalone `verify_native_tx_witness_set` helper is gone as of #575;
+  // re-encode to the `witness_set_hash` the committed transaction pins.
   // `authenticated_field_view` makes the identical check before it will read
   // any of fields 6–8, and for a downstream step the hash it checks against is
   // the anchored one thread state carries in `WitnessAnchor`.
@@ -349,11 +346,11 @@ export const buildInvalidSignatureStep01 = async ({
     resolvedLayout = layout;
     return Data.to(
       {
-        // #575 collapsed these arguments to `NativeTxInclusionCarriage`: the
-        // witness-set preimage no longer travels through step-01, because
-        // step-02 opens field 7 through the §8.8 door and re-derives it from
-        // whatever carriage the prover chose. The `--witness-set-compact` this
-        // builder still takes is checked below and forwarded as a *hash* in the
+        // The arguments are a `NativeTxInclusionCarriage`: the witness-set
+        // preimage does not travel through step-01, because step-02 opens
+        // field 7 through the §8.8 door from whatever carriage the prover
+        // chose. The `--witness-set-compact` this builder takes is checked
+        // below and forwarded as a *hash* in the
         // step-02 state, never as a redeemer argument.
         Continue: [
           {

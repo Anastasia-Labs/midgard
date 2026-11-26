@@ -798,6 +798,36 @@
       }
     },
     {
+      "id": "retained-da-boundary-corpus-v1",
+      "kind": "golden",
+      "summary": "The maximum-shape retained-DA transactions the midgard-validation boundary tests build, as the corpus the DA committee and fault-proof consumers decode. The run replays the producer tests in midgard-validation, then both consumer suites against the regenerated corpus, for about 30 minutes.",
+      "generators": [
+        "demo/midgard-fault-proofs/scripts/generate-retained-da-boundary-corpus-v1.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-fault-proofs:fixtures:retained-da-boundary-corpus-v1:sync",
+        "demo/midgard-fault-proofs:fixtures:retained-da-boundary-corpus-v1:check"
+      ],
+      "producers": [
+        "demo/midgard-validation",
+        "demo/da-committee-node",
+        "demo/midgard-fault-proofs"
+      ],
+      "inputs": ["@golden-channel", "demo/midgard-validation/tests/**"],
+      "outputs": [
+        "demo/midgard-fault-proofs/tests/fixtures/retained-da-boundary-corpus-v1.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:retained-da-boundary-corpus-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:retained-da-boundary-corpus-v1:check"
+      },
+      "ci": {
+        "none": "The check replays the midgard-validation boundary producers for about 30 minutes, which no workflow runs."
+      }
+    },
+    {
       "id": "rejection-reason-v1",
       "kind": "golden",
       "summary": "RejectionReasonV1 codec vectors: one reason per arm of the on-chain declaration, its Plutus Data CBOR from a stand-alone encoder, and its domain hash.",
@@ -1477,10 +1507,6 @@
     {
       "path": "demo/midgard-sdk/scripts/write-cjs-declarations.mjs",
       "why": "Writes the CommonJS type declarations into the gitignored dist/ after a build; nothing it writes is committed."
-    },
-    {
-      "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/write-acceptance-env.sh",
-      "why": "Writes secrets/acceptance.env under the devnet run directory (MIDGARD_PHASE4_RUN_DIR); nothing it writes is committed."
     },
     {
       "path": "scripts/sync-blueprint-from.mjs",

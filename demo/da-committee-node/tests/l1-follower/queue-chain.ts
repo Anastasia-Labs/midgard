@@ -42,7 +42,7 @@ type QueueRoot = {
 
 /**
  * How many blocks `rollBack` can drop. The queue below older blocks is not
- * kept: a long history (the B5 bench's) would hold a copy of the whole
+ * kept: a long history (the tick bench's) would hold a copy of the whole
  * queue per block.
  */
 export const QUEUE_CHAIN_ROLLBACK_BOUND = 64;

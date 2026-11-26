@@ -1,5 +1,5 @@
 /**
- * Role processes fail closed on L1 access (option E, owner ruling): a
+ * Role processes fail closed on L1 access: a
  * role (the node's `listen` and its workers, the DA committee node, the
  * watcher) reads L1 only through its follower, so a non-follower L1 setting
  * in its environment is a misconfiguration refused at start, never ignored.
@@ -7,21 +7,18 @@
 
 /**
  * The settings that select or configure a non-follower L1 access: the tool
- * selector, the tools' external-provider endpoints, and the node's deleted
- * provider choice (`L1_PROVIDER`).
+ * selector, the tools' external-provider endpoints, and `L1_PROVIDER`.
  *
  * Allowed, though they name Blockfrost: `L1_BLOCKFROST_API_URL` and
- * `L1_BLOCKFROST_KEY` are the fault-proofs prover CLI's own fallbacks (owner
- * ruling: the prover CLI keeps Kupmios and Blockfrost). No role reads them,
+ * `L1_BLOCKFROST_KEY` are the fault-proofs prover CLI's own fallbacks (the
+ * prover CLI uses Kupmios and Blockfrost). No role reads them,
  * and CI sets them in the workflow-wide environment every job and every
  * role test inherits (`.github/workflows/midgard-node-ci.yml`, the
  * top-level `env`), so refusing them would refuse every role started there.
  *
- * Refused: `L1_PROVIDER` was the node's own L1 provider choice, deleted by
- * option E. A role environment that still sets it was written for that
- * choice and expects a role to read L1 through Kupmios or Blockfrost, which
- * no role does any more; refusing it by name is the only way that
- * expectation surfaces. No shared environment sets it (the prover CLI takes
+ * Refused: `L1_PROVIDER` selects Kupmios or Blockfrost, which no role reads
+ * L1 through; refusing it by name surfaces a role environment that expects
+ * one. No shared environment sets it (the prover CLI takes
  * its provider from `--provider`, `L1_PROVIDER` only as a fallback).
  */
 export const NON_FOLLOWER_L1_ENV_KEYS = [

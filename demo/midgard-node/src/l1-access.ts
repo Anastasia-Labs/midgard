@@ -1,5 +1,5 @@
 /**
- * The node's one L1-access port (option E, owner 2026-10-10). Every live
+ * The node's one L1-access port. Every live
  * Lucid client the node, its CLIs and its tools build is built over an
  * adapter's provider, and that provider carries its access: the L1 clock
  * (`slotNow`), the view point reads are answered at, and the submit-slot

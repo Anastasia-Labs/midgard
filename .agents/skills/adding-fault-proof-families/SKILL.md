@@ -52,9 +52,8 @@ Each rule names what enforces it. Where the enforcement has a hole, the hole
 is stated next to it.
 
 1. **Reference scripts only.** A fault-proof transaction never attaches a
-   script inline; every script resolves from a published reference script
-   (owner ruling 2026-08-26, cited in
-   `demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`). Call
+   script inline; every script resolves from a published reference script.
+   Call
    `requireReferenceOnlyScriptWitnesses` on every transaction your adapter
    builds. [runtime: requireReferenceOnlyScriptWitnesses]
    Blind spot: it only runs where an adapter calls it

@@ -4,7 +4,7 @@ import "@al-ft/midgard-sdk/state-queue";
 import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "./inspect-contracts.js";
-import "./legacy-submission-boundary.js";
+import "./submission-route-admission.js";
 import "./runtime.js";
 import "./tx-layout.js";
 import "./witness-reference-scripts.js";

@@ -1481,7 +1481,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   }
   // The CEK observer list is built back to front, so the first item step reads
   // the *last* observer. Derived from the authenticated preimage rather than
-  // pinned: under §8 the item's bytes are not a prover claim any more.
+  // pinned: under §8 the item's bytes are not a prover claim.
   expect Some(observer_hash) = list.last(
     decode_midgard_tx_byte_list_preimage_cbor(
       maximum_observer_terminal_field_preimage_cbor,
@@ -1557,11 +1557,11 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       native_control,
       context_control,
       mismatched_count_control,
-      // The count is no longer a prover field: it is §5.2's authenticated header
-      // of the very bytes the door hashed. What a prover can still claim wrongly
-      // is the successor's `observer_count`, and `mismatched_count_control` does
-      // exactly that against the honest carriage — the same 225-against-224
-      // overstatement the retired `ItemProofV1.item_count: 225` expressed.
+      // The count is not a prover field: it is §5.2's authenticated header of
+      // the very bytes the door hashed. What a prover can claim wrongly is the
+      // successor's `observer_count`, and `mismatched_count_control` does
+      // exactly that against the honest carriage, a 225-against-224
+      // overstatement.
       vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 223,
@@ -1613,24 +1613,19 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
   }
 }
 
-/// The `CekContext` observer step's negative space, after §8's door left it
-/// with only three prover-controlled inputs.
+/// The `CekContext` observer step's negative space: §8's door leaves it with
+/// only three prover-controlled inputs.
 ///
-/// **What retired here, and what it became.** Eight rows used to perturb a
-/// counted `ItemProofV1`: its `item_index`, its `field_index`, its `item_count`,
-/// its `item_length`, and the paired `ChunkProofV1.total_length`. Under §8 the
-/// item's bytes, its length and the field's §5.2 count are all *derived* from a
-/// preimage the door hashed once against `required_observers_hash`, so five of
-/// those five fields no longer exist to forge — a prover that changes any of them
-/// has changed the preimage, and the door refuses it by aborting (§7.3), which is
-/// fail-closed rather than a `False` a `!verify` row could observe.
+/// The item's bytes, its length and the field's §5.2 count are all *derived*
+/// from a preimage the door hashed once against `required_observers_hash`. A
+/// prover that changes any of them has changed the preimage, and the door
+/// refuses it by aborting (§7.3), which is fail-closed rather than a `False` a
+/// `!verify` row could observe.
 ///
-/// The two that survive as evidence are the pair the machine still checks
-/// against its own cursor (`field_index == 3`, `item_index == expected_index`),
-/// and the count/length claims move to where they are now decidable: the
-/// **claimed successor**. `observer_count` is claimed there, and understating it
-/// is exactly the attack the retired `item_count` perturbation stood for. Each
-/// row below is one falsifier, measured.
+/// What a row can perturb is the pair the machine checks against its own cursor
+/// (`field_index == 3`, `item_index == expected_index`) and the count claimed
+/// in the **claimed successor**: understating `observer_count` there is the
+/// count attack. Each row below is one falsifier, measured.
 test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
   let base = empty_v1_transaction()
   let observers = observer_hashes_from(0, 2)
@@ -1656,9 +1651,8 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
     ..first_control,
     previous_observer: observer_hash_at(0),
   }
-  // Replaces the retired `ItemProofV1.item_count: 1` perturbation: the field's
-  // authenticated §5.2 count is 2, and a successor claiming 1 is the same
-  // understatement, now made where a prover can actually make it.
+  // The field's authenticated §5.2 count is 2, and a successor claiming 1 is
+  // the count understatement, made where a prover can actually make it.
   let understated_count_successor = vm_machine_types.CekContextControlV1 {
     ..first_control,
     observer_count: 1,
@@ -1820,7 +1814,7 @@ test cek_context_observer_complete_summary_relation_is_exact() {
 }
 
 test cek_context_mint_is_authenticated_and_folded_incrementally() {
-  // §5.6 — the enveloped list of per-policy items, not the retired raw map.
+  // §5.6 — the enveloped list of per-policy items.
   let mint_cbor = native_tx_field_access_v1.encode_field_preimage(
     [
       #"82581c"

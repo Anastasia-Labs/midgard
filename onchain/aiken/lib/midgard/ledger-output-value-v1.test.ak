@@ -13,7 +13,7 @@ const terminal_control =
 /// policies).
 ///
 /// Every `typescript_maximum_value_*` constant below is **generated**: it is
-/// rebound from the vector `nested-value-boundary.test.ts` publishes by
+/// taken from the vector `nested-value-boundary.test.ts` publishes by
 /// `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`,
 /// whose `--check` run is a required CI job. Do not hand-edit them; run
 /// `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`.
@@ -167,7 +167,7 @@ test terminal_cross_language_control_decodes_canonically() {
   }
 }
 
-/// C22 cross-language terminal agreement at the genuine maximum nested Value.
+/// Cross-language terminal agreement at the genuine maximum nested Value.
 ///
 /// The 5,000-byte Value boundary is measured off-chain against the real
 /// `validateOutputTooBigUTxO` predicate; this pins the on-chain fold's terminal

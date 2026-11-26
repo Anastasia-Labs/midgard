@@ -97,7 +97,7 @@ const REMEMBERED_SUBMISSIONS = 1_024;
 type Pin = Readonly<{ point: BlockPoint; untilMs: number }>;
 
 /**
- * A Lucid provider over the local node's ledger alone (option E's NodeLedger
+ * A Lucid provider over the local node's ledger alone (the NodeLedger
  * adapter): own-wallet and by-outref UTxOs, protocol parameters, slot
  * configuration and reward accounts from the ledger, submission through
  * LocalTxSubmission, mempool presence through LocalTxMonitor. It needs no

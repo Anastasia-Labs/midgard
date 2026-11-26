@@ -88,7 +88,7 @@ it("publishes every role, initializes genesis and reopens the finalized deployme
   expect(
     new Set(installed.receipts.map(({ outRef }) => outRef.txHash)).size,
   ).toBeLessThan(expectedCount);
-  // Open, settle, close and timeout: the per-header bond yield is retired.
+  // Open, settle, close and timeout.
   expect(installed.availabilityRegistrations).toHaveLength(4);
   expect(installed.initialization).toMatchObject({
     nonceConsumed: true,

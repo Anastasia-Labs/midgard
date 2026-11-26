@@ -107,7 +107,7 @@ in [installed validation disputes](validation-trace-dispute-installed-workflow.m
 and [installed transition replay](transition-trace-installed-replay.md).
 
 The availability challenge is implemented
-([size plan](size-plans/availability-challenge.md)); its live acceptance is
+([operations](availability-challenge-operations.md)); its live acceptance is
 open. Raw blueprint size alone does not prove transaction fit.
 
 For each enabled category, acceptance must cover real-blueprint publication,

@@ -24,7 +24,7 @@ export const JOURNEY_ACCOUNTS_SECRET = "secrets/journey-accounts.json";
 export const DA_BOND_POOL_CHALLENGER_OPERATING_LOVELACE = 250_000_000n;
 
 /**
- * Collateral held above the G9 minimum, so the collateral return of every
+ * Collateral held above the Timeout collateral bound, so the collateral return of every
  * availability action stays above the ledger's minimum UTxO value.
  */
 export const DA_BOND_POOL_COLLATERAL_MARGIN_LOVELACE = 5_000_000n;
@@ -78,8 +78,8 @@ export const journeyEndpointsFromRunEnv = (
     return value;
   };
   return {
-    kupoUrl: `http://127.0.0.1:${port("MIDGARD_PHASE4_KUPO_PORT")}`,
-    ogmiosUrl: `http://127.0.0.1:${port("MIDGARD_PHASE4_OGMIOS_PORT")}`,
+    kupoUrl: `http://127.0.0.1:${port("MIDGARD_ISOLATED_CHAIN_KUPO_PORT")}`,
+    ogmiosUrl: `http://127.0.0.1:${port("MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT")}`,
   };
 };
 
@@ -125,9 +125,9 @@ export type DaBondPoolChallengerFundingPlan = Readonly<{
   openCoinLovelace: bigint;
   /** One exact Open coin per challenge: B1 (timed out) and B3 (answered). */
   openCoins: number;
-  /** G9: `collateral% x (penalty + max_timeout_fee)`, rounded up. */
+  /** Timeout collateral bound: `collateral% x (penalty + max_timeout_fee)`, rounded up. */
   timeoutCollateralLovelace: bigint;
-  /** The collateral coin: the G9 minimum plus a margin for its return. */
+  /** The collateral coin: the Timeout collateral bound plus a margin for its return. */
   collateralLovelace: bigint;
   /** Pays the removal fee and backs the removal-capital check. */
   operatingLovelace: bigint;
@@ -187,7 +187,7 @@ export type DaBondPoolChallengerCoins = Readonly<{
 
 /**
  * Picks the challenger's coins: an exact Open coin, a collateral coin covering
- * G9 (the planned one first), and the largest other plain coin as operating
+ * the Timeout collateral bound (the planned one first), and the largest other plain coin as operating
  * capital. Reserved outrefs (inputs of journaled intents not yet confirmed)
  * are never spent. The planned collateral coin stays eligible while reserved:
  * the adapter only ever posts it as collateral, and the journal admits one

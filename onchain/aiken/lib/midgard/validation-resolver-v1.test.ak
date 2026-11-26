@@ -71,27 +71,8 @@ const validation_context_cbor =
 // parameterized production-builder fixture identities, not a claim about a
 // live deployment.
 //
-// Re-derived 2026-08-31 (claim-registry removal), both groups together. Only
-// the SDK test cross-checks these — `aiken check` cannot, because nothing on
-// this side applies parameters — so they are exactly the kind of pin that goes
-// stale silently, and both groups were re-derived rather than only the one
-// whose assertion happened to fail first.
-//
-// Cause, measured rather than assumed. Building HEAD 38ef102b with the same
-// `aiken build --env testnet` and diffing it against the current tree
-// title-by-title: two validators are gone (`claim_registry.spend` and its
-// `.else`) and exactly six compiled bodies changed — `hub_oracle.mint`,
-// `computation_thread.mint`, `state_queue.mint`, each with its `.else`. Every
-// semantic resolver named below is byte-identical across the two, so none of
-// them was recompiled and every hash here moved through an applied parameter.
-// The parameter is `computation_thread_policy_id`, which each of these
-// resolvers declares: the baseline blueprint declares
-// `computation_thread.mint.mint(fraud_proof_catalogue_script_hash,
-// hub_oracle_script_hash, claim_registry_script_hash)` and the current one
-// declares the first two only, so that policy id necessarily moved.
-// Hub-oracle is ruled OUT rather than assumed away: the SDK test builds these
-// with a fixed placeholder `hubOraclePolicyId` of "bb" x 28, so a hub-oracle
-// policy id that never changed cannot be what moved them.
+// Only the SDK test cross-checks these — `aiken check` cannot, because nothing
+// on this side applies parameters — so when one group moves, recompute both.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
     #"42dd563871048269b44fcb4ee7a754ff2903288d0ff52cf5dd7f4125",

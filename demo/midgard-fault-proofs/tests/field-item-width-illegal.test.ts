@@ -20,7 +20,6 @@ import {
   encodeFieldItemWidthBoundCoordinate,
   FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES,
   FieldItemWidthAuthenticatedItemSchema,
-  FieldItemWidthBoundCoordinateSchema,
   fieldItemWidthEvidenceCloses,
   fieldItemWidthIsIllegal,
   prepareFieldItemWidthEvidence,
@@ -200,7 +199,7 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
     );
   });
 
-  it("serializes item legality rather than the obsolete item width", () => {
+  it("serializes item legality", () => {
     expect(
       encodeFieldItemWidthAuthenticatedItem(
         evidence({ fieldIndex: 5n, item: Buffer.from("000102", "hex") }),
@@ -261,24 +260,6 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
         FieldItemWidthStep02ArgsSchema as never,
       ),
     ).toBe("d8799f0001d8799fd8799f4101d8799f4180ffffffd8799f02ffff");
-  });
-
-  it("refuses the obsolete short bound datum", () => {
-    expect(() =>
-      Data.from(
-        "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500ff",
-        FieldItemWidthBoundCoordinateSchema as never,
-      ),
-    ).toThrow();
-  });
-
-  it("refuses the obsolete width-only authenticated datum", () => {
-    expect(() =>
-      Data.from(
-        "d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff050003ff",
-        FieldItemWidthAuthenticatedItemSchema as never,
-      ),
-    ).toThrow();
   });
 });
 

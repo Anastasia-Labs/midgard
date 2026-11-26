@@ -61,8 +61,8 @@ use midgard/native_tx_field_access_v1.{
 }
 use midgard/native_tx_machine_walk_v1.{field_walk_checkpoint_hash, walk_fold}
 
-/// The cardinality #551 measured the defect at, and the one this module
-/// re-measures at. Named from the door's own constant so the two cannot drift.
+/// The widest admissible spend-input cardinality, the one this module measures
+/// at. Named from the door's own constant so the two cannot drift.
 const admissible_spend_input_count: Int = maximum_cardano_spend_redeemer_count
 
 /// The other end of the range: the smallest collection an index can be read
@@ -295,8 +295,8 @@ test no_input_step_02_control_at_the_admissible_maximum() {
   no_input_step_02_control(admissible_spend_input_count)
 }
 
-/// The reading #551 says could not be taken at all. It is taken here, and the
-/// step selects the *last* of 296 inputs.
+/// The reading at the admissible maximum: the step selects the *last* of 296
+/// inputs.
 test no_input_step_02_at_the_admissible_maximum() {
   no_input_step_02_at(admissible_spend_input_count)
 }
@@ -365,7 +365,7 @@ test double_spend_step_04_control_at_the_admissible_maximum() {
   double_spend_step_04_control(admissible_spend_input_count)
 }
 
-/// The other reading #551 says could not be taken at all.
+/// The other reading at the admissible maximum.
 test double_spend_step_04_at_the_admissible_maximum() {
   double_spend_step_04_at(admissible_spend_input_count)
 }
@@ -719,12 +719,11 @@ test step_04_at_the_admissible_maximum_refuses_a_present_signature() fail {
 /// cardinality, and its preimage is the width §5.1 and §5.3 predict — inside
 /// §5.4's aggregate cap by construction, and (unlike field 0's) *outside* the
 /// §8.3 tier-1 redeemer bound and over `K`, so on L1 that preimage travels
-/// under tier 3 — admissible for a witness-set field since #606 resolved §8.3
-/// erratum E2 limit 3 (owner ruling 2026-08-16). The row is nonetheless taken
-/// under tier-1 carriage in the harness, at a width tier 1 could not carry, and
-/// is published as a walk-cost reading rather than as a reachable
-/// configuration; this selector is what §8.3 cites by name so that fact cannot
-/// go unnoticed.
+/// under tier 3, which §8.3 admits for a witness-set field. The row
+/// is nonetheless taken under tier-1 carriage in the harness, at a width tier 1
+/// could not carry, and is published as a walk-cost reading rather than as a
+/// reachable configuration; this selector is what §8.3 cites by name so that
+/// fact cannot go unnoticed.
 test address_witness_fixture_sits_at_the_admissible_cardinality() {
   let block = address_cardinality_block(admissible_address_witness_count)
   let preimage_bytes = built_witness_preimage_bytes(

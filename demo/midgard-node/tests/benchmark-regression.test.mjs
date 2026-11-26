@@ -33,9 +33,6 @@ import {
   summarizeHistogramDelta,
   deriveCalibratedClientCapacity,
   summarizeLatency,
-  summarizeOpenLoopCheckpointProgress,
-  summarizePhase1StageAWindowGate,
-  summarizePhase1StarvationGate,
 } from "../scripts/throughput-benchmark-utils.mjs";
 
 describe("large benchmark sample summaries", () => {
@@ -202,7 +199,7 @@ describe("corpus artifact report binding", () => {
       indexSha256: "33".repeat(32),
     });
     expect(() =>
-      parseCorpusManifest({ ...manifest, schemaVersion: "legacy-v2" }),
+      parseCorpusManifest({ ...manifest, schemaVersion: "unknown-v2" }),
     ).toThrow("unsupported corpus manifest schemaVersion");
     const { files: _files, ...missing } = manifest;
     expect(() => parseCorpusManifest(missing)).toThrow("missing=[files]");
@@ -227,7 +224,7 @@ describe("corpus artifact report binding", () => {
         ...manifest,
         walletSetIdentity: {
           ...manifest.walletSetIdentity,
-          walletSetHashAlgorithm: "legacy",
+          walletSetHashAlgorithm: "unknown",
         },
       }),
     ).toThrow("hash algorithm is unsupported");
@@ -372,7 +369,7 @@ describe("bounded corpus uniqueness validation", () => {
         startByteOffset: 0,
         endByteOffset: 1,
         rowCount: 1,
-        extension: "legacy",
+        extension: "unknown",
       })}\n`,
     );
     await expect(loadCorpusIndex(indexPath)).rejects.toThrow(
@@ -483,205 +480,7 @@ describe("bounded corpus uniqueness validation", () => {
   });
 });
 
-describe("Phase 1 single-stream Stage-A window gate", () => {
-  it("derives checkpoint misses from starts due instead of end-of-stage state", () => {
-    expect(
-      summarizeOpenLoopCheckpointProgress({
-        targetRateTps: 5_000,
-        durationSec: 300,
-        dispatchedStarts: 1_485_000,
-      }),
-    ).toEqual({
-      expectedStarts: 1_500_000,
-      scheduledStarts: 1_485_000,
-      missedStarts: 15_000,
-    });
-  });
-
-  const latency = (p95, p99) => ({
-    count: 1_500_000,
-    min: 0,
-    p50: 1,
-    p95,
-    p99,
-    max: p99,
-    mean: 1,
-  });
-
-  it("passes a five-minute 5k checkpoint from a continuous cursor stream", () => {
-    const gate = summarizePhase1StageAWindowGate({
-      checkpointAvailable: true,
-      checkpointRequestedAfterMs: 300_000,
-      checkpointObservedAfterMs: 300_050,
-      measuredDurationSec: 300,
-      targetRateTps: 5_000,
-      durablyAdmitted: 1_500_000,
-      acceptedDelta: 1_500_000,
-      rejectedDelta: 0,
-      duplicateSuccesses: 0,
-      otherSuccesses: 0,
-      submitErrors: 0,
-      queueFullResponses: 0,
-      submitLatencyMs: latency(8, 12),
-      scheduleLagMs: latency(3, 5),
-      scheduledStarts: 1_500_000,
-      missedStarts: 0,
-      missingRequiredMetrics: [],
-      streamContinuity: { passed: true },
-    });
-
-    expect(gate).toMatchObject({
-      passed: true,
-      measuredDurationSec: 300,
-      durablyAdmittedPerSec: 5_000,
-      acceptedPerSec: 5_000,
-    });
-  });
-
-  it("fails a late callback instead of substituting a longer window", () => {
-    const gate = summarizePhase1StageAWindowGate({
-      checkpointAvailable: true,
-      checkpointRequestedAfterMs: 450_000,
-      checkpointObservedAfterMs: 450_050,
-      checkpointMaxJitterMs: 1_000,
-      measuredDurationSec: 450.05,
-      targetRateTps: 5_000,
-      durablyAdmitted: 2_232_248,
-      acceptedDelta: 2_232_248,
-      rejectedDelta: 0,
-      duplicateSuccesses: 0,
-      otherSuccesses: 0,
-      submitErrors: 0,
-      queueFullResponses: 0,
-      submitLatencyMs: latency(8, 12),
-      scheduleLagMs: latency(3, 5),
-      scheduledStarts: 2_232_248,
-      missedStarts: 0,
-      missingRequiredMetrics: [],
-      streamContinuity: { passed: true },
-    });
-
-    expect(gate.passed).toBe(false);
-    expect(gate.reasons).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("checkpoint_requested_after_ms"),
-        expect.stringContaining("checkpoint_observed_after_ms"),
-      ]),
-    );
-  });
-
-  it("fails closed for a missing checkpoint or a reset/duplicate stream", () => {
-    const gate = summarizePhase1StageAWindowGate({
-      checkpointAvailable: false,
-      checkpointError: "counter probe failed",
-      measuredDurationSec: 299,
-      targetRateTps: 5_000,
-      durablyAdmitted: 1_495_000,
-      acceptedDelta: 1_495_000,
-      rejectedDelta: 0,
-      duplicateSuccesses: 1,
-      otherSuccesses: 0,
-      submitErrors: 0,
-      queueFullResponses: 0,
-      submitLatencyMs: latency(8, 12),
-      scheduleLagMs: latency(3, 5),
-      scheduledStarts: 1_495_001,
-      missedStarts: 0,
-      missingRequiredMetrics: [],
-      streamContinuity: { passed: false, reason: "cursor regressed" },
-    });
-
-    expect(gate.passed).toBe(false);
-    expect(gate.reasons).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("checkpoint failed"),
-        expect.stringContaining("measured_duration_sec"),
-        "duplicate_successes=1",
-        expect.stringContaining("stream_continuity_failed"),
-      ]),
-    );
-  });
-});
-
-describe("Phase 1 starvation benchmark gate", () => {
-  const sample = (timestampMs, commitBlock, oldestAgeMs) => ({
-    timestampMs,
-    counters: {
-      commitBlock,
-      mempoolOldestTxAgeMs: oldestAgeMs,
-      metricNames: { mempoolOldestTxAgeMs: "mempool_oldest_tx_age_ms" },
-    },
-  });
-
-  it("passes a ten-minute 2x overload window with bounded saw-tooth age", () => {
-    const samples = [];
-    for (let second = 0; second <= 600; second += 1) {
-      samples.push(
-        sample(second * 1_000, Math.floor(second / 10), (second % 10) * 1_000),
-      );
-    }
-    const gate = summarizePhase1StarvationGate({
-      samples,
-      stageStartedAtMs: 0,
-      stageEndedAtMs: 600_000,
-      targetRateTps: 4_000,
-      overloadBaselineTps: 2_000,
-      commitTxDelta: 1_200_000,
-      commitBlockDelta: 60,
-    });
-
-    expect(gate).toMatchObject({
-      passed: true,
-      measuredDurationSec: 600,
-      observedDecrease: true,
-      observedOverloadRatio: 2,
-      maxAllowedOldestTxAgeMs: 30_000,
-    });
-  });
-
-  it("fails closed when commit intervals are absent or age never decreases", () => {
-    const gate = summarizePhase1StarvationGate({
-      samples: [
-        sample(0, 0, 0),
-        sample(300_000, 0, 300_000),
-        sample(600_000, 1, 600_000),
-      ],
-      stageStartedAtMs: 0,
-      stageEndedAtMs: 600_000,
-      targetRateTps: 5_000,
-      overloadBaselineTps: 2_500,
-      commitTxDelta: 10_000,
-      commitBlockDelta: 1,
-    });
-
-    expect(gate.passed).toBe(false);
-    expect(gate.reasons).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("successful_commit_interval_p95_ms missing"),
-        expect.stringContaining("did not decrease"),
-      ]),
-    );
-  });
-
-  it("fails closed when the oldest-age metric is missing", () => {
-    const samples = [sample(0, 0, 0), sample(600_000, 2, 0)];
-    samples[1].counters.metricNames.mempoolOldestTxAgeMs = null;
-    const gate = summarizePhase1StarvationGate({
-      samples,
-      stageStartedAtMs: 0,
-      stageEndedAtMs: 600_000,
-      targetRateTps: 5_000,
-      overloadBaselineTps: 2_500,
-      commitTxDelta: 20_000,
-      commitBlockDelta: 2,
-    });
-
-    expect(gate.passed).toBe(false);
-    expect(gate.missingOldestAgeSamples).toBe(1);
-  });
-});
-
-describe("Class B L1 observation", () => {
+describe("L1 observation", () => {
   it("reports tip bounds and observed inter-block times", () => {
     const observation = summarizeL1Observation([
       { timestampMs: 0, counters: { l1TipSlot: 100 } },

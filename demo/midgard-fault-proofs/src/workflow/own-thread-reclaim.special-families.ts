@@ -155,7 +155,7 @@ export const withMissingSignatureOwnThreadReclaim = (
   });
 };
 
-/** Value conservation with the reclaim of our threads: its legacy chain,
+/** Value conservation with the reclaim of our threads: its four-step chain,
  * then one union step per conservation position. */
 export const withValueConservationOwnThreadReclaim = (
   workflow: ManifestBoundValueConservationWorkflow,

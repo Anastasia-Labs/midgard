@@ -36,7 +36,7 @@ script's header says how to judge a CI run's own shard reports instead.
   `raisedBecause`. Accepting a regression is a decision for whoever owns the
   lane [review]. `raise` refuses a budget that is not over its ceiling, and a
   ceiling above the basis.
-- **Missing.** A renamed or deleted test, or a control that no longer exists.
+- **Missing.** A renamed or deleted test, or a deleted control.
   Rename the entry, or delete it with the test.
 - **Now fits.** An `aboveBasis` entry records work that cannot fit an L1
   transaction. A reading inside the basis means the claim is stale: `refit`

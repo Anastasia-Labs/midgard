@@ -20,7 +20,7 @@ export const DA_BOND_POOL_LIBP2P_SECRETS = Object.freeze({
 /**
  * The generator's default libp2p ports, which the main checkout keeps. A
  * linked worktree adds its `portOffset` from `scripts/lib/worktree-identity.mjs`,
- * the offset the phase 4 devnet's `generate.sh` adds to its default ports.
+ * the offset the process devnet's `generate.sh` adds to its default ports.
  * The offset is a multiple of 10, so each checkout owns the block of ten ports
  * from `committee + offset`.
  */
@@ -55,7 +55,7 @@ export class DaBondPoolCommitteeRuntimeError extends Error {
 
 /**
  * This checkout's host-port offset, read from `scripts/lib/worktree-identity.mjs`
- * exactly as the phase 4 devnet's `generate.sh` reads it.
+ * exactly as the process devnet's `generate.sh` reads it.
  */
 export const readWorktreePortOffset = (repositoryRoot: string): number => {
   const raw = execFileSync(

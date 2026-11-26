@@ -19,8 +19,8 @@ const TX_ID = /^[0-9a-f]{64}$/;
  * cannot be pinned. What is deterministic is the relationship between the
  * values an example returns, and those relationships are the claims the
  * README makes — so they are what this suite asserts. The forbidden-provider
- * scan that used to live here is now the `no-restricted-syntax` rule on
- * `lucid-midgard/examples/**` in demo/eslint.config.mjs, reported as lint.
+ * scan is the `no-restricted-syntax` rule on `lucid-midgard/examples/**` in
+ * demo/eslint.config.mjs, reported as lint.
  */
 describe("documentation and examples", () => {
   it("runs the package examples against the in-memory provider", async () => {

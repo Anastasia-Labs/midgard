@@ -1,8 +1,7 @@
 //// Validator-level vectors for the ValueAndMint
 //// decomposition.
 ////
-//// Index 12 of the validation-dispute machine used to be one aggregate
-//// "direct" resolver over six stages. It is now `value_and_mint_v1` (a
+//// Index 12 of the validation-dispute machine is `value_and_mint_v1` (a
 //// `prepare_selected` over a group of eleven) plus one semantic validator per
 //// auxiliary kind:
 ////
@@ -20,7 +19,7 @@
 ////
 //// These vectors drive all twelve validators through `main.spend` on the
 //// smallest honest step of each kind, pin the redeemer wire layouts, show
-//// that the prepare refuses the retired group cardinality, and show that a
+//// that the prepare refuses a group of the wrong cardinality, and show that a
 //// semantic validator refuses the honest steps of its stage neighbours (the
 //// pairs a cursor or stage discriminator is all that separates). The full
 //// eleven-by-eleven partition is proven at the library level in
@@ -788,7 +787,7 @@ fn exact_rejection_post(
   }
 }
 
-/// E_MIN_ADA at the validator boundary (R8 of decision 0005).
+/// E_MIN_ADA at the validator boundary.
 /// The same pre-state, the same authenticated descriptor and the same
 /// `ValueOutputDescriptorWitness` as `output_descriptor_fixture`, one lovelace
 /// short of the floor -- so the only successor the machine admits is the exact

@@ -76,7 +76,6 @@ export {
 } from "./input-no-idx.encode-midgard-value-canonical.js";
 export {
   INPUT_NO_IDX_CATALOGUE_CATEGORY,
-  INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
   INPUT_NO_IDX_VIOLATION_ID,
   type InputNoIdxEvidence,
   inputNoIdxEvidenceFromCommittedTransactions,
@@ -88,7 +87,6 @@ export {
   InputNoIdxStep02ArgsSchema,
   InputNoIdxStep02Datum,
   InputNoIdxStep02DatumSchema,
-  inputNoIdxStep02ExecutionMode,
   InputNoIdxStep02SpendRedeemer,
   InputNoIdxStep02SpendRedeemerSchema,
   InputNoIdxStep02State,

@@ -1,5 +1,5 @@
 /**
- * The node-ledger provider (option E's NodeLedger adapter) over an
+ * The node-ledger provider (the NodeLedger adapter) over an
  * in-memory node: no store, no follower. Reads of one build step share one
  * acquired point; confirmation is the tx's outputs in the ledger.
  */

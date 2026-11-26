@@ -4,13 +4,10 @@
  * Finalizes the proof: burns the computation thread, mints the permanent
  * fraud-proof token and locks it at the always-fails fraud-proof address.
  *
- * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
- * producing transaction's whole `outputs_preimage: List<MidgardTxOutput>`; it now
- * carries a `FieldOpening` over §2.5 field **2**, and the door's authenticated
- * item count is the output count the out-of-range verdict rests on (§5.2). Thread
- * state carries that transaction's `producing_tx_id` rather than its
- * `outputs_hash`, which is why this builder takes the producing transaction's
- * compact CBOR.
+ * The redeemer carries a `FieldOpening` over §2.5 field **2**, and the door's
+ * authenticated item count is the output count the out-of-range verdict rests
+ * on (§5.2). Thread state carries that transaction's `producing_tx_id`, which
+ * is why this builder takes the producing transaction's compact CBOR.
  *
  * Nothing in the prepared file is trusted. The complete outputs preimage is
  * re-encoded with the canonical `encode_midgard_tx_output` twin and checked

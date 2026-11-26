@@ -56,9 +56,7 @@ describe("fabricated-withdrawal proof plan", () => {
         daProvenance: DA_PROVENANCE,
       },
     );
-    const outputDir = await mkdtemp(
-      join(tmpdir(), "q40-fabricated-withdrawal-"),
-    );
+    const outputDir = await mkdtemp(join(tmpdir(), "fabricated-withdrawal-"));
     const plan = await prepareFabricatedWithdrawalFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedWithdrawalsRoot: evidence.committedWithdrawalsRoot,

@@ -4,11 +4,10 @@
 //
 // A bare `aiken check -m <selector>` whose selector matches no module and no
 // test prints an empty report and exits 0. Every gate that cites such a command
-// therefore reports success while executing nothing, which is how issue #519
-// found da-hash-preimage's two 17-test selectors to be a green gate that ran
-// zero tests. This wrapper turns "0 tests collected" — and any nonzero aiken
-// status, unparseable report, or failing test — into a nonzero exit whose
-// diagnostic names the exact selector that collected nothing.
+// therefore reports success while executing nothing. This wrapper turns "0
+// tests collected" — and any nonzero aiken status, unparseable report, or
+// failing test — into a nonzero exit whose diagnostic names the exact selector
+// that collected nothing.
 //
 // Use it wherever a focused selector is the evidence. When the exact expected
 // test names are known, prefer scripts/run-focused-check.mjs, which pins the

@@ -206,7 +206,7 @@ export const buildTransactionInclusionFixture = async ({
   ];
   /**
    * Use canonical empty address-witness fields when this block also drives a
-   * real field-opening family. The legacy 32-byte marker is useful only as a
+   * real field-opening family. The 32-byte marker is useful only as a
    * distinct hash preimage; it is not a canonical address-witness item.
    */
   readonly emptyAddressWitnesses?: boolean;

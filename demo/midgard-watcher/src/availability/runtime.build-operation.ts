@@ -150,7 +150,7 @@ export const buildWatcherAvailabilityOperation = async (
           action.action === "remove"
         ? removalReserve
         : 0n;
-  // G9: an Open is only worth taking when its Timeout stays reachable, and
+  // An Open is only worth taking when its Timeout stays reachable, and
   // the Timeout's fee includes the slashed penalty.
   const collateralRequired =
     action.action === "open" || action.action === "timeout"

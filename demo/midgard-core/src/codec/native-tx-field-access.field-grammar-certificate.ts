@@ -16,7 +16,7 @@ import {
  * (`onchain/aiken/lib/midgard/field-grammar-certification-v1.ak`).
  *
  * A field grammar certificate lets a step read one item of a variable-width
- * field without walking the whole field, so the step's cost no longer grows
+ * field without walking the whole field, so the step's cost does not grow
  * with the field's item count. Every value it records is a function of the
  * field's bytes: the item count, and the wrapper offset of every
  * `MIDGARD_FIELD_GRAMMAR_WAYPOINT_INTERVAL`-th item. This module computes the

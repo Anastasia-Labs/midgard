@@ -52,7 +52,7 @@ describe("pooled DA bond lifecycle on the real validators", () => {
       const floor = P.da_bond_pool_floor_lovelace;
       await expect(f.getPool()).rejects.toThrow();
 
-      // AC1: the real InitPool, funded at exactly the floor (as the atomic
+      // The real InitPool, funded at exactly the floor (as the atomic
       // protocol init funds it).
       const init = await f.initPoolReal(floor);
       expect(await f.lucid.utxosByOutRef([f.hubOneShot])).toEqual([]);

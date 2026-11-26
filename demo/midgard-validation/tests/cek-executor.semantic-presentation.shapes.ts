@@ -29,7 +29,7 @@ import { buildCekProgramFromRawFlat } from "./validation-fixtures.flat-program.j
 // verifier derives from its payload nodes, and each Data, list or pair result
 // by its semantic summary. The summary has the value's root and memory, so
 // the machine states are those of the revealed step; only the witness
-// shrinks, and a near-maximum source no longer has to be revealed.
+// shrinks, and a near-maximum source need not be revealed.
 
 export type SemanticStepWitness = Extract<
   MidgardCekCoreStepWitness,

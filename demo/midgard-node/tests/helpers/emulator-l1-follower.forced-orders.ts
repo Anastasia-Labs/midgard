@@ -20,7 +20,7 @@ const failed = (message: string, cause?: unknown) =>
  * the follower's projection row (`node_l1_forced_order_fields`) of the order
  * it was rebuilt from, landed in the follower's tip block once the follower
  * is at `lucid`'s emulator tip. The node treats a forced row without a
- * header whose order is gone as left the chain (N10b): it bounds the commit
+ * header whose order is gone as left the chain: it bounds the commit
  * horizon below the row's inclusion time and is never selected. The order
  * row carries what the node reads of it (outref, slot, unspent, inclusion
  * time); the order's carriage is not modelled, and the order row alone

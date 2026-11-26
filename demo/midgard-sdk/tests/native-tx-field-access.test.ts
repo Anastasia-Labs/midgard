@@ -314,27 +314,23 @@ describe("§4/§8.6 values a builder must reproduce", () => {
   });
 
   it("computes the empty spend-inputs hash as the flat §4 empty-field commitment", () => {
-    // The convergence #585 exists to produce. `fraud_proofs/zero_input/step_02`
-    // compares its `bad_tx_spend_inputs_hash` against
-    // `native_tx_field_access_v1.empty_field_commitment`, and
-    // `EMPTY_SPEND_INPUTS_HASH` is what the codec computes for a body that spends
-    // nothing — before the nine-field consumer swap the two disagreed
-    // (`eb25ed4a…` against `45b0cfc2…`) and a builder could emit a datum the
+    // `fraud_proofs/zero_input/step_02` compares its `bad_tx_spend_inputs_hash`
+    // against `native_tx_field_access_v1.empty_field_commitment`, and
+    // `EMPTY_SPEND_INPUTS_HASH` is what the codec computes for a body that
+    // spends nothing. If the two disagreed a builder could emit a datum the
     // validator rejects.
     //
-    // They now agree by construction: `deriveNativeTxBodyCompact` derives §4's
+    // They agree by construction: `deriveNativeTxBodyCompact` derives §4's
     // flat `blake2b_256` over the §5.1 preimage, and the empty field is exactly
     // `80`. Asserting equality rather than the gap is what keeps a regression from
-    // silently re-opening it. The blueprint that pins the on-chain half is
-    // regenerated once, in #579.
+    // silently re-opening it.
     expect(EMPTY_SPEND_INPUTS_HASH).toBe(EMPTY_FIELD_COMMITMENT_HEX);
   });
 
   it("pins the constant certificate token name", () => {
     // One constant for every certificate of the policy — ASCII
-    // "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes. The identity the retired
-    // per-(tx_id, field_index) derivation carried lives in the datum, which
-    // now also welds the §4 commitment (`field_hash`).
+    // "MIDGARD_FIELD_PREIMAGE_CERT", 27 bytes. A certificate's field identity
+    // lives in the datum, which also welds the §4 commitment (`field_hash`).
     expect(FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX).toBe(
       Buffer.from("MIDGARD_FIELD_PREIMAGE_CERT", "ascii").toString("hex"),
     );

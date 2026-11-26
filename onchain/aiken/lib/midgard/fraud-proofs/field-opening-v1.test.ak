@@ -1,13 +1,13 @@
 //// The guards `midgard/fraud_proofs/field_opening_v1` exists for, isolated.
 ////
-//// Everything else the module does is exercised through the thirteen Q1x family
+//// Everything else the module does is exercised through the thirteen family
 //// step suites that consume it — the tx-id binding, the door's
-//// authenticate-once check, the witness-set re-derivation, abort-never-clamp on
-//// an out-of-range index. What those suites cannot reach is the §2.5 body/
+//// authenticate-once check, the witness-set re-derivation, abort-never-clamp
+//// on an out-of-range index. What those suites cannot reach is the §2.5 body/
 //// witness split itself, because no honest family ever pairs a body opening
 //// with a witness field index: each call site names one literal and hands over
-//// the matching constructor. A guard no vector can trip is a guard nobody knows
-//// is there, so both directions are asserted here.
+//// the matching constructor. A guard no vector can trip is a guard nobody
+//// knows is there, so both directions are asserted here.
 ////
 //// The §2.5 *anchor* split gets the same treatment, and it needs it more. Its
 //// premise — that a prover can rewrite the compact structure's trailing
@@ -17,16 +17,16 @@
 //// depends on it is asserted as a negative one.
 ////
 //// The **carriage-tier** block at the end of the file is the same argument one
-//// level out. §2.5's anchor closes the inline forgery; tier 3 reopened it,
+//// level out. §2.5's anchor closes the inline forgery; tier 3 would reopen it,
 //// because a certificate is minted against a `witness_set_hash` its own
 //// redeemer supplied and §3's id does not cover that value. Those vectors
 //// state the premise executably in both directions — the §8.6 minting
 //// predicate accepts the fabrication on a witness field and refuses it on a
-//// body field — and then assert the closure #606 put at the door (owner
-//// ruling 2026-08-16): the certificate's mint-welded `field_hash` must equal
-//// the commitment derived from the **anchored** structures, so the fabricated
-//// certificate is refused at every witness-set field while the same carriage
-//// opens wherever its welded hash is the committed one.
+//// body field — and then assert the closure at the door: the certificate's
+//// mint-welded `field_hash` must equal the commitment derived from the
+//// **anchored** structures, so the fabricated certificate is refused at every
+//// witness-set field while the same carriage opens wherever its welded hash is
+//// the committed one.
 ////
 //// The positive rows are here for the same reason a negative test needs a
 //// twin: without them a module that refused *everything* would pass the `fail`
@@ -388,8 +388,8 @@ test fold_opened_field_visits_every_item_in_order() {
 // The §2.5 anchor split above closes the *inline* forgery: a prover cannot
 // rewrite the compact structure's trailing `witness_set_hash` and authenticate
 // its own witness set against it, because the hash the door checks is the
-// thread's. Tier 3 reopened the same hole one level out; these vectors state
-// the hole and pin the closure #606 put at the door.
+// thread's. Tier 3 opens the same hole one level out; these vectors state the
+// hole and pin the closure at the door.
 //
 // Under tiers 1–2 the door hashes the whole preimage against
 // `field_commitment_at(body, witness_set, field_index)`, so the *content* is
@@ -528,8 +528,8 @@ test tier_three_certificate_over_a_witness_field_binds_to_nothing_committed() {
 /// field's certificate is refused by the same minting predicate, because there
 /// `expected_hash` is derived from the body alone and the body is exactly what
 /// §3's transaction id commits — the welded `field_hash` is the fabrication's
-/// and the mint's own weld expect aborts on it. Tier 3 over fields 0–5 was
-/// always bound at the mint; 6–8 are bound at the door since #606.
+/// and the mint's own weld expect aborts on it. Tier 3 over fields 0–5 is
+/// bound at the mint; 6–8 are bound at the door.
 test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() fail {
   let honest = block()
   let preimage = forged_witness_preimage()
@@ -558,7 +558,7 @@ test tier_three_certificate_over_a_body_field_is_bound_by_the_tx_id() fail {
 /// `native_tx_field_access_v1.certified_chunks` and this test passes with
 /// `field_item_count == 256`: an invalid-signature or missing-signature fault
 /// becomes provable against a transaction whose field 7 the prover wrote
-/// itself — the E2 forgery, reopened.
+/// itself.
 test certified_carriage_is_refused_at_the_address_witness_field() fail {
   let preimage = forged_witness_preimage()
   field_item_count(
@@ -572,7 +572,7 @@ test certified_carriage_is_refused_at_the_address_witness_field() fail {
 }
 
 /// **The guard, field 6.** Field 6 is variable-width, so `field_item_count`
-/// would abort under tier 3 in any case (§8.3 E2 limit 2) — which is why the
+/// would abort under tier 3 in any case (§8.3) — which is why the
 /// read, not the count, is what this asserts. Without the welded-hash equality
 /// the door serves an item out of a preimage the transaction never committed.
 test certified_carriage_is_refused_at_the_script_witness_field() fail {
@@ -627,7 +627,7 @@ test opened_field_walk_refuses_certified_carriage_on_a_witness_field() fail {
 // certificate shape and chunks — successfully — against transactions that
 // genuinely commit the preimage at the disputed slot, so the certificate's
 // mint-welded `field_hash` equals the commitment the door derives from the
-// anchored structures. Fields 6–8 are the E2 happy path the repair bought:
+// anchored structures. Fields 6–8 are the witness-set happy path:
 // tier-3 carriage of a witness-set field, verified end to end against the
 // chain that reaches the anchored `witness_set_hash`. Field 5 is the body-side
 // control. Any of these goes red the moment the weld is widened into a ban.
@@ -674,7 +674,7 @@ test certified_carriage_opens_the_address_witness_field_with_the_welded_hash() {
 }
 
 /// **The happy path, field 6.** Variable-width, so the read rather than the
-/// count (§8.3 E2 limit 2 stands — it is a budget limit, not the soundness
+/// count (§8.3's item-count limit stands — it is a budget limit, not the soundness
 /// one this block is about).
 test certified_carriage_opens_the_script_witness_field_with_the_welded_hash() {
   let preimage = forged_witness_preimage()

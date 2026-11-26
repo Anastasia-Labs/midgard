@@ -5,7 +5,7 @@
 // Several checkouts of this repository run side by side: the main checkout and
 // any number of `git worktree` checkouts. They share one test Postgres on 5433,
 // one Docker daemon and one set of host ports. Resources named by a fixed
-// default (`midgard_test_w1`, compose project `midgard_phase4_process_run1`,
+// default (`midgard_test_w1`, compose project `midgard_isolated_chain_run1`,
 // host port 5544) collide, and a collision on a test database silently
 // interleaves two suites' rows.
 //

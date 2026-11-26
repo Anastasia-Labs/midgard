@@ -149,13 +149,11 @@ fn observe_item(
     ) {
       expect Some(prepared) = input_state
       expect TransactionFieldItemWitness { carriage } = auxiliary
-      // The one place the §8.8 door runs for the complete-item path — and,
-      // since Option B narrowed the prepare-time commitment to the
-      // transition alone, the sole content gate on this path: the retired
-      // evidence-hash equality here re-checked a commitment that froze the
-      // delivery wrapper three transactions early, while the door binds the
-      // carriage's bytes to the challenged block's own field commitment
-      // whichever tier delivers them. Everything downstream of this stage
+      // The one place the §8.8 door runs for the complete-item path, and —
+      // because the prepare-time commitment covers the transition alone — the
+      // sole content gate on this path: the door binds the carriage's bytes to
+      // the challenged block's own field commitment whichever tier delivers
+      // them. Everything downstream of this stage
       // consumes the numbers it recorded; see `CanonicalDecodeItemObservationV1`
       // on why a later stage cannot re-check them from a datum alone.
       let expected_output_state: Data = staging.observe(

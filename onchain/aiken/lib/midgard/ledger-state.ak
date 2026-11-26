@@ -389,27 +389,13 @@ pub type ForcedTxProofSourceV1 {
 
 /// The L1 forced-inclusion order's payload.
 ///
-/// **No `terminal_receipt_reference`.** It used to name the last link of the
-/// counted per-item publication receipt chain, and `verify_order_receipts` read
-/// it to conclude that every one of the nine fields' items had been opened on
-/// L1. Under `docs/spec/midgard-tx.md` §4's flat reversion there is nothing for
-/// a per-item Merkle opening to be checked against — `bounded_collection_v1`'s
-/// item verification compares a counted root against the commitment the
-/// payload's own compact *declares*, so the chain's mint policy was
-/// unsatisfiable for any payload whose commitments were the §4 flat hashes of
-/// real material. It was **not** unsatisfiable outright: a payload declaring
-/// counted roots in place of flat commitments could still mint a receipt, and so
-/// a material-bearing order could be authenticated by declaring the format it
-/// was no longer written in. Either way the pointer certifies nothing about §4
-/// material, so the field retires with the chain rather than being kept as a
-/// parallel counted artifact — and `verify_order_material`'s all-empty clause
-/// closes the declaring-payload hole outright rather than leaning on the opening
-/// being hard to satisfy.
+/// It names no per-item publication receipt. Under `docs/spec/midgard-tx.md`
+/// §4 a field commitment is a flat hash, so there is no per-item Merkle opening
+/// to check against one, and `verify_order_material`'s all-empty clause refuses
+/// a payload that declares counted roots in place of flat commitments.
 ///
-/// The §8 replacement for the availability role is **not** in this datum: see
-/// the `field_carriage_availability` note on
-/// `midgard/user_events/tx_order_v1.verify_order_material` for what the mint
-/// checks today and which issue owns the §8.6-certified re-expression.
+/// Availability is not in this datum either: see "What "available" means
+/// here" on `midgard/user_events/tx_order_v1.verify_order_material`.
 pub type TxOrderPayloadV1 {
   tx_id: ByteArray,
   transaction_commitment: ByteArray,
@@ -457,10 +443,8 @@ pub type MidgardTxCompactWithoutValidity {
 }
 
 /// The compact leaf's two-valued validity scalar (wire code 0 = valid,
-/// 1 = invalid). The five rejection arms retired in the #640 format wave:
-/// the forced leaf's `OperatorVerdictV1`
-/// carries the full `RejectionReasonV1`, so a coarse arm choice has no surface
-/// left.
+/// 1 = invalid). The forced leaf's `OperatorVerdictV1` carries the full
+/// `RejectionReasonV1`, so this scalar names no reason.
 pub type MidgardTxValidity {
   TxIsValid
   TxIsInvalid
@@ -469,56 +453,31 @@ pub type MidgardTxValidity {
 /// The committed source of an L2 transaction, as the block's `transactions_root`
 /// carries it.
 ///
-/// **No `transaction_commitment`.** It used to sit between `tx_id` and `source`,
-/// and under the retired counted scheme it was load-bearing: the proof-source
-/// triple's `native_tx_proof_commitment_v1` was what a dispute checked its
-/// witnesses against. Under `docs/spec/midgard-tx.md` §4's flat reversion the
+/// **No `transaction_commitment`.** Under `docs/spec/midgard-tx.md` §4 the
 /// transition-trace family authenticates the compact bytes against the tx-id
-/// anchor through the §8.8 door and never reads it, so the only consumer left
-/// was `validation_claim_v1` — which read the field twice, in two functions the
-/// validator reaches by two different routes. `verify_source_authentication`,
-/// under the mandatory `committed_claim_source_is_authenticated`, asserted that
-/// the carried value equalled the `native_tx_proof_commitment_v1` it re-derived
-/// from the `source` sitting beside it. `source_binding_is_exact` (since folded
-/// into `derive_initial_state`), under
-/// `committed_claim_endpoints_and_source_are_valid` — which
-/// `validators/fraud-proofs/validation-trace/source-v1.ak` uses as a *branch
-/// selector* rather than a conjunct — then bound the carried value to the machine
-/// state's initial `transaction_commitment`. Because the first check was
-/// unconditional, the second one's real subject was always the derivation:
-/// carried == derived ∧ carried == initial says exactly what derived == initial
-/// says, which is why retiring the field changes no verdict. A field every reader
-/// had to re-derive before trusting is not a commitment — it is 32 bytes of
-/// serialized weight on every leaf of the transactions root, re-hashed by every
-/// watcher replaying the block, and one more place for a producer to write
-/// something a consumer must remember to check.
+/// anchor through the §8.8 door, and `validation_claim_v1` anchors on the
+/// derivation directly: `native_tx_proof_commitment_v1(source)` against the
+/// machine state's `transaction_commitment`, once per claim. A carried copy
+/// every reader has to re-derive before trusting is not a commitment — it is 32
+/// bytes of serialized weight on every leaf of the transactions root, re-hashed
+/// by every watcher replaying the block, and one more place for a producer to
+/// write something a consumer must remember to check.
 ///
-/// So `validation_claim_v1` now anchors on the derivation directly:
-/// `native_tx_proof_commitment_v1(source)` against the machine state's
-/// `transaction_commitment`, in the one function that was using it. Same value,
-/// same binding, one place it can come from, and still exactly one
-/// `native_tx_proof_commitment_v1` per claim.
-///
-/// Retired from the **committed source leaf only**, not protocol-wide:
-/// `TxOrderPayloadV1` still carries a `transaction_commitment`, because the L1
-/// forced-order path names an order by the proof-source triple it was finalized
-/// against. Its two former companions, `TxFieldPreimageV1` and
-/// `TxFieldReceiptV1`, are gone outright — they were the counted publication
-/// receipt chain's datums, and they retired with it.
+/// This holds for the **committed source leaf only**: `TxOrderPayloadV1`
+/// carries a `transaction_commitment`, because the L1 forced-order path names
+/// an order by the proof-source triple it was finalized against.
 pub type L2TransactionSourceV1 {
   tx_id: ByteArray,
   source: NativeTxProofSourceV1,
 }
 
-/// The forced-inclusion twin of `L2TransactionSourceV1`, carrying the operator's
-/// recorded verdict. It shed `transaction_commitment` for the same reason and in
-/// the same change — see that type.
+/// The forced-inclusion twin of `L2TransactionSourceV1`, carrying the
+/// operator's recorded verdict. It carries no `transaction_commitment`, for the
+/// same reason — see that type.
 ///
-/// `verdict` replaced the old coarse `operator_validity: MidgardTxValidity`
-/// in the #640 format wave: a rejection now names its reason (and the
-/// reason's subject coordinates) from the fully enumerated
-/// `RejectionReasonV1`, making the forced leaf the per-tx rejection
-/// commitment the fault-proof threads bind to.
+/// `verdict` names a rejection's reason (and the reason's subject coordinates)
+/// from the fully enumerated `RejectionReasonV1`, making the forced leaf the
+/// per-tx rejection commitment the fault-proof threads bind to.
 pub type ForcedInclusionTxV1 {
   tx_id: ByteArray,
   submitted_source: ForcedTxProofSourceV1,

@@ -242,9 +242,9 @@ export const encodeScriptWitnesses = (
 /**
  * §5.6: field 5 is the enveloped list of per-policy items. The §5.3 decoder
  * enforces policy-id and asset-name ordering, rejects duplicates, an assetless
- * policy and a zero quantity, and requires the 28-byte policy id — so the checks
- * this function used to spell against a raw CBOR map now have exactly one home,
- * shared with the producer's twin. An empty mint is `80`, like every other field.
+ * policy and a zero quantity, and requires the 28-byte policy id — so those
+ * checks have exactly one home, shared with the producer's twin. An empty mint
+ * is `80`, like every other field.
  */
 export const decodeMint = (preimageCbor: Uint8Array): MidgardLedgerMint => {
   let items;

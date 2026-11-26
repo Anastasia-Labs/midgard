@@ -87,8 +87,8 @@ export const recordCrossBlockRawEmulator = (
     "confirmationDepth" | "inclusionPoint"
   >[] = [];
   const signedCbors = new Map<string, string>();
-  // Submission coordinates are diagnostic metadata, separate from the legacy
-  // raw rows. Actual inclusion is read from Emulator.getTransactionStatus.
+  // Submission coordinates are diagnostic metadata, separate from the raw
+  // rows. Actual inclusion is read from Emulator.getTransactionStatus.
   const acceptedTransactions = new Map<
     string,
     Readonly<{

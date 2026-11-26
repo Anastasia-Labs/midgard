@@ -28,7 +28,7 @@ const workspacePackageBoundary = {
     "Import workspace packages by name (for example @al-ft/midgard-core/hex), never through ../<package>/src or ../<package>/dist. Add a workspace dependency and an exports entry if one is missing.",
 };
 
-// Midgard and Lucid no longer depend on any @harmoniclabs package: Plutus
+// Midgard and Lucid depend on no @harmoniclabs package: Plutus
 // Data, constants, terms and the Flat encoder are owned in midgard-validation
 // (`@al-ft/midgard-validation/uplc`), builtins evaluate through the pinned
 // aiken wasm, and Lucid applies parameters through the same wasm.
@@ -142,11 +142,10 @@ export default tseslint.config(
       // types intentionally; simplifying those unions changes public types.
       "@typescript-eslint/no-redundant-type-constituents": "off",
       "@typescript-eslint/no-duplicate-type-constituents": "off",
-      // Legacy Lucid, Effect, Commander, and decoded-JSON boundaries infer
-      // `any` despite runtime validation. Keep explicit `any` prohibited while
-      // those library boundaries are migrated to `unknown` incrementally.
-      // The ratchet block below re-enables all five for the packages that have
-      // finished that migration.
+      // Lucid, Effect, Commander, and decoded-JSON boundaries infer `any`
+      // despite runtime validation. Explicit `any` stays prohibited. The
+      // ratchet block below re-enables all five for the packages whose
+      // boundaries are typed `unknown`.
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-call": "off",

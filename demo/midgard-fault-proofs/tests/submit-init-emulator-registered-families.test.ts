@@ -1,5 +1,5 @@
 /**
- * Emulator lifecycles for the three families registered by issue #547:
+ * Emulator lifecycles for three registered families:
  * `no-reference-input`, `reference-input-no-idx` and `invalid-signature`.
  *
  * Each case drives the real Aiken validators through a Lucid emulator with the
@@ -190,9 +190,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         threadOutRef: outRefLabel(firstStepUtxo),
       });
       expect(step01Result.txHash).toHaveLength(64);
-      // #604: the thread carries the §2.5 anchor. The field-1 commitment it
-      // used to forward is still in the compact structure step-02 opens, and is
-      // checked there against the slot rather than carried loose.
+      // The thread carries the §2.5 anchor. The field-1 commitment is in the
+      // compact structure step-02 opens, and is checked there against the slot
+      // rather than carried loose.
       expect(step01Result.sourceEventKey).toEqual(
         context.prepared.source.eventKey,
       );
@@ -286,9 +286,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       );
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.badTxId).toBe(fixture.nativeTxId);
-      // #604: the thread carries the §2.5 anchor. Field 1's commitment is
-      // re-derived at step-02 from the compact structure that anchor
-      // authenticates, so it is not forwarded here any more.
+      // The thread carries the §2.5 anchor. Field 1's commitment is read at
+      // step-02 from the compact structure that anchor authenticates, so it
+      // is not forwarded here.
       expect(step01Result.verifiedTxId).toBe(fixture.nativeTxId);
       await expectSingleUtxoWithUnit(
         proverLucid,
@@ -379,9 +379,9 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
-      // #604: the thread carries `WitnessAnchor` — the id plus the committed
+      // The thread carries `WitnessAnchor` — the id plus the committed
       // `witness_set_hash` — rather than field 7's own commitment. Field 7 is
-      // re-derived at step-02 out of the witness set this hash authenticates.
+      // read at step-02 out of the witness set this hash authenticates.
       expect(step01Result.badTxWitnessSetHash).toBe(
         fixture.inclusion.nativeTx.witness_set_hash,
       );

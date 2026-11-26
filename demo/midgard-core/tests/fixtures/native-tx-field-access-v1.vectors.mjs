@@ -55,8 +55,8 @@ const ITEM_WRAPPER_PAYLOAD_LENGTHS = [0, 1, 23, 24, 255, 256];
 
 /**
  * §5.3 fixed-stride item shapes. The item *bytes* are supplied here as vector
- * data rather than produced by a per-field encoder — the per-field encoders and
- * their vectors are #569's fan-out. What these vectors pin is the shared
+ * data rather than produced by a per-field encoder — the per-field encoders
+ * have their own vectors. What these vectors pin is the shared
  * machinery: the §5.1 envelope over fixed-width items, the resulting stride,
  * and the wrapper each accessor must read back (§7.2).
  */
@@ -261,14 +261,12 @@ export const buildNativeTxFieldAccessGoldenV1 = (codec) => {
       preimageBlockHex: hex(TIER3_PREIMAGE_BLOCK),
       chunkLengths: tier3Chunks.map((chunk) => chunk.length),
       chunkDigestsHex: tier3Certificate.chunkDigests.map(hex),
-      // The mint-welded datum commitment — the datum-shape identity
-      // that replaced the retired per-(tx_id, field_index) asset-name class.
-      // Recomputed on the Aiken side from the rebuilt payload.
+      // The mint-welded datum commitment, the certificate's datum-shape
+      // identity. Recomputed on the Aiken side from the rebuilt payload.
       fieldHashHex: hex(tier3Certificate.fieldHash),
     },
-    // #606 (owner ruling 2026-08-16): one constant asset name for every
-    // certificate of the policy; the retired blake2b_256(field_index ‖ tx_id)
-    // vector class is replaced by this constant plus the datum-shape vectors.
+    // One constant asset name for every certificate of the policy; the
+    // datum-shape vectors pin what distinguishes certificates.
     certificateAssetName: {
       assetNameHex: hex(codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME),
       byteLength: codec.MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME.length,

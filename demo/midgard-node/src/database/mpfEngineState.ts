@@ -41,11 +41,9 @@ export const recordLedgerAudit = ({
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)}
-      (store_name, migration_version, root_hex, audit_diverged,
-       last_audit_diverged, last_audit_at)
-      VALUES ('ledger', 1, ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP)
+      (store_name, root_hex, audit_diverged, last_audit_diverged, last_audit_at)
+      VALUES ('ledger', ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP)
       ON CONFLICT (store_name) DO UPDATE SET
-        migration_version = 1,
         root_hex = EXCLUDED.root_hex,
         audit_diverged = ${sql(tableName)}.audit_diverged OR EXCLUDED.audit_diverged,
         last_audit_diverged = EXCLUDED.last_audit_diverged,
@@ -88,8 +86,8 @@ export const acquireLedgerStoreLease = ({
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ readonly lease_owner: string }>`
       INSERT INTO ${sql(tableName)}
-        (store_name, migration_version, root_hex, lease_owner, lease_expires_at)
-      VALUES ('ledger', 1, NULL, ${owner}, NOW() + (${ttlMs} * INTERVAL '1 millisecond'))
+        (store_name, root_hex, lease_owner, lease_expires_at)
+      VALUES ('ledger', NULL, ${owner}, NOW() + (${ttlMs} * INTERVAL '1 millisecond'))
       ON CONFLICT (store_name) DO UPDATE SET
         lease_owner = EXCLUDED.lease_owner,
         lease_expires_at = EXCLUDED.lease_expires_at,
@@ -304,18 +302,17 @@ export const acknowledgeCleanLedgerAudit = (
     ),
   );
 
-export const stampLedgerMigration = (
+export const stampLedgerRoot = (
   rootHex: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)}
-      (store_name, migration_version, root_hex)
-      VALUES ('ledger', 1, ${rootHex})
+      (store_name, root_hex)
+      VALUES ('ledger', ${rootHex})
       ON CONFLICT (store_name) DO UPDATE SET
-        migration_version = GREATEST(${sql(tableName)}.migration_version, 1),
         root_hex = EXCLUDED.root_hex,
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
-    sqlErrorToDatabaseError(tableName, "Failed to stamp ledger MPF migration"),
+    sqlErrorToDatabaseError(tableName, "Failed to stamp ledger MPF root"),
   );

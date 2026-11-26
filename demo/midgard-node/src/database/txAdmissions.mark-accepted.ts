@@ -2,7 +2,6 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Duration, Effect } from "effect";
 
-import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-checkpoint.js";
 import { NodeConfig } from "../services/config.js";
 import { Database } from "../services/database.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
@@ -317,7 +316,6 @@ export const markAccepted = ({
         }),
       ),
     );
-    yield* emitPhase1AcceptCommitCheckpoint(acceptedTxIds);
     yield* MempoolDB.enqueueAcceptedWriteBehind(processedTxs);
     yield* txAdmissionAcceptedTotalDurationTimer(
       Effect.succeed(Duration.millis(Date.now() - totalStartedAt)),

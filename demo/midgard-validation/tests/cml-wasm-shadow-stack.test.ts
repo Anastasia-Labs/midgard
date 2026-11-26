@@ -24,8 +24,8 @@ import { runMaxDepthCmlOperation } from "./helpers/cml-max-depth-runner.js";
  *
  *   1. lucid-evolution resolves the published `@lucid-evolution/cml` artifact;
  *   2. the binary's `__stack_pointer` global is 16 MiB;
- *   3. the old depth ceiling is gone: the first previously-trapping depth
- *      (1,523), the derived maximum (4,043), the adjacent beyond-maximum
+ *   3. no library depth ceiling applies: depth 1,523, the derived maximum
+ *      (4,043), the adjacent beyond-maximum
  *      control (4,044) and a depth far past it parse and round-trip exactly
  *      in this process, on its default stack, so the admitted bound keeps
  *      deriving from transaction capacity, not from the library;

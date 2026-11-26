@@ -1,8 +1,7 @@
 # Where Midgard flakes come from
 
-Each entry gives the symptom you see, the mechanism, the evidence in this
-tree, and the fix. Checked against the tree on 2026-11-23. Mistakes that make
-a test _wrong_ rather than intermittent are in the
+Each entry gives the symptom you see, the mechanism, and the fix. Checked
+against the tree on 2026-11-23. Mistakes that make a test _wrong_ rather than intermittent are in the
 [writing-tests skill](../../writing-tests/SKILL.md).
 
 ## Timing and clocks
@@ -32,10 +31,11 @@ a test _wrong_ rather than intermittent are in the
   0.4.8) and then moves only when the test advances it. A bound computed from
   `Date.now()` later in the test drifts from the emulator's clock by however
   long the test has run, which depends on machine load.
-- **Evidence:** `b27a8d5c8` (a commit window opened ahead of the emulator's
-  clock; the fix advances the emulator to the window's first slot);
-  `daf9fad3d` (a devnet journey slept by the wall clock while the node checks
-  validity against its ledger tip; the fix waits for the tip).
+- **Easy to miss:** a commit window opened ahead of the emulator's clock
+  (advance the emulator to the window's first slot), and a devnet journey
+  that sleeps by the wall clock while the node checks validity against its
+  ledger tip (wait for the tip,
+  `demo/midgard-node-tools/devnet/watcher-journeys/ledger-tip.ts`).
 - **Fix:** express every time as an offset from `emulator.now()` or the
   instance's slot config, and advance the emulator explicitly. Rules for
   production lower bounds are in
@@ -46,11 +46,10 @@ a test _wrong_ rather than intermittent are in the
 
 - **Symptom:** the wrong failure classification under full-suite load
   (`all_peers_failed` where `deadline_exceeded` was expected), never alone.
-- **Evidence:** `15b30754d` added a `clock` seam (`now`, `setTimeout`,
-  `clearTimeout`) to a DA client so the test drove time instead of racing the
-  global timer queue. The lesson holds for any budgeted retry loop.
-- **Fix:** inject the clock and decide by state, not by which timer fires
-  first. `[review]`
+- **Fix:** inject a `clock` seam (`now`, `setTimeout`, `clearTimeout`) so the
+  test drives time instead of racing the global timer queue, and decide by
+  state, not by which timer fires first. This holds for any budgeted retry
+  loop. `[review]`
 
 ## Postgres on 5433
 
@@ -92,8 +91,6 @@ a test _wrong_ rather than intermittent are in the
   `demo/midgard-node/tests/global-setup.ts`) and
   `scripts/start-test-postgres.sh` starts the server with it on; a database
   that skipped global setup takes the server's default.
-- **Evidence:** `81c7ec871` added the per-database override after local
-  servers started with the global `off` false-redded these tests.
 - **Fix:** run through global setup, or start the server with
   `scripts/start-test-postgres.sh`, which leaves an existing server on the
   port untouched (the script's header). Do not change the
@@ -106,11 +103,10 @@ a test _wrong_ rather than intermittent are in the
 - **Symptom:** `EvaluatorError: unreachable`, a wasm trap that looks like a
   validator rejection, in the last tests of a large emulator file.
 - **Mechanism:** the uplc and CML evaluators allocate wasm linear memory
-  outside the V8 heap, and it never shrinks. Through
-  `@lucid-evolution/uplc` 0.2.22 each evaluation also leaked, so one long file
-  hit the ~4 GiB wasm32 ceiling (`e04836c7c`). uplc 0.2.23 and lucid 0.6.4
-  fixed both leaks (`a0a56e280`); the pins are uplc 0.5.3 and lucid 0.8.9 as
-  of 2026-11-23.
+  outside the V8 heap, and it never shrinks, so one long file can reach the
+  ~4 GiB wasm32 ceiling. `@lucid-evolution/uplc` below 0.2.23 and lucid below
+  0.6.4 also leak on every evaluation; the pins are uplc 0.5.3 and lucid
+  0.8.9 as of 2026-11-23.
 - **Fix:** keep one fresh process per file, which
   `isolatedForksPool` provides (`demo/midgard-test-support/vitest.js`), and
   split a file whose heaviest journey needs more. If a run dies on memory,
@@ -123,10 +119,10 @@ a test _wrong_ rather than intermittent are in the
 - **Symptom:** a timeout, or `Timeout calling onTaskUpdate`, that tracks load
   rather than code. Another session's devnet, a parallel suite, or a
   `cargo` build competes for the same cores.
-- **Evidence:** `ac1b630e1` (a row measuring ~22 s locally timed out at 60 s
-  in 2 of 4 CI runs); `e7b91208e` (a test at 236,718 ms against a 240,000 ms
-  budget); the watcher config's comment on worker RPC starvation
-  (`demo/midgard-watcher/vitest.config.ts`).
+- **Easy to miss** when the budget is a small multiple of the local cost: a
+  ~22 s local cost against a 60 s budget is not enough margin for CI under
+  contention. The watcher config's comment on worker RPC starvation
+  (`demo/midgard-watcher/vitest.config.ts`) is the same mechanism.
 - **Fix:** record the load with every measurement (`uptime`, `nproc`,
   `ps -eo pid,ni,pcpu,etime,args --sort=-pcpu | head`). A failure that only
   appears at a load average above the core count is a budget question; see

@@ -7,9 +7,7 @@
 //
 // The `golden_core_*` constants are the generated set — the ordinary golden's
 // canonical bytes, its compact forms, its transaction id, its three non-empty
-// preimages and their commitments. Before #588 the full-CBOR seed was
-// hand-maintained while everything derived from it was generated, which made a
-// format change a transcription exercise.
+// preimages and their commitments.
 
 use aiken/builtin
 use aiken/cbor
@@ -322,10 +320,10 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
   }
 }
 
-/// The field-8 bridge vector under the §5.1 envelope. Its retired spelling
-/// concatenated raw item CBOR (`82 ‖ 84… ‖ 84…`); §5.1 now wraps every item in
-/// its own `definite_bytes_header`, so the same two witnesses are
-/// `82 ‖ 4a 84… ‖ 49 84…`. The bytes below are produced by the TypeScript twin
+/// The field-8 bridge vector under the §5.1 envelope. §5.1 wraps every item in
+/// its own `definite_bytes_header` rather than concatenating raw item CBOR
+/// (`82 ‖ 84… ‖ 84…`), so the same two witnesses are `82 ‖ 4a 84… ‖ 49 84…`.
+/// The bytes below are produced by the TypeScript twin
 /// (`encodeMidgardFieldPreimageForFieldV1`, field 8) and are pinned
 /// field-by-field by `native-tx-field-items-v1-golden.test.ak`; this vector
 /// keeps its own copy because what it exercises is the *bridge* — decode to
@@ -524,7 +522,7 @@ test witness_fields_bind_scripts_to_six_and_addresses_to_seven() {
   }
 }
 
-test script_witnesses_cannot_authenticate_as_legacy_field_seven() fail {
+test script_witnesses_cannot_authenticate_as_field_seven() fail {
   let tx = witness_field_order_transaction()
   let Pair(tx_id, source) = witness_field_order_source(tx)
   verify_midgard_transaction_field_preimage_v1(
@@ -538,7 +536,7 @@ test script_witnesses_cannot_authenticate_as_legacy_field_seven() fail {
   )
 }
 
-test address_witnesses_cannot_authenticate_as_legacy_field_six() fail {
+test address_witnesses_cannot_authenticate_as_field_six() fail {
   let tx = witness_field_order_transaction()
   let Pair(tx_id, source) = witness_field_order_source(tx)
   verify_midgard_transaction_field_preimage_v1(
@@ -612,13 +610,13 @@ test golden_midgard_core_native_full_tx_decodes() {
   }
 }
 
-/// Fields 0/1 under §5.3's fixed 3-byte output index. The retired spelling put
-/// the index in minimal CBOR (`… 00`, a 36-byte item at wrapper `58 24`); §5.3
-/// always spells it `19 XXXX`, which makes the item exactly 38 bytes at wrapper
-/// `58 26` and is what fixes stride 40. The preimages and their flat §4 hashes
-/// below are produced by the TypeScript twin
-/// (`encodeMidgardFieldPreimageForFieldV1`, fields 0 and 1); the same encoding
-/// is pinned per-field by `native-tx-field-items-v1-golden.test.ak`.
+/// Fields 0/1 under §5.3's fixed 3-byte output index. §5.3 always spells it
+/// `19 XXXX`, never minimal CBOR (`… 00`, a 36-byte item at wrapper `58 24`),
+/// which makes the item exactly 38 bytes at wrapper `58 26` and is what fixes
+/// stride 40. The preimages and their flat §4 hashes below are produced by the
+/// TypeScript twin (`encodeMidgardFieldPreimageForFieldV1`, fields 0 and 1);
+/// the same encoding is pinned per-field by
+/// `native-tx-field-items-v1-golden.test.ak`.
 test golden_midgard_core_native_preimage_cbor_decoders() {
   let spend_preimage_cbor = golden_core_spend_inputs_preimage_cbor
   let reference_preimage_cbor = golden_core_reference_inputs_preimage_cbor

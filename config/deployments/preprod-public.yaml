@@ -15,7 +15,7 @@ timing:
   # compiled into Aiken): 7 days of maturity plus 36 hours, the 3k/f slots
   # (k = 2,160, f = 0.05) the deepest automatic L1 rollback can span.
   ledger_retention_ms: 734400000
-  # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
+  # Validation-trace chess clock. Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
   # Measured on the emulator at the preprod Conway fee parameters (2026-10-21):
   # - C: a move is charged only the time past the previous move's validity
@@ -68,8 +68,8 @@ limits:
   # Out of reach, so a strike skips the shift but never ejects an operator.
   max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
-  # Most a validation-trace move may take from its thread for the fee
-  # (pd-design 6.5): at least 2 x the measured largest reveal (377,315
+  # Most a validation-trace move may take from its thread for the fee:
+  # at least 2 x the measured largest reveal (377,315
   # lovelace, depth 32); larger one-step hops are wallet-paid.
   max_dispute_move_fee_lovelace: 1200000
   # Least lovelace of a validation-trace fraud-proof output: above the
@@ -83,8 +83,8 @@ economics:
   inactivitySlashingPenaltyLovelace: 10000000000
   fraudProverRewardLovelace: 75000000000
   proverCollateralFloorLovelace: 5000000
-# Forfeited validation-dispute bonds go to the protocol treasury
-# (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
+# Forfeited validation-dispute bonds go to the protocol treasury:
+# an owner-quorum native script in the cardano-cli JSON
 # form, separate from the reserve. Its hash is derived by the generator.
 # Payment key hashes of three Preprod treasury wallets, any two of
 # which sign.

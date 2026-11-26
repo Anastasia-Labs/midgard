@@ -64,7 +64,6 @@
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node ../scripts/package-test.mjs",
-    "bench": "vitest run --config vitest.bench.config.ts",
     "start": "node dist/index.js",
     "clean": "rimraf dist node_modules",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"

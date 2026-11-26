@@ -5,15 +5,14 @@ use midgard/ledger_state.{MidgardTxId}
 /// One id, carried the length of the family. Steps 02 and 04 each re-open a
 /// different field of the same transaction through the §8.8 door from it —
 /// field 4 here, field 7 there — so the thread never carries a field hash whose
-/// slot §4's plain hashing no longer records.
+/// slot §4's plain hashing does not record.
 ///
 /// `verified_witness_set_hash` is the second half of the §2.5 anchor. §3's
 /// transaction id preimage is the body alone, so the id authenticates fields
 /// 0–5 and says nothing about the witness set; step-01 read the real
 /// `witness_set_hash` off the compact structure the block's counted
-/// `transactions_root` committed, and step-04 needs it to open field 7. It costs
-/// the 32 bytes the retired `verified_addr_tx_wits_hash` cost, and covers all
-/// three witness-set fields instead of one.
+/// `transactions_root` committed, and step-04 needs it to open field 7. Its 32
+/// bytes cover all three witness-set fields.
 pub type State {
   verified_tx_id: MidgardTxId,
   verified_witness_set_hash: ByteArray,

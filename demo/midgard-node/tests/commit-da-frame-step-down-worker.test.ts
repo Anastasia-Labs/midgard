@@ -151,9 +151,6 @@ vi.mock(
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
 }));
-vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
-  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
-}));
 vi.mock("../src/workers/commit-block-header/event-roots.js", () => ({
   resolveDepositsRoot: vi.fn(() => Effect.succeed(Option.none())),
   resolveForcedTransactionsRoot: vi.fn(() => Effect.succeed(Option.none())),

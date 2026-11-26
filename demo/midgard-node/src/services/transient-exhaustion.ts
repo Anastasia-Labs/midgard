@@ -1,6 +1,6 @@
 /**
- * The node's exit on a transient failure that outlived its bound (owner
- * ruling 2026-10-09: retry only what is plausibly transient, bounded).
+ * The node's exit on a transient failure that outlived its bound (retry only
+ * what is plausibly transient, bounded).
  *
  * A running node rides out a PostgreSQL that does not answer: the instance
  * lock reconnects (`node-instance-lock.ts`), the follower's store restarts

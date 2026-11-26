@@ -531,22 +531,17 @@ test mk_cons_rejects_an_incongruent_element_type() {
   )
 }
 
-// This was `test ... fail` over a single call to
-// `verify_builtin_type_failure_v1`, a three-conjunct production `and {}`, so it
-// went green as soon as ANY conjunct was false and the name could not establish
-// which guard fired. Single-conjunct mutation controls (each conjunct
-// neutralized to `True` in turn, aiken-fork v1.1.23, this exact selector):
+// `verify_builtin_type_failure_v1` is a three-conjunct production `and {}`:
 //
-//   conjunct 1  arguments_count == builtin_argument_count_v1(tag)   -> pass
-//   conjunct 2  builtin_value_root == hash_builtin_value_v1(...)    -> pass
-//   conjunct 3  !builtin_arguments_are_well_typed_v1(tag, args)     -> FAIL
+//   conjunct 1  arguments_count == builtin_argument_count_v1(tag)
+//   conjunct 2  builtin_value_root == hash_builtin_value_v1(...)
+//   conjunct 3  !builtin_arguments_are_well_typed_v1(tag, args)
 //
-// Only conjunct 3 flips the test, so conjuncts 1 and 2 are TRUE here and the
-// well-typedness guard is the sole falsifier. Each disposition is now pinned in
-// its own non-`fail` conjunct below, and the ill-typed differential shows the
-// same arity and the same authenticated argument root DO produce a type failure
-// once the ifThenElse Boolean slot stops being a Boolean — which isolates
-// conjunct 3 as the only thing this vector exercises.
+// Each disposition is pinned in its own non-`fail` conjunct below: conjuncts 1
+// and 2 hold here, and the ill-typed differential shows the same arity and the
+// same authenticated argument root DO produce a type failure once the
+// ifThenElse Boolean slot stops being a Boolean — which isolates conjunct 3 as
+// the only thing this vector exercises.
 test arbitrary_control_branch_values_are_not_type_failures() {
   let delay = cek_builtin_v1.RuntimeDelayValue {
     body: #"1111111111111111111111111111111111111111111111111111111111111111",

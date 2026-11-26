@@ -126,7 +126,7 @@ fn small_commitment() -> availability.CommitmentV1 {
   }
 }
 
-test q58_deadline_classes_are_exact() {
+test deadline_classes_are_exact() {
   and {
     availability.response_window_ms_v1(64 * 1024) == Some(
       availability.small_response_window_ms_v1,
@@ -139,7 +139,7 @@ test q58_deadline_classes_are_exact() {
   }
 }
 
-test q58_geometry_is_release_authenticated_not_probe_frozen() {
+test geometry_is_release_authenticated_not_probe_frozen() {
   let alternate = availability.ParametersV1 {
     ..candidate_parameters(),
     response_geometry: alternate_geometry(),
@@ -166,7 +166,7 @@ test q58_geometry_is_release_authenticated_not_probe_frozen() {
 /// therefore 2,081,416 and the first unfunded one 2,081,417 — and it is the
 /// timeout ceiling, not the smaller close ceiling, that binds there. No DA
 /// bond, however large, funds a reserve the challenger bond does not.
-test q58_unequal_bonds_and_fee_reserve_are_exact() {
+test unequal_bonds_and_fee_reserve_are_exact() {
   let off_by_one = availability.ParametersV1 {
     ..candidate_parameters(),
     challenger_bond_lovelace: 9_999_999_999,
@@ -207,7 +207,7 @@ test q58_unequal_bonds_and_fee_reserve_are_exact() {
 
 /// A slash penalty of at least the whole bond leaves the challenger no
 /// reward, and a zero penalty burns nothing; both bounds are exact.
-test q58_slash_penalty_is_strictly_inside_the_da_bond() {
+test slash_penalty_is_strictly_inside_the_da_bond() {
   let largest = availability.ParametersV1 {
     ..candidate_parameters(),
     da_slash_penalty_lovelace: 9_999_999_999,
@@ -232,7 +232,7 @@ test q58_slash_penalty_is_strictly_inside_the_da_bond() {
   }
 }
 
-test q58_zero_min_top_up_is_refused() {
+test zero_min_top_up_is_refused() {
   !availability.parameters_are_canonical_v1(
     availability.ParametersV1 {
       ..candidate_parameters(),
@@ -241,7 +241,7 @@ test q58_zero_min_top_up_is_refused() {
   )
 }
 
-test q58_zero_pool_floor_is_refused() {
+test zero_pool_floor_is_refused() {
   !availability.parameters_are_canonical_v1(
     availability.ParametersV1 {
       ..candidate_parameters(),
@@ -250,7 +250,7 @@ test q58_zero_pool_floor_is_refused() {
   )
 }
 
-test q58_zero_challenge_record_lovelace_is_refused() {
+test zero_challenge_record_lovelace_is_refused() {
   !availability.parameters_are_canonical_v1(
     availability.ParametersV1 {
       ..candidate_parameters(),
@@ -259,7 +259,7 @@ test q58_zero_challenge_record_lovelace_is_refused() {
   )
 }
 
-test q58_pool_amounts_of_one_lovelace_are_accepted() {
+test pool_amounts_of_one_lovelace_are_accepted() {
   availability.parameters_are_canonical_v1(
     availability.ParametersV1 {
       ..candidate_parameters(),
@@ -275,7 +275,7 @@ test q58_pool_amounts_of_one_lovelace_are_accepted() {
 /// undercount the independent per-tranche terminal fragments: 16 * 300 *
 /// 500,000 + 16 * 500,000 + 1,200,000 = 2,409,200,000 must stay strictly
 /// under the challenger bond.
-test q58_non_divisible_tranche_publication_rounding_is_funded() {
+test non_divisible_tranche_publication_rounding_is_funded() {
   let underfunded = availability.ParametersV1 {
     ..candidate_parameters(),
     challenger_bond_lovelace: 2_409_200_000,
@@ -290,14 +290,14 @@ test q58_non_divisible_tranche_publication_rounding_is_funded() {
   }
 }
 
-test q58_canonical_commitment_accepts() {
+test canonical_commitment_accepts() {
   availability.commitment_is_canonical_v1(
     small_commitment(),
     candidate_parameters(),
   )
 }
 
-test q58_commitment_geometry_must_equal_release_parameters() {
+test commitment_geometry_must_equal_release_parameters() {
   !availability.commitment_is_canonical_v1(
     small_commitment(),
     availability.ParametersV1 {
@@ -307,7 +307,7 @@ test q58_commitment_geometry_must_equal_release_parameters() {
   )
 }
 
-test q58_reordered_or_gapped_descriptor_rejects() {
+test reordered_or_gapped_descriptor_rejects() {
   let reordered = availability.CommitmentV1 {
     ..small_commitment(),
     payload_byte_length: 4 * 1024 * 1024 + 1,
@@ -401,7 +401,7 @@ fn response_fixture(
   )
 }
 
-test q58_exact_publication_yields_compact_receipt() {
+test exact_publication_yields_compact_receipt() {
   let (active, publication) = response_fixture(
     deployment,
     header,
@@ -424,7 +424,7 @@ test q58_exact_publication_yields_compact_receipt() {
   }
 }
 
-test q58_wrong_identity_offset_length_or_hash_rejects() {
+test wrong_identity_offset_length_or_hash_rejects() {
   let (active_deployment, wrong_deployment) = response_fixture(
     other_deployment,
     header,
@@ -513,7 +513,7 @@ test q58_wrong_identity_offset_length_or_hash_rejects() {
   }
 }
 
-test q58_wrong_first_chunk_rejects_before_state_advance() {
+test wrong_first_chunk_rejects_before_state_advance() {
   let (active, correct) = response_fixture(
     deployment,
     header,
@@ -539,7 +539,7 @@ test q58_wrong_first_chunk_rejects_before_state_advance() {
   availability.publication_advances_active_tranche_v1(active, wrong, 4095, 1) == None
 }
 
-test q58_wrong_chunk_index_frontier_sibling_or_count_rejects() {
+test wrong_chunk_index_frontier_sibling_or_count_rejects() {
   let (active, correct) = response_fixture(
     deployment,
     header,
@@ -623,7 +623,7 @@ test q58_wrong_chunk_index_frontier_sibling_or_count_rejects() {
   }
 }
 
-test q58_wrong_middle_chunk_rejects_before_state_advance() {
+test wrong_middle_chunk_rejects_before_state_advance() {
   let chunk_0 = #"01"
   let chunk_1 = #"02"
   let chunk_2 = #"03"

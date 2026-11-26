@@ -489,7 +489,7 @@ describe("mempool ledger cache", () => {
 
   it("matches retrieveSpendable semantics through deposit projection and header confirmation", async () => {
     const spent = outRefFromByte(0x73);
-    // Phase B now enforces MIN-ADA-TX on every PRODUCED output, so a candidate
+    // Phase B enforces MIN-ADA-TX on every PRODUCED output, so a candidate
     // paying 10 lovelace is rejected with `E_MIN_ADA` before the cache
     // semantics under test are ever reached. `FUNDED_OUTPUT_LOVELACE` is the
     // fixtures' clears-the-floor-with-headroom amount; the pre-state entry is

@@ -137,9 +137,9 @@ Forced ledger size is submitted byte length plus one; transport uses actual byte
 
 The hashed profile requires
 `forcedTransactionSourceEncoding: "midgard-forced-submission-v1"`.
-This pre-launch replacement changes deployment identity even though the V1
-profile name remains. Old profile, validator, DA and journal identities cannot
-attach to the new deployment. Validators and dependent identities must be
+The source encoding is part of deployment identity: profile, validator, DA and
+journal identities built under another encoding cannot attach to this
+deployment. Validators and dependent identities must be
 regenerated together. Existing persistent deployments are not reset or migrated
 implicitly; a fresh deployment requires its own explicit lifecycle decision.
 
@@ -198,8 +198,7 @@ inputs. It has these ordered phases:
 The phase code order above is consensus data. The sole pre-launch machine
 version is `1`; it includes authenticated source constants, a distinct
 runtime-only script-context term, and work-witness hashing using Aiken's exact
-`cbor.serialise` byte-string chunking. Retired internal version numbers are not
-accepted deployment versions. See
+`cbor.serialise` byte-string chunking. See
 [`consensus-profile.ts`](../demo/midgard-core/src/consensus-profile.ts).
 
 Every state commits the phase, program counter, immutable transaction/source
@@ -343,7 +342,7 @@ carriage is defined by [MidgardTx §8](spec/midgard-tx.md#8-field-preimage-carri
 The profile's transaction-field chunk reservation and CEK blob chunk limit are
 not the field-carriage chunk size `K`.
 
-The pooled DA committee bond (spec #685) adds no field to this profile. Its
+The pooled DA committee bond adds no field to this profile. Its
 economics and timing are deployment-profile and availability `ParametersV1`
 values: the DA bond, the slash penalty, the pool floor, the minimum top-up, the
 challenge record lovelace, the maximum timeout fee, the challenge window, the
@@ -364,7 +363,7 @@ aggregate gate.
 
 Measured bytes and execution units are evidence tied to a compiler, blueprint,
 parameters, and fixture; they are not additional consensus constants. Use the
-[component-spec carriage measurements](spec/midgard-tx.md#810-cost-claims--the-carriage-exit-measurements)
+[component-spec carriage measurements](spec/midgard-tx.md#810-cost-claims--the-carriage-measurements)
 and [fault-proof testing status](fault-proofs/testing-status.md) to locate
 measurement commands and limitations. Unsigned CML framing estimates do not
 activate the current profile.

@@ -179,9 +179,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
         claimed_successor: post,
       },
       // §8.1 tier 1: the field-6 preimage travels in the evidence and the door
-      // hashes it once against `script_tx_wits_hash`. The retired form asserted
-      // a per-item collection opening against that same flat hash, which is the
-      // unsatisfiable predicate #592 is about.
+      // hashes it once against `script_tx_wits_hash`.
       auxiliary: vm_machine_types.TransactionFieldItemWitness {
         carriage: inline_field_carriage([item_cbor]),
       },
@@ -254,10 +252,9 @@ test canonical_decode_refuses_a_field_chunk_auxiliary() {
     claimed_successor: post,
   }
   let honest_carriage = inline_field_carriage([item_cbor])
-  // The canonical-decode chunk route was retired (deleted on-chain in
-  // 2e52d2ef4): every non-empty item is read through the complete-item route.
-  // The same transition and carriage authenticate as an item step and are
-  // refused when presented as a field-chunk step.
+  // Every non-empty item is read through the canonical-decode complete-item
+  // route, not a chunk route. The same transition and carriage authenticate as
+  // an item step and are refused when presented as a field-chunk step.
   and {
     vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
@@ -284,10 +281,7 @@ test canonical_decode_refuses_a_field_chunk_auxiliary() {
   }
 }
 
-// This was `test ... fail` over a single call to
-// `verify_canonical_decode_one_step_v1`, so it went green as soon as any guard
-// anywhere under that call was false and the name could not establish that the
-// claimed successor is what fired. The vector differs from the passing sibling
+// The vector differs from the passing sibling
 // `canonical_decode_authenticates_one_bounded_script_item` in nothing but the
 // claimed successor. Each disposition is pinned individually below: the
 // one-step guard's phase and structural conjuncts hold, the item route's source

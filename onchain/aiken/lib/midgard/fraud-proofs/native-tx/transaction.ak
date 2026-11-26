@@ -1,8 +1,6 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
-use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_canonical_uint_at,
   decode_definite_array_header_at, decode_definite_bytes_at,
@@ -404,8 +402,7 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
 /// tx-id-verified compact structures, satisfying §4. It has no production
 /// caller: what binds it today is the §5/§9.1 conformance suite, which needs
 /// exactly this decode-and-re-encode round trip to pin the canonical spelling
-/// of all nine fields. #570's machine walk core is what replaces it on the
-/// dispute path.
+/// of all nine fields. The dispute path uses the machine walk core instead.
 pub fn verify_midgard_transaction_field_preimage_v1(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
@@ -438,100 +435,6 @@ pub fn verify_midgard_transaction_field_preimage_v1(
     field_index,
     preimage_cbor,
   )
-}
-
-/// The retired counted scheme's positional field lookup, kept only to feed
-/// `verify_midgard_transaction_field_chunk_v1` below. Live positional
-/// extraction now lives behind `authenticated_field_view`'s door and is
-/// deliberately not exported from anywhere.
-fn retired_counted_field_commitment_v1(
-  verified: VerifiedTxSourceView,
-  witness_set: NativeTxWitnessSetCompact,
-  field_index: Int,
-) -> ByteArray {
-  let body = verified.tx_compact.body
-  when field_index is {
-    0 -> body.spend_inputs_hash
-    1 -> body.reference_inputs_hash
-    2 -> body.outputs_hash
-    3 -> body.required_observers_hash
-    4 -> body.required_signers_hash
-    5 -> body.mint_hash
-    6 -> witness_set.script_tx_wits_hash
-    7 -> witness_set.addr_tx_wits_hash
-    8 -> witness_set.redeemer_tx_wits_hash
-    _ -> fail
-  }
-}
-
-/// **RETIRED counted-scheme surface, and nothing binds it any more.**
-///
-/// `bounded_collection_v1.verify_item` checks a counted-scheme Merkle opening
-/// against the field commitment the *payload's own* compact structure declares.
-/// Under `docs/spec/midgard-tx.md` §4 a real field's commitment is a single flat
-/// `blake2b_256` over the whole preimage, so no per-item opening can be checked
-/// against it: this predicate is **unsatisfiable for any payload whose
-/// commitments are the §4 flat hashes of real material**.
-///
-/// It is *not* unsatisfiable outright. A payload is free to declare a counted
-/// root in place of a flat commitment, and against such a payload the opening
-/// verifies — `native-tx-v1.test.ak`'s
-/// `v1_transaction_field_chunk_is_bound_to_the_exact_proof_source` builds
-/// exactly that (a compact whose `spend_inputs_hash` *is* the collection
-/// commitment) and asserts `True`. So the deployed receipt-era mint could
-/// authenticate a material-bearing order that declared counted-root
-/// commitments; what it could never do is authenticate one whose commitments
-/// were the §4 hashes of the material it carried.
-///
-/// Its last live caller was the user-events field-receipt mint, which gated its
-/// `PublishField` branch on this predicate. That validator, its library and the
-/// whole counted publication receipt chain retired in #587;
-/// `TxOrderPayloadV1` shed the `terminal_receipt_reference` that pointed into
-/// it, and `midgard/user_events/tx_order_v1.verify_order_material` replaced the
-/// walk with an all-empty clause that closes the gap outright rather than
-/// relying on the opening being hard to satisfy.
-///
-/// This survives only as evidence about the retired opening, so the suite is
-/// not silent about a format that still has a name: `native-tx-v1.test.ak` and
-/// `validation-machine-tests/` bind it to its exact proof source — `True`
-/// on counted-root-declaring material, `False` on every mismatched proof
-/// (wrong field index, wrong item, wrong chunk, substituted source). Nothing
-/// may bind it — new surface uses `authenticated_field_view`
-/// (`midgard/native_tx_field_access_v1`).
-pub fn verify_midgard_transaction_field_chunk_v1(
-  transaction_id: ByteArray,
-  transaction_commitment: ByteArray,
-  compact_cbor: ByteArray,
-  witness_set_compact_cbor: ByteArray,
-  field_preimage_lengths_cbor: ByteArray,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  proof: bounded_item_v1.ChunkProofV1,
-) -> Bool {
-  let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
-    transaction_id,
-    compact_cbor,
-    witness_set_compact_cbor,
-    field_preimage_lengths_cbor,
-  )
-  and {
-    native_tx_proof_commitment_v1(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-    ) == transaction_commitment,
-    collection_proof.field_index == proof.field_index,
-    collection_proof.item_index == proof.item_index,
-    collection_proof.item_length == proof.total_length,
-    bounded_collection_v1.verify_item(
-      retired_counted_field_commitment_v1(
-        verified,
-        witness_set,
-        proof.field_index,
-      ),
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(collection_proof.item_commitment, proof),
-  }
 }
 
 /// Authenticates the bounded mint field against the V1 compact source

@@ -101,7 +101,7 @@ describe("PeerSignatureCoordinator", () => {
     ).toThrow(/does not match/);
   });
 
-  it("rejects missing, legacy, unknown, and malformed signature record fields", () => {
+  it("rejects missing, unknown, and malformed signature record fields", () => {
     const record = signatureRecord({
       deploymentFingerprint: "11".repeat(28),
       headerHash: "22".repeat(28),
@@ -114,7 +114,7 @@ describe("PeerSignatureCoordinator", () => {
     void _;
     const malformedRecords: readonly unknown[] = [
       missingSource,
-      { ...record, source: "legacy" },
+      { ...record, source: "foreign" },
       { ...record, source: "remote" },
       { ...record, obsolete: true },
       {

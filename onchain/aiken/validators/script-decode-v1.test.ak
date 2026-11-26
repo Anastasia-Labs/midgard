@@ -1459,7 +1459,7 @@ test script_decode_family_chain_rejects_swapped_segments() fail {
 }
 
 /// Mutant 13: a segment left out and the rest renumbered. Every staker
-/// accepts its own segments; the link that no longer meets is refused.
+/// accepts its own segments; the link that does not meet is refused.
 fn broken(f: Fixture) -> List<Piece> {
   renumber(list.concat(list.take(f.pieces, 2), list.drop(f.pieces, 3)))
 }

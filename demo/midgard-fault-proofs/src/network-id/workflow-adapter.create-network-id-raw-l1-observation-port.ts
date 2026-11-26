@@ -259,7 +259,7 @@ export type NetworkIdWorkflowAdapterConfig = {
     readonly requireReferenceScripts?: boolean;
     readonly validFrom?: bigint;
     readonly validTo?: bigint;
-    /** Legacy normalized-provider route only. Production derives topology raw. */
+    /** Normalized-provider route only. Production derives topology raw. */
     readonly isCurrentHead?: (headerHash: string) => Promise<boolean>;
     /** Required by the production raw-L1 route for descendant fencing. */
     readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;

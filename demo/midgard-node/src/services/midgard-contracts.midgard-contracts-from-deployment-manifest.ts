@@ -51,9 +51,6 @@ export const midgardContractsFromDeploymentManifest = (
     "txOrderSpend",
     "txOrderMint",
   );
-  // #579: no `txOrderFieldPreimage` or `txOrderFieldReceipt` resolution here.
-  // The manifest no longer registers any of the three retired tx-field names,
-  // so asking for one would throw on every manifest-sourced load.
   const fieldPreimageCertificate = {
     ...spendingValidatorFromManifest(
       network,

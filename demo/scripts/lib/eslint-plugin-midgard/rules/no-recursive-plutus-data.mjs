@@ -12,9 +12,8 @@
 //   - Lucid's `Data.from` / `Data.to` in midgard-validation and midgard-core,
 //     where bounded encoders of repository-built values are baselined with a
 //     reason each.
-// The recursive @harmoniclabs codecs this rule used to single out are no
-// longer dependencies; `no-restricted-imports` in eslint.config.mjs refuses
-// every @harmoniclabs import. The rule is syntactic: it cannot see a
+// `no-restricted-imports` in eslint.config.mjs refuses every @harmoniclabs
+// import. The rule is syntactic: it cannot see a
 // recursive walk written by hand. docs/agents/lint-rules.md lists the blind
 // spots.
 

@@ -66,7 +66,7 @@ describe("openCommitteeStore", () => {
     const invalidRecords: readonly unknown[] = [
       missingVersion,
       { ...payload, payloadSchemaVersion: 2 },
-      { ...payload, legacyPayloadVersion: 2 },
+      { ...payload, unknownPayloadVersion: 2 },
       { ...payload, validationStatus: 1 },
       { ...payload, rootSummary: { invalid: true } },
     ];
@@ -158,14 +158,14 @@ describe("openCommitteeStore", () => {
     void _;
     const invalidRecords: readonly unknown[] = [
       missingSource,
-      { ...signature, source: "legacy" },
-      { ...signature, legacySource: "local" },
+      { ...signature, source: "foreign" },
+      { ...signature, unknownSource: "local" },
       { ...signature, signerIndex: "0" },
       {
         ...signature,
         validation: {
           ...signature.validation,
-          legacyValidationVersion: 1,
+          unknownValidationVersion: 1,
         },
       },
     ];
@@ -201,7 +201,7 @@ describe("openCommitteeStore", () => {
     const invalidRecords: readonly unknown[] = [
       missingVersion,
       { ...evidence, conflictSchemaVersion: 2 },
-      { ...evidence, legacyConflictVersion: 1 },
+      { ...evidence, unknownConflictVersion: 1 },
       { ...evidence, evidenceHash: "ff".repeat(32) },
       { ...evidence, conflictingHeaderHash: "33".repeat(28) },
       { ...evidence, reporterPeerId: "" },

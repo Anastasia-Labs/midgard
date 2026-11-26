@@ -27,10 +27,10 @@ of the two parties.
 
 Instance: [docs/agents/naming-and-versioning.md](../../../../docs/agents/naming-and-versioning.md)
 says to put "versions in wire, storage, or manifest values", not in names,
-while `git ls-files | grep -cE -- '-v[0-9]+(\.|/|-|$)'` counted 523 tracked
-paths with a `-vN` segment on 2026-11-23. The doc exempts "pinned evidence
-paths" without saying which. Resolving it is an owner decision; until then,
-do not cite the rule as settled either way.
+while `git ls-files | grep -cE -- '-v[0-9]+(\.|/|-|$)'` counts several
+hundred tracked paths with a `-vN` segment. The doc exempts "pinned evidence
+paths" without saying which. Until it is resolved, do not cite the rule as
+settled either way.
 
 ## Init fossilization
 
@@ -41,9 +41,8 @@ edit next to a fossil, verify it and fix it in the same change.
 
 A link or path with no statement of what it holds or when to read it.
 
-Instance: [CLAUDE.md](../../../../CLAUDE.md): "Release readiness is tracked in
-`docs/public_testnet_readiness.md`." Nothing says when an agent should open
-it.
+Instance: "See `docs/public_testnet_readiness.md`." Nothing says what it holds
+or when an agent should open it.
 
 The opposite failure, an orphan, is as bad: a file under `docs/agents/` that
 the [docs/agents/README.md](../../../../docs/agents/README.md) index does not

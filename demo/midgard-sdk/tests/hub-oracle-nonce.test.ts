@@ -107,7 +107,7 @@ const expectHubOracleFailure = async <A>(
 };
 
 describe("hub-oracle one-shot nonce SDK boundary", () => {
-  it("encodes nonce marker datums byte-for-byte like the legacy node expression", async () => {
+  it("encodes nonce marker datums byte-for-byte as `Constr 0 [marker]`", async () => {
     const markerHex = "4d696467617264";
 
     await expect(

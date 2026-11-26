@@ -20,18 +20,13 @@ import {
  * §5.1's envelope: `82` array(2), then `4a` bytes(10) wrapping
  * `84 00 00 43 d87980 82 05 07` and `49` bytes(9) wrapping
  * `84 03 01 42 182a 82 0b 0d`.
- *
- * The retired counted scheme concatenated the two `enc_8` arrays with no per-item
- * envelope (`8284000043d879808205078403…`); §5.1 prohibits that form for all nine
- * fields, so this value is the same two items two bytes wider.
  */
 const NORMALIZED_REDEEMERS_CBOR_HEX =
   "824a84000043d879808205074984030142182a820b0d";
 
 /**
- * A field-8 preimage from `enc_8` parts, under §5.1's envelope. The retired
- * counted scheme spelled these as a bare CBOR array of four-element arrays;
- * §5.1 wraps each item in a definite byte string.
+ * A field-8 preimage from `enc_8` parts, under §5.1's envelope: each item
+ * wrapped in a definite byte string.
  */
 const redeemerFieldPreimage = (
   items: readonly {

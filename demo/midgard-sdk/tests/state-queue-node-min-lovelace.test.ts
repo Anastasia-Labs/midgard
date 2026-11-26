@@ -183,7 +183,7 @@ describe("state-queue node lovelace floor", () => {
     expect(largest.minLovelace).toBeLessThanOrEqual(
       STATE_QUEUE_NODE_MIN_LOVELACE,
     );
-    // Recorded for the ticket: floor / ledger minimum of the largest node.
+    // Reported: floor / ledger minimum of the largest node.
     const headroom =
       Number(STATE_QUEUE_NODE_MIN_LOVELACE) / Number(largest.minLovelace);
     console.info(

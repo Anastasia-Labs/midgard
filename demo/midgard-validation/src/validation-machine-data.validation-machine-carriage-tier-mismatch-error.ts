@@ -76,7 +76,7 @@ export const fieldCarriageData = (
  * `prepare_semantic_resolution` commits.
  *
  * A resolver is supplied by the dispute submitter, which holds the reference
- * inputs; `resolveMidgardFieldCarriageAgainstReferenceInputsV1` in
+ * inputs; `resolveMidgardFieldCarriageAgainstReferenceInputs` in
  * `@al-ft/midgard-sdk` is the one this repository builds against.
  */
 export type ValidationMachineFieldCarriageResolver = (
@@ -87,8 +87,7 @@ export type ValidationMachineFieldCarriageResolver = (
  * Raised when an auxiliary is encoded without a carriage resolver and §8.4 does
  * not admit tier 1 for the preimage's length.
  *
- * **This is not the retired trace-time refusal.** Nothing refuses while a trace
- * is built — the block-build path depends on that. What refuses is
+ * Nothing refuses while a trace is built — the block-build path depends on that. What refuses is
  * *encoding an auxiliary without the context its carriage needs*: above §8.3's
  * tier-1 cap the carriage is reference-input indices, and a caller that
  * supplied no reference inputs has nothing for them to point at. Emitting tier-1

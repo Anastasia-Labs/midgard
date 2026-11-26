@@ -63,8 +63,10 @@ const makeFixture = async ({
   readonly paths: StateCorrectionIndependentSourcePaths;
   readonly authority: StateCorrectionIndependentAuthority;
 }> => {
-  const root = await mkdtemp(join(tmpdir(), "midgard-q57-independent-"));
-  const runId = "q57-independent-rehearsal";
+  const root = await mkdtemp(
+    join(tmpdir(), "midgard-state-correction-independent-"),
+  );
+  const runId = "independent-rehearsal";
   const hubOraclePolicyId = hash(1).slice(-56);
   const catalogue = { root: hash(2), categories: {} };
   const parameters = { maxTxSize: 16_384, network: "Preprod" };
@@ -79,7 +81,7 @@ const makeFixture = async ({
   const chainPoint = { slot: "123456", blockHash: hash(14) };
   const family = {
     familyId: "doubleSpend",
-    violationId: "double-spend-q57",
+    violationId: "double-spend",
     headerHash,
     routeId: "double-spend-production-route",
     detectionSource: "public-l1-da" as const,

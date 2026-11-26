@@ -303,8 +303,7 @@ export const makeRedeemersCbor = (
   }[],
 ): Buffer => {
   const emptyData = Buffer.from(Data.to(new Constr(0, [])), "hex");
-  // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items. The retired counted
-  // scheme spelled this as a bare CBOR array of four-element arrays.
+  // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items.
   return encodeMidgardFieldPreimageForField({
     fieldIndex: 8,
     items: items.map((item) => ({

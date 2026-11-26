@@ -7,7 +7,7 @@ import {
 } from "../src/commands/e2e-release-finality-policy.js";
 
 /**
- * The F04 release-bound policy, written out rather than imported.
+ * The release-bound policy, written out rather than imported.
  *
  * The whole point of this parser is that the release fixes these three values
  * and a caller cannot choose its own: taking the expected value from the
@@ -47,7 +47,7 @@ describe("release-bound L1 finality policy V1", () => {
     );
   });
 
-  it("accepts the exact source-neutral F04 policy and returns it canonically", () => {
+  it("accepts the exact source-neutral policy and returns it canonically", () => {
     const parsed = parseReleaseL1FinalityPolicy(policy());
 
     expect(parsed).toEqual(RELEASE_POLICY);

@@ -100,15 +100,6 @@ describe("finalized deployment manifest", () => {
       /contracts\.availabilityChallengeExtraWithdraw is unexpected/,
     ],
     [
-      "retired unsupported escape-hatch scaffold",
-      (manifest: ReturnType<typeof finalizedManifest>) => {
-        manifest.contracts.escapeHatchSpend = {
-          ...manifest.contracts.txOrderSpend!,
-        };
-      },
-      /contracts\.escapeHatchSpend is unexpected/,
-    ],
-    [
       "noncanonical dispute maturity",
       (manifest: ReturnType<typeof finalizedManifest>) => {
         Object.assign(manifest.validationDispute, { maturityMs: 39_600_000 });

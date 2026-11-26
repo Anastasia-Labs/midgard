@@ -70,13 +70,10 @@ pub type ValidationAuxiliaryWitnessV1 {
   /// fifteen per-item sites match this constructor, across all eight phases
   /// that read a field.
   ///
-  /// It used to carry a counted `(ItemProofV1, ChunkProofV1)` pair checked
-  /// against the §4 flat field commitment — a predicate no honest prover could
-  /// satisfy. What replaces the pair is not a smaller proof but *no*
-  /// proof: the carriage names where the field's preimage is, the door
-  /// authenticates the whole preimage once against the flat commitment, and the
-  /// item is then a slice. Nothing per-item is asserted by the prover, so there
-  /// is nothing per-item left to check.
+  /// It carries no proof: the carriage names where the field's preimage is, the
+  /// door authenticates the whole preimage once against the flat commitment,
+  /// and the item is then a slice. Nothing per-item is asserted by the prover,
+  /// so there is nothing per-item to check.
   ///
   /// `field_index` is here rather than a call-site literal because §4 removed
   /// field-index domain separation and two phases read more than one slot:
@@ -283,11 +280,8 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   /// `CanonicalDecode`'s complete-item step: one item read whole rather than
   /// chunk by chunk. Field index and item index come from the phase's control,
-  /// so the carriage is the entire wire surface. The item bytes that used to
-  /// ride here as `item_cbor` are now read out of the authenticated preimage,
-  /// which is what made the old pairing checkable at all: `item_cbor` was
-  /// checked against a `bounded_item_v1` commitment that was itself opened
-  /// against the §4 flat field hash, and that outer step could not hold.
+  /// so the carriage is the entire wire surface. The item bytes are read out of
+  /// the authenticated preimage.
   TransactionFieldItemWitness {
     carriage: native_tx_field_access_v1.FieldCarriageV1,
   }
@@ -384,17 +378,14 @@ pub type ValidationOneStepEvidenceV1 {
 /// `CanonicalDecode` complete-item steps of one disputed transaction to reach by
 /// reference input instead of re-carrying it in every step's redeemer.
 ///
-/// **It publishes the field's whole §5.1 preimage, not one item, and that is the
-/// rebind.** Under the retired counted scheme it published one item's bytes
-/// beside an `ItemProofV1` opening them against the field commitment — an
-/// opening §4 made unsatisfiable. Under §8 the unit that authenticates is
-/// the whole preimage, so the whole preimage is what a publication has to carry;
-/// a consuming step wraps it as `Inline` carriage and the door hashes it once
-/// against the committed field hash. That makes this datum the script-address
-/// twin of §8.2's tier-2 `RawUtxo` publication, with the two bindings the
-/// counted version also carried — `transaction_id` and
-/// `transaction_commitment` — so a look-alike UTxO cannot pass a preimage off as
-/// belonging to a different dispute.
+/// **It publishes the field's whole §5.1 preimage, not one item.** Under §8 the
+/// unit that authenticates is the whole preimage, so the whole preimage is what
+/// a publication has to carry; a consuming step wraps it as `Inline` carriage
+/// and the door hashes it once against the committed field hash. That makes
+/// this datum the script-address twin of §8.2's tier-2 `RawUtxo` publication,
+/// with two bindings — `transaction_id` and `transaction_commitment` — so a
+/// look-alike UTxO cannot pass a preimage off as belonging to a different
+/// dispute.
 pub type ValidationProofItemDatumV1 {
   version: Int,
   transaction_id: ByteArray,
@@ -459,18 +450,15 @@ pub type CanonicalDecodeItemProofV1 {
 /// authenticated §5.2 item count, this item's §5.1 payload length, and whether
 /// it follows item k-1 in its field's order (`canonical_item_order_is_valid`).
 ///
-/// **It carries no proof, and it cannot.** Under the retired counted scheme this
-/// record held the prover's `ItemProofV1` and the item's `bounded_item_v1`
-/// commitment, so a *later* stage of the staging chain could re-check the
-/// observation against the field commitment from the datum alone. The door is a
-/// computation over the consuming transaction's reference inputs, not a datum,
-/// so what a later stage can re-check is the observation's *consistency* with
-/// the control state — see `canonical_decode_item_observation_is_consistent` —
-/// and the door work itself happens exactly once, in the stage that has the
-/// transaction in hand (`canonical-decode-item-observe-v1`). The staging chain's
-/// own typed hand-off is what makes that provenance sound: an
-/// `ObservedCanonicalDecodeItemV1` can only be built by the observe validator,
-/// and the thread carries it forward under that validator's script hash.
+/// **It carries no proof, and it cannot.** The door is a computation over the
+/// consuming transaction's reference inputs, not a datum, so what a later stage
+/// can re-check is the observation's *consistency* with the control state — see
+/// `canonical_decode_item_observation_is_consistent` — and the door work itself
+/// happens exactly once, in the stage that has the transaction in hand
+/// (`canonical-decode-item-observe-v1`). The staging chain's own typed hand-off
+/// is what makes that provenance sound: an `ObservedCanonicalDecodeItemV1` can
+/// only be built by the observe validator, and the thread carries it forward
+/// under that validator's script hash.
 pub type CanonicalDecodeItemObservationV1 {
   item_count: Int,
   item_length: Int,

@@ -1,5 +1,5 @@
 /**
- * The hand-off of a checked transaction to durable admission (design D9):
+ * The hand-off of a checked transaction to durable admission:
  * the duplicate lookup, load shedding, input claims and the writer's
  * registration, from memory. `/submit` and `/peer/txs` both admit through
  * it once `transaction-admission.ts`'s checks passed.
@@ -45,7 +45,7 @@ export type AdmissionRefusal =
   | AdmissionWriteRefusal;
 
 /**
- * Admits a checked transaction under `submitSource` (design D9): the batch
+ * Admits a checked transaction under `submitSource`: the batch
  * admission below, for one tx.
  */
 export const admitCheckedTransaction = <R>({
@@ -92,7 +92,7 @@ export type CheckedTransactionsAdmitter = (
  * Captures the services admission reads and returns it as a plain
  * synchronous function, so a caller outside Effect (the raw `/submit`
  * handler) admits without a fiber. It admits checked transactions under
- * `submitSource`, in order, in one writer registration (design D9, D5 batch
+ * `submitSource`, in order, in one writer registration (a batch
  * admit). It answers from memory and never waits for Postgres; each tx gets
  * its own answer, and one tx's refusal stops no other:
  *
@@ -102,7 +102,7 @@ export type CheckedTransactionsAdmitter = (
  * - otherwise it reserves a backlog slot (a full backlog refuses with
  *   `TxAdmissionBacklogFullError`), and every reserved tx goes to the writer
  *   at once, which acknowledges each as `new` once it is in the pending set;
- * - in the same step each tx takes its input claims (design D6): a `native`
+ * - in the same step each tx takes its input claims: a `native`
  *   tx spending an input another pending tx claimed, or one that is neither
  *   in the mempool ledger state nor produced by a pending tx, is refused
  *   with `AdmissionInputSpentError`. A `peer` tx is never refused for its
@@ -163,7 +163,7 @@ export const makeCheckedTransactionsAdmitter = <R>(
           });
           continue;
         }
-        // Load shedding (D5): an anonymous tx is refused from memory once
+        // Load shedding: an anonymous tx is refused from memory once
         // the backlog passes its share; a peer tx only once it is full.
         // Plain synchronous calls, not an Effect per tx: this runs for every
         // request on the main thread.

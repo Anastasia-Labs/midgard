@@ -151,7 +151,7 @@ export const negativeVectors = [
       ]),
     ),
     reason:
-      "the pre-#606 5-field shape — a datum without the mint-welded `field_hash` is a certificate the door has no anchored equality to hold, and the frozen wire format refuses it at decode",
+      "the 5-field shape — a datum without the mint-welded `field_hash` is a certificate the door has no anchored equality to hold, and the frozen wire format refuses it at decode",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {

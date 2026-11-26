@@ -1707,9 +1707,9 @@ test canonical_insertion_rejects_dropped_prefix_root() fail {
   insert_root(prefix_fixture.dropped_fork_prefix_root, v.key, v.value, v.proof) == v.before
 }
 
-/// Forced-event timing remains on its existing submission domain. This entry
-/// keeps the production history final from retaining legacy deposit/withdrawal
-/// decoders merely to reach the unchanged forced-event branches.
+/// Forced-event timing uses its submission domain. This entry lets the
+/// production history final reach the forced-event branches without carrying
+/// the deposit/withdrawal decoders.
 pub fn validate_forced_l1_event_fault(
   header: ledger_state.HeaderV1,
   fault: TransitionFault,

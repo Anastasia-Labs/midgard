@@ -173,8 +173,8 @@ release input that `watcher.releaseInput` names holds:
   deployment writes,
   `demo/midgard-node/deploymentInfo/contract-deployment-info.json.blueprint-registry.json`.
 
-Phase 1 checks every provenance field it can before the run builds or spends
-anything; the prerequisites check its blueprint hash against the blueprint
+The stack checks every provenance field it can before the run builds or
+spends anything; the prerequisites check its blueprint hash against the blueprint
 they build. Once the deployment has written its parameter registry, the
 `public-release` step completes the provenance with that registry's digest
 and writes it once, as `release-provenance.json` in the run directory, with
@@ -192,7 +192,7 @@ deployment, it stops and names the folder; move the folder aside and rerun.
 To sign the public release out of band instead, for example on a separate
 signing machine:
 
-1. Keep `signingKeyFile` on the stack host. Phase 1 reads it and checks its
+1. Keep `signingKeyFile` on the stack host. The stack reads it first and checks its
    public key against `trustRootsFile`, and the stack signs the watcher
    release with it.
 2. Run the stack until it prints `operator: confirmed`, then stop it. The

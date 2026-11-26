@@ -21,7 +21,7 @@ import {
 } from "./support/submit-init/membership.js";
 import { outputReferenceCbor } from "./support/submit-init/transaction-material.js";
 
-describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)", () => {
+describe("step-02 redeemer envelope chart (the check with no fallback carriage, §2.3)", () => {
   /**
    * Worst admissible step-02 instance: forced-source thread (both extra
    * openings live), forced leaf carrying a real §3 proof-source triple and the
@@ -131,7 +131,7 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
                 ).toString("hex"),
               },
               // Worst verdict arm: two integer payloads (the 47-arm catalogue
-              // carries at most two small integers, #633).
+              // carries at most two small integers).
               verdict: {
                 ForcedTxInvalid: {
                   reason: {
@@ -161,16 +161,16 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
       ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
     );
 
-    // THE gate. A failure here is a wave-branch on-chain format finding
-    // The step-02 argument layout would need to move
-    // openings out of the single redeemer. It must be escalated, not absorbed
-    // by shrinking the fixture or the overhead allowance.
+    // THE gate. A failure here is an on-chain format finding: the step-02
+    // argument layout would need to move openings out of the single
+    // redeemer. Do not absorb it by shrinking the fixture or the overhead
+    // allowance.
     expect(
       deepBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "ESCALATE: worst-case step-02 redeemer no longer fits the L1 fault-proof envelope",
+      "worst-case step-02 redeemer does not fit the L1 fault-proof envelope",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
     // "Fits" alone is not the design's claim — §2.3 expects real margin, so a
-    // creeping regression surfaces before it becomes an escalation.
+    // creeping regression surfaces before the envelope is exceeded.
     expect(
       deepBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES + 1_024,
       "worst-case step-02 margin dropped below 1 KiB — investigate before the next widening lands",
@@ -203,13 +203,13 @@ describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)"
     // SHARP number of the whole suite: step 02 has no published-chunk
     // fallback, so if the exhaustion depth ever drops to 32 or below, a
     // work-feasible adversarial block exists whose worst forced-leaf opening
-    // cannot reach L1 at all — that is the §2.3 wave-branch escalation, with
-    // only ~5 levels of margin today. Watch it, do not absorb it.
+    // cannot reach L1 at all — that breaks §2.3, with only ~5 levels of
+    // margin. Watch it, do not absorb it.
     expect(perLevelBytes).toBeGreaterThanOrEqual(250);
     expect(perLevelBytes).toBeLessThanOrEqual(450);
     expect(
       exhaustionDepth,
-      "ESCALATE: a work-feasible (2^128) membership depth no longer fits the step-02 redeemer, and step 02 has no alternative carriage",
+      "a work-feasible (2^128) membership depth does not fit the step-02 redeemer, and step 02 has no alternative carriage",
     ).toBeGreaterThan(
       membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
     );

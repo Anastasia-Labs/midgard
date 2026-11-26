@@ -11,7 +11,7 @@ import {
 /** §2.5. The nine committed fields. Field identity is positional. */
 export const MIDGARD_FIELD_COUNT = 9;
 
-/** §5.4. Retained from the counted era by owner ruling. */
+/** §5.4. */
 export const MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES = 32_768;
 
 /** §5.4. Field 0's own bound equals the aggregate bound. */
@@ -24,36 +24,27 @@ export const MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT = 296;
 export const MIDGARD_MAX_FIELD_ITEM_COUNT = 65_535;
 
 /**
- * §8.3 tier-2 bound and tier-3 chunk size — the value the spec's §8.3 erratum
- * E1 re-pinned it to, applied.
- *
- * **E1 falsified the provisional 15,900 and this constant now carries the
- * repair.** A real signed key-address publication of a 15,900-byte chunk
- * measures 16,648 bytes against a 16,384-byte `maxTxSize`, so at 15,900 *every*
- * tier-3 plan's first chunk was unpublishable and the whole window
- * `(15,148, 32,768]` had no admissible carriage. 15,148 is the reserve-clearing
- * publication frontier: a 15,148-byte chunk publishes as exactly 15,872 bytes,
- * which is `maxTxSize` minus the 512-byte reliability reserve. It is therefore
- * the same number as {@link MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES_V1} in
+ * §8.3 tier-2 bound and tier-3 chunk size: the reserve-clearing publication
+ * frontier. A 15,148-byte chunk publishes as exactly 15,872 bytes, which is
+ * `maxTxSize` minus the 512-byte reliability reserve. It is therefore the same
+ * number as {@link MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES} in
  * `./native-tx-carriage.js`, which derives it from the cost model rather than
  * writing it down; the two are asserted equal there rather than trusted to
  * agree, and that assertion is what keeps `K` a measured bound instead of a
  * literal.
  *
- * `ceil(32,768 / 15,148) = 3`, so {@link MIDGARD_MAX_TIER3_CHUNK_COUNT} is
- * unmoved by the re-pin. The Aiken twin `chunk_bytes_k` in
- * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` moves in the same
- * commit, because it is the *split*, not merely a bound: every fixture, golden,
- * corner and cost row taken at a 15,900-byte boundary re-derives with it.
+ * The Aiken twin `chunk_bytes_k` in
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` moves with it,
+ * because it is the *split*, not merely a bound: every fixture, golden, corner
+ * and cost row taken at a chunk boundary re-derives with it.
  */
 export const MIDGARD_CHUNK_BYTES_K = 15_148;
 
 /**
- * §8.3 tier-1 bound. **PROVISIONAL**, and still unmeasured: `maxTxSize`
- * (16,384) minus a round 2,048-byte allowance for step machinery, pending
- * #557's M2. §8.3 erratum E1 does not falsify it but does narrow it — a
- * 14,336-byte preimage occupies 14,786 bytes once encoded as Plutus Data, so
- * 450 of the 2,048-byte allowance is spent before any step machinery exists.
+ * §8.3 tier-1 bound: `maxTxSize` (16,384) minus a round 2,048-byte allowance
+ * for step machinery. A 14,336-byte preimage occupies 14,786 bytes once
+ * encoded as Plutus Data, so 450 of the 2,048-byte allowance is spent before
+ * any step machinery exists.
  */
 export const MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES = 14_336;
 

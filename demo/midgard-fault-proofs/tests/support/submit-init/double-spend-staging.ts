@@ -16,14 +16,6 @@ import { expect } from "vitest";
 import type { ResolvedProverSigner } from "../../../src/runtime.js";
 import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
 import {
-  buildInit,
-  buildStep01,
-  buildStep02,
-  buildStep03,
-  parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-} from "../legacy-submit-emulator.js";
-import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
@@ -36,6 +28,14 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "../submit-init-emulator-shared.js";
+import {
+  buildInit,
+  buildStep01,
+  buildStep02,
+  buildStep03,
+  parseSpendInputCbors,
+  parseSubmitStep01TxInclusion,
+} from "../submit-steps.diagnostic.js";
 import { buildAndSubmit, submitTurns } from "../submit-steps.js";
 import { commitInitializedProvedFixtureHeader } from "./commit-header.js";
 import { buildProvedFixtureDeploymentContext } from "./deployment.js";
@@ -126,7 +126,7 @@ export const stageDoubleSpendStep04 = async ({
       lucid: proverLucid,
       contracts,
     }));
-  // Owner ruling 2026-08-26: every script a fault-proof transaction executes
+  // Every script a fault-proof transaction executes
   // is consumed from a published reference script, never inline-attached. The
   // four double-spend step validators and the shared witness scripts are
   // published from the prover wallet alongside the removal roster above.
@@ -199,7 +199,7 @@ export const stageDoubleSpendStep04 = async ({
             bondPaddingLovelace,
           })
         : (() => {
-            throw new Error("Legacy setup omitted its actual nonce");
+            throw new Error("The setup omitted its actual nonce");
           })();
   const fraudulentHeader = setup.header;
   if (canonical !== undefined)
@@ -383,8 +383,8 @@ export const stageDoubleSpendStep04 = async ({
   expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
   expect(step02Result.verifiedTx1Id).toBe(transactionInclusion.tx1.nativeTxId);
   expect(step02Result.nativeTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
-  // #604: the thread carries both §2.5 anchors; the field-0 commitments it used
-  // to forward are re-derived at the door from the compact structures instead.
+  // The thread carries both §2.5 anchors; the door reads the field-0
+  // commitments from the compact structures.
   expect(step02Result.verifiedTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
   const remainingSecondStepUtxos = await proverLucid.utxosAtWithUnit(
     step01Result.secondStepAddress,

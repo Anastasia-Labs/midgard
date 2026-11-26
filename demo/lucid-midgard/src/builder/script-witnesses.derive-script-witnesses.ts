@@ -97,8 +97,8 @@ const addRequiredExecution = ({
 /**
  * §5.1/§5.3: field 8 is the enveloped list of `enc_8` items
  * (`84 ‖ uint(purpose_tag) ‖ uint(index) ‖ bytes(redeemer_cbor) ‖ 82 ‖ uint(ex_memory) ‖ uint(ex_steps)`).
- * The retired counted scheme concatenated the raw item arrays with no per-item
- * envelope; §5.1 prohibits that form for all nine fields.
+ * §5.1 prohibits concatenating the raw item arrays without the per-item
+ * envelope, for all nine fields.
  *
  * Pointer ordering and duplicate rejection stay here — they are a builder
  * invariant about which redeemers may coexist, not a property of the byte

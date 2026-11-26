@@ -29,11 +29,11 @@ export const startJourneyRetainedDa = async ({
   runEnv: Readonly<Record<string, string>>;
   hubOraclePolicyId: string;
 }) => {
-  const database = runEnv.MIDGARD_PHASE4_POSTGRES_DATABASE!;
-  const username = runEnv.MIDGARD_PHASE4_POSTGRES_USER!;
-  const password = runEnv.MIDGARD_PHASE4_POSTGRES_PASSWORD!;
+  const database = runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE!;
+  const username = runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_USER!;
+  const password = runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD!;
   const databaseUrl = new URL(
-    `postgres://127.0.0.1:${runEnv.MIDGARD_PHASE4_POSTGRES_PORT}/${database}`,
+    `postgres://127.0.0.1:${runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT}/${database}`,
   );
   databaseUrl.username = username;
   databaseUrl.password = password;
@@ -59,7 +59,7 @@ export const startJourneyRetainedDa = async ({
       [
         "exec",
         "-i",
-        `${runEnv.MIDGARD_PHASE4_COMPOSE_PROJECT}-postgres-1`,
+        `${runEnv.MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT}-postgres-1`,
         "psql",
         "-U",
         username,

@@ -233,8 +233,7 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(scriptField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT);
     // §5.6: field 5 is the enveloped per-policy item list, and its decoder is
     // where the one-policy/one-asset shape, the 28-byte policy id, canonical key
-    // order and non-zero quantities are enforced. The hand-rolled CBOR walk this
-    // replaced re-stated those rules against the retired raw-map form.
+    // order and non-zero quantities are enforced.
     const nativeMintPolicyItems = decodeMidgardMintFieldPreimage(
       Buffer.from(mintField.fieldPreimageCborHex, "hex"),
     );
@@ -274,16 +273,10 @@ describe("canonical V1 mint Cardano boundary", () => {
       collectionProof: mintField.terminalFoldVector.collectionProof,
       chunkProof: mintField.terminalFoldVector.chunkProof,
     }).toEqual(maximumMintTerminalFoldVector);
-    // #590 scope item 0: the write channel this suite did not have.
-    //
-    // The `mint-boundary-v1` fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-tests/` mirrors this
-    // boundary's terminal fold, and until now nothing carried the bytes across —
-    // so that fixture still pinned the *counted* field roots this package stopped
-    // emitting at #585, and stayed green only because the id it pinned was the id
-    // of the compact it pinned beside it. #592's rebind puts §8's carriage where
-    // the counted `(ItemProofV1, ChunkProofV1)` pair used to be, and a carriage is
-    // the field's whole §5.1 preimage, which no human is going to retype.
+    // The write channel for the `mint-boundary-v1` fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-tests/`, which mirrors this
+    // boundary's terminal fold. Its §8 carriage is the field's whole §5.1
+    // preimage, which no human is going to retype.
     //
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.

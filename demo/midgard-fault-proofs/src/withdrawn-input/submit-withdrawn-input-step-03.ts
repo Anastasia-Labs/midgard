@@ -30,10 +30,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,
@@ -52,9 +49,6 @@ export type WithdrawnInputStep03Build = {
   readonly fraudProofAddress: string;
   readonly fraudulentHeaderHash: string;
 };
-
-export type SubmitWithdrawnInputStep03Result =
-  OutsideWorkflowSubmission<WithdrawnInputStep03Build>;
 
 export const buildWithdrawnInputStep03 = async ({
   lucid,

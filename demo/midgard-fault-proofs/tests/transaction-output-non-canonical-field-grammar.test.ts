@@ -3,7 +3,7 @@
  * accepted transaction whose outputs field carries 761 items under tier 3, the
  * malformed one at 751. The config is built from a deployment that names the
  * field grammar certificate's members, so step 02 reads the accused output
- * through the field grammar certificate, and its cost no longer grows with the
+ * through the field grammar certificate, and its cost does not grow with the
  * field's item count; the scan and step 04 then convict. A direct step-02 call
  * without the certificate walks, and at this size the walk fails on chain.
  */

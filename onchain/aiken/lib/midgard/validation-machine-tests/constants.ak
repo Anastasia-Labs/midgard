@@ -28,19 +28,18 @@ pub const validation_context_cbor =
 // (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts:78),
 // which is the same snapshot every TypeScript Cardano boundary corpus is built
 // against. These three numbers are the only free parameters in the min-fee and
-// min-Ada formulas; a C70 parameter change re-derives both.
+// min-Ada formulas; a snapshot parameter change re-derives both.
 pub const target_snapshot_min_fee_a = 44
 
 pub const target_snapshot_min_fee_b = 155_381
 
-/// Re-pointed 2026-08-23 (owner ruling on #627, option B) off a duplicated
-/// literal onto the production pin. `env.coins_per_utxo_byte` is the compiled
+/// The production pin. `env.coins_per_utxo_byte` is the compiled
 /// deployment constant the ValueAndMint output-descriptor step actually
 /// convicts with, held identical in `env/default.ak` and `env/testnet.ak` and
 /// mirrored by `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`. Reading it here
 /// means these vectors cannot pass against a rate the validators do not use;
-/// `min_ada_target_snapshot_rate_is_the_production_pin` below still pins the
-/// absolute 4_310 so the C70 snapshot value itself cannot drift unnoticed.
+/// `min_ada_target_snapshot_rate_is_the_production_pin` below pins the
+/// absolute 4_310 so the snapshot value itself cannot drift unnoticed.
 pub const target_snapshot_coins_per_utxo_byte = env.coins_per_utxo_byte
 
 // `validation_context_cbor` re-encoded at the target snapshot. The tuple is
@@ -59,21 +58,14 @@ pub const maximum_input_schedule_last_value =
 // ---------------------------------------------------------------------------
 // The genuine-Cardano maximum-cardinality field terminal folds.
 //
-// Every constant below is GENERATED, and #592 is why they had to become
-// constants at all.
+// Every constant below is GENERATED.
 //
 //   producer: pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync
 //
-// Before the flat reversion these fixtures were struct literals inside `fn`s,
-// carrying a counted `(ItemProofV1, ChunkProofV1)` pair the name-keyed rebinder
-// (`demo/midgard-core/scripts/golden-channel.mjs`) could not reach — the hazard
-// #590 exists to close. They stayed green while this package's producers moved
-// to §4 at #585, because the transaction id they pinned was the id of the
-// *stale* compact structure they pinned beside it: a self-consistent copy of a
-// world that no longer existed. §8's carriage is the field's whole §5.1
-// preimage, which no human is going to retype, so the fields are hoisted to
-// named constants here and bound from the six boundary suites' published
-// vectors.
+// §8's carriage is the field's whole §5.1 preimage, which no human is going to
+// retype, so the fields are named constants here, bound from the six boundary
+// suites' published vectors by the name-keyed rebinder
+// (`demo/midgard-core/scripts/golden-channel.mjs`).
 // ---------------------------------------------------------------------------
 
 // Derived by the genuine Cardano boundary fixture in

@@ -59,8 +59,8 @@ const signerFromSeed = (
  * representability, and it is always explicit configuration:
  *
  * - Dev and emulator bootstrap generate it next to the operator wallet, so one
- *   process can produce a genuine 2-of-2 attestation with two distinct keys —
- *   the standing test configuration the ruling named.
+ *   process can produce a genuine 2-of-2 attestation with two distinct keys,
+ *   the standing test configuration.
  * - A real deployment leaves it unset: the committee is other machines' keys,
  *   named by `DA_COMMITTEE_HEX`, the owner set by `DA_OWNERS_HEX`, and peers
  *   contribute their own signatures over libp2p.

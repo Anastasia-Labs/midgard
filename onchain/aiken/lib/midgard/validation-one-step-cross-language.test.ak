@@ -38,7 +38,7 @@ const evidence_hash =
 const item_auxiliary_cbor =
   #"d905159fd8799f5f58408158808200587c8201958200581c93c191b1094746961f6f00fba27f3d8eff6a66490baf806d4e179fd88200581c93c191b1094746961f6f00fba27f3d8eff6a584066490baf806d4e179fd882018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018082018043820180ffffff"
 
-const retired_item_evidence_hash =
+const item_auxiliary_evidence_hash =
   #"8d8e35e66e9d146bd34036eeb3c12d8aa85251f34232b8a87f1eefb823263555"
 
 const script_discovery_control_cbor =
@@ -87,15 +87,15 @@ test typescript_generated_canonical_decode_step_is_exact() {
   }
 }
 
-/// #597. One `transactionFieldChunk` auxiliary as the TypeScript machine emits
+/// One `transactionFieldChunk` auxiliary as the TypeScript machine emits
 /// it, decoded here by the Aiken type it has to satisfy.
 ///
-/// This is the cross-language pin for #592's four moved door constructors. It
+/// This is the cross-language pin for the four §8-door constructors. It
 /// checks three things a blueprint comparison cannot: that the emitted bytes
 /// deserialise as `ValidationAuxiliaryWitnessV1` at all, that they land on
-/// `TransactionFieldChunkWitness` — Constr 1, whose *index* is unchanged while
-/// its shape moved, so a mis-tagged emission decodes as the wrong constructor
-/// rather than failing — and that the three fields carry exactly the values the
+/// `TransactionFieldChunkWitness` — Constr 1, so a mis-tagged emission decodes
+/// as the wrong constructor rather than failing — and that the three fields
+/// carry exactly the values the
 /// producer put in them, in the order Aiken names them.
 ///
 /// The carriage is tier-1 `Inline`: §8.4's partition admits only that tier for a
@@ -123,15 +123,14 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
   }
 }
 
-/// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
+/// The same emitted constructor at tier 2, where §8.4's partition puts a
 /// 14778-byte field-6 preimage.
 ///
-/// This is the vector the trace producer could not build before: the tier is
-/// resolved at evidence commitment against a concrete transaction's
+/// The tier is resolved at evidence commitment against a concrete transaction's
 /// canonically-sorted reference-input set, so the auxiliary names a **positional
 /// reference-input index** and carries no preimage at all. That is what makes
 /// stage-4 evidence O(1) in field size — the property
-/// `validation_machine_v1.ak:9189-9192` states and C21-STAGE4 protects — and it
+/// `validation_machine_v1.ak:9189-9192` states — and it
 /// is checked here as a byte length rather than asserted: 11 bytes for a
 /// field of 14778.
 ///
@@ -158,7 +157,7 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   }
 }
 
-/// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
+/// The same emitted constructor at tier 3, where §8.4's partition puts a
 /// 16388-byte field-6 preimage — above `chunk_bytes_k`, so the preimage is
 /// split into 2 deterministic chunks with one §8.6 digest manifest.
 ///
@@ -196,11 +195,11 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
 /// the item auxiliary names. Both halves of that rule are pinned here with
 /// TypeScript-computed hashes: the transition-only commitment over this
 /// vector's transition is byte-identical to `evidence_hash` on both sides, and
-/// the retired carriage-committed preimage — the same transition beside a
+/// a preimage that commits the item auxiliary — the same transition beside a
 /// `TransactionFieldItemWitness` — lands on a hash both languages agree on and
-/// agree is *different*, so a datum committed under the retired rule can never
-/// satisfy the narrowed recompute. The carriage reuses the field-chunk vector's
-/// §5.1 preimage; the door never runs here — this vector is about the
+/// agree is *different*, so a datum committed over the auxiliary can never
+/// satisfy the transition-only recompute. The carriage reuses the field-chunk
+/// vector's §5.1 preimage; the door never runs here — this vector is about the
 /// commitment arithmetic, not delivery.
 test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
@@ -218,8 +217,8 @@ test typescript_generated_complete_item_commitment_is_transition_only() {
     validation_resolution_v1.hash_one_step_evidence(
       transition_data,
       item_auxiliary_data,
-    ) == retired_item_evidence_hash,
-    retired_item_evidence_hash != evidence_hash,
+    ) == item_auxiliary_evidence_hash,
+    item_auxiliary_evidence_hash != evidence_hash,
   }
 }
 

@@ -199,11 +199,10 @@ export const CanonicalDecodeItemSource = asDataType<CanonicalDecodeItemSource>(
  * authenticated §5.2 item count, this item's §5.1 payload length, and whether
  * it follows item k-1 in its field's order.
  *
- * #597, the TypeScript twin of #592's wire change. It used to carry the prover's
- * `collection_proof` beside a re-derived `item_commitment` — both artifacts of
- * the counted opening §4 made unsatisfiable. The door derives the count and the
- * length from the preimage it authenticated, so there is nothing for a prover to
- * claim and nothing to open. Aiken source of truth:
+ * It carries no prover `collection_proof` or `item_commitment`. The door
+ * derives the count and the length from the preimage it authenticated, so
+ * there is nothing for a prover to claim and nothing to open.
+ * Aiken source of truth:
  * `onchain/aiken/lib/midgard/validation-machine/`.
  */
 export const CanonicalDecodeItemObservationSchema = Data.Object({

@@ -67,7 +67,7 @@ export const orphanedAdmission = (
   sql`${sql(alias)}.l1_event_key IS NOT NULL AND NOT ${canonicalAdmission(sql, alias, kind)}`;
 
 /**
- * The forced kind (N10b). A forced row (`forced_transaction_utxos`) carries
+ * The forced kind. A forced row (`forced_transaction_utxos`) carries
  * no identity columns: its admission is its order output, so its key and its
  * origin outref are both that outref in the follower's 34-byte encoding (the
  * 32-byte transaction hash, then the output index as u16 big-endian). The

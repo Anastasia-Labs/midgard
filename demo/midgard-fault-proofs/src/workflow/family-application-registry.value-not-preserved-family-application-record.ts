@@ -168,8 +168,8 @@ export const NETWORK_ID_FAMILY_APPLICATION_RECORD = defineFamilyApplication<
 });
 
 /**
- * Value-conservation has no `FamilyDefinition`: beside its four-step legacy
- * chain it publishes one union contract per conservation position, read from
+ * Value-conservation has no `FamilyDefinition`: beside its four-step chain
+ * it publishes one union contract per conservation position, read from
  * the family's own position table so the roster cannot drift from the
  * contracts the union plan walks. It replays the predecessor when the
  * classifier admitted one, so it binds the replay context the host supplies

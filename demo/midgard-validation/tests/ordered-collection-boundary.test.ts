@@ -135,16 +135,10 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     expect(boundary.adjacent.signedBytes).toBe(
       MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES,
     );
-    // #590 scope item 0: the write channel this suite did not have.
-    //
-    // The `output-boundary-v1` fixture in
-    // `onchain/aiken/lib/midgard/validation-machine-tests/` mirrors this
-    // boundary's terminal fold, and until now nothing carried the bytes across —
-    // so that fixture still pinned the *counted* field roots this package stopped
-    // emitting at #585, and stayed green only because the id it pinned was the id
-    // of the compact it pinned beside it. #592's rebind puts §8's carriage where
-    // the counted `(ItemProofV1, ChunkProofV1)` pair used to be, and a carriage is
-    // the field's whole §5.1 preimage, which no human is going to retype.
+    // The write channel for the `output-boundary-v1` fixture in
+    // `onchain/aiken/lib/midgard/validation-machine-tests/`, which mirrors this
+    // boundary's terminal fold. Its §8 carriage is the field's whole §5.1
+    // preimage, which no human is going to retype.
     //
     // Published after the assertions above, so the generator can only ever see a
     // vector this suite has already accepted.

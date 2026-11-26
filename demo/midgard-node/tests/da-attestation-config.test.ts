@@ -30,7 +30,7 @@ const blake2b256Hex = (hex: string): string =>
   Buffer.from(blake2b(Buffer.from(hex, "hex"), { dkLen: 32 })).toString("hex");
 
 /**
- * Runs a success case with the default logger replaced, so the ruling's
+ * Runs a success case with the default logger replaced, so the
  * explanatory warning is measured as an emitted log line rather than inferred
  * from the absence of an error.
  */
@@ -143,10 +143,8 @@ describe("DA attestation configuration", () => {
     ).toEqual([]);
   });
 
-  // The 2026-08-11 owner ruling: "bootstrap warns instead of rejecting". The
-  // next two cases are the committee side; the owner-set case below is its
-  // counterpart under the 2026-08-13 ruling, and warns rather than refusing
-  // for the same reason.
+  // Bootstrap warns instead of rejecting. The next two cases are the
+  // committee side; the owner-set case below is its counterpart.
   it("warns instead of rejecting when the configured committee has a single member", async () => {
     const { params, warnings } = await daParamsWithLogs({
       ...BASE,
@@ -173,8 +171,7 @@ describe("DA attestation configuration", () => {
     expect(warnings[0]).toMatch(/DA_COSIGNER_SEED_PHRASE/);
   });
 
-  // Under the 2026-08-13 owner ruling recorded on #602 the governor's owner-set
-  // minimum is one, so a single-member owner set, like a single-member
+  // The governor's owner-set minimum is one, so a single-member owner set, like a single-member
   // committee, is a warning, not a refusal.
   it("warns instead of rejecting when the configured owner set has a single member", async () => {
     const { params, warnings } = await daParamsWithLogs({
@@ -201,7 +198,7 @@ describe("DA attestation configuration", () => {
     expect(warnings[0]).toMatch(/rotate the DA committee/);
   });
 
-  // The end-to-end shape the ruling exists for: a node holding nothing but its
+  // The end-to-end shape: a node holding nothing but its
   // own key bootstraps, and gets both warnings rather than either refusal.
   it("warns twice instead of rejecting when no second key is configured at all", async () => {
     const operator = seedKeys(OPERATOR_SEED);

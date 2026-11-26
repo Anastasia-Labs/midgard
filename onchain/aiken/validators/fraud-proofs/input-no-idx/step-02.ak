@@ -72,12 +72,8 @@ validator main(
         //    §8.8 door. The expected commitment is extracted positionally
         //    inside the door from the compact structures `verified_tx_id`
         //    authenticates; the item is one multiplication and one slice at
-        //    §5.3's fixed 38-byte width (§10.5).
-        //
-        //    This is where the family's counted machinery lived. The door's
-        //    three carriage tiers cover what the retired `CompletePublished`
-        //    arm and the `FoldStart`/`FoldNext` self-loop were built for, at one
-        //    authenticate-once hash instead of one counted item proof per input.
+        //    §5.3's fixed 38-byte width (§10.5). The door's three carriage tiers
+        //    cover a field of any admissible size at one authenticate-once hash.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
           BodyAnchor { tx_id: verified_tx_id, source_kind: 0 },

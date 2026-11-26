@@ -32,7 +32,7 @@ export const init = {
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    strictnessProfile: "phase2_worker_test",
+    strictnessProfile: "worker_test",
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   },
 } as const;

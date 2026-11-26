@@ -12,7 +12,7 @@
  *
  * A node row without a header whose order is gone (a rollback removed it)
  * bounds the horizon the same way until the forced-order hook deletes it or
- * the recovery disposes of its block (N10b). A row without a header is
+ * the recovery disposes of its block. A row without a header is
  * still due, so no confirmed block ended at or after its inclusion time (a
  * block takes every due row): the bound never falls below a confirmed end.
  */

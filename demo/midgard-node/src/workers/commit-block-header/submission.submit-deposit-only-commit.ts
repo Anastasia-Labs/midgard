@@ -10,7 +10,6 @@ import {
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "../../database/index.js";
-import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import type { LedgerDelta } from "../../mpf/ledger-delta.js";
 import { emptyRootHexProgram } from "../../mpf/store.empty-root-hex-program.js";
 import type {
@@ -356,9 +355,6 @@ export const submitDepositOnlyCommit = ({
                   );
                 if (prepared.kind === "held")
                   return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
-                yield* reachCommitCrashCheckpoint(
-                  "journal_prepared_before_submit",
-                );
                 return yield* Effect.matchEffect(
                   revalidateStateQueueLease(workerInput).pipe(
                     Effect.andThen(

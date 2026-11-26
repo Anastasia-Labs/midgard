@@ -643,7 +643,7 @@ fn maybe_sized_entries(
 /// `data` is used twice in `expect_decoded`, once to pick `then` (every arm of
 /// `choose_data` is `then`) and once as its argument. Without that, the
 /// compiler may move a value used once into the branch that uses it, so the
-/// decoding, and its failure, would no longer happen on every path.
+/// decoding, and its failure, would not happen on every path.
 pub fn expect_deserialise(bytes: ByteArray, then: fn(Data) -> r) -> r {
   expect_decoded(decode(bytes, data_bytes_bound), then)
 }

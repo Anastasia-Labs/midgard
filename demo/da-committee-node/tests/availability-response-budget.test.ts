@@ -11,7 +11,7 @@ import {
 } from "../src/availability-response-loop.js";
 
 /**
- * The full availability response budget (owner ruling 2026-10-01): a
+ * The full availability response budget: a
  * committee answering a small-class challenge spends
  *
  *   (confirmation depth + chained publications + one poll block)

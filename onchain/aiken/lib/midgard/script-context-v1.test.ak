@@ -547,21 +547,19 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
 }
 
 // ---------------------------------------------------------------------------
-// The spend-datum gate: the §6.2 predicate against the pin it retired
+// The spend-datum gate: the §6.2 predicate against a stdlib round-trip pin
 // ---------------------------------------------------------------------------
 //
-// `spend_datum_summary_v1` used to gate an output's inline datum on a round
-// trip through Aiken stdlib's CBOR decoder — `deserialise`, then `serialise`
-// and compare bytes. AC4 replaced that with the §6.2 predicate
-// `is_canonical_plutus_data_v1`, which decides membership in `serialiseData`'s
-// image by walking the bytes. The `round_trips` family in
-// `canonical_plutus_data_v1.test` proves the new predicate accepts everything
-// the builtin emits; what it cannot show is how the *gate* moved, and the
-// predicate is now solely load-bearing here. So the retired pin is restated
-// below and the two run side by side on the same vectors — including every
-// structural rejection the retired pin used to be trusted for.
+// `spend_datum_summary_v1` gates an output's inline datum on the §6.2
+// predicate `is_canonical_plutus_data_v1`, which decides membership in
+// `serialiseData`'s image by walking the bytes. The `round_trips` family in
+// `canonical_plutus_data_v1.test` proves the predicate accepts everything the
+// builtin emits; what it cannot show is how the gate compares with a round trip
+// through Aiken stdlib's CBOR decoder (`deserialise`, then `serialise` and
+// compare bytes). So that round-trip pin is restated below and the two run side
+// by side on the same vectors, including every structural rejection.
 //
-// One thing the differential turns up immediately: the retired pin was never
+// One thing the differential turns up immediately: the round-trip pin is not
 // a total function. `cbor.deserialise` does not decline a canonical tag-2/3
 // bignum or an unknown tag — it drives the stdlib decoder into
 // `constr_data` with a negative alternative, which is a machine failure, not
@@ -569,7 +567,7 @@ test composed_transaction_info_and_context_match_direct_plutus_data() {
 // only, and the reason is recorded at each site rather than left as a gap in
 // the vector list.
 
-/// The retired gate, restated verbatim so the difference is measured rather
+/// The round-trip gate, restated verbatim so the difference is measured rather
 /// than asserted. Only safe on inputs the stdlib decoder can reach a verdict
 /// on: see the module note above.
 fn retired_round_trip_pin(datum_cbor: ByteArray) -> Bool {
@@ -634,7 +632,7 @@ test datum_predicates_agree_on_ordinary_datums() {
 }
 
 /// `40` is the canonical `serialiseData` image of an empty byte string. The
-/// retired round trip refused it; the gate reads it like any other canonical
+/// round-trip pin refuses it; the gate reads it like any other canonical
 /// datum, as it does its non-empty neighbours.
 test empty_byte_string_datum_is_materialised() {
   and {
@@ -646,14 +644,14 @@ test empty_byte_string_datum_is_materialised() {
   }
 }
 
-/// The direction that matters for soundness: the new predicate is not weaker.
-/// Every structural form the retired pin refused is still refused — by the
+/// The direction that matters for soundness: the predicate is not weaker.
+/// Every structural form the round-trip pin refuses is refused — by the
 /// predicate, and by the gate.
 ///
-/// Note what the middle column costs the retired pin. `1817`, `8100`,
+/// Note what the middle column costs the round-trip pin. `1817`, `8100`,
 /// `bf0000ff`, `9fff`, `5fff` and `d8798100` all *decode* under the stdlib
-/// decoder; the round trip caught them only because re-serialising produced
-/// different bytes. The new predicate refuses them structurally, without
+/// decoder; the round trip catches them only because re-serialising produces
+/// different bytes. The predicate refuses them structurally, without
 /// materialising anything.
 test datum_predicates_agree_on_every_non_canonical_form() {
   let refuses = fn(datum_cbor: ByteArray) -> Bool {
@@ -687,7 +685,7 @@ test datum_predicates_agree_on_every_non_canonical_form() {
   }
 }
 
-/// An unknown tag is the vector the retired pin cannot be asked about: tag 1
+/// An unknown tag is the vector the round-trip pin cannot be asked about: tag 1
 /// drives the stdlib decoder into a constructor with alternative `1 - 121`,
 /// which fails the machine rather than returning `None`. The predicate and
 /// the gate both refuse it without materialising anything, which is the whole
@@ -699,9 +697,9 @@ test unknown_tags_are_refused_without_materialising_them() {
   }
 }
 
-/// The divergence the re-pin exists for, on the class where both columns can
+/// The divergence the predicate exists for, on the class where both columns can
 /// be evaluated: tag-102 constructors with alternatives at or above 128. The
-/// predicate accepts them; the retired round trip refused them, because the
+/// predicate accepts them; the round-trip pin refuses them, because the
 /// stdlib decoder declines the form outright.
 test datum_predicates_diverge_on_high_constructor_alternatives() {
   let diverges = fn(datum_cbor: ByteArray) -> Bool {
@@ -748,7 +746,7 @@ fn reconstructed_datum(datum_cbor: ByteArray) -> Option<Data> {
   }
 }
 
-/// Canonicity and the gate now agree on this class too: a tag-102 constructor
+/// Canonicity and the gate agree on this class too: a tag-102 constructor
 /// datum is admitted, and the datum the gate reconstructs is the constructor
 /// the Cardano ledger reads from those bytes.
 test high_alternative_datums_are_admitted_by_this_gate() {
@@ -771,21 +769,20 @@ test high_alternative_datums_are_admitted_by_this_gate() {
 /// §6.2-canonical and the output decoder admits the output that carries it, so
 /// it is a legal L2 output.
 ///
-/// What the middle column still cannot say, and why. The stdlib decoder does
-/// not decline a bignum the way it declines tag 102: it reads `c2` as a
-/// constructor tag, computes alternative `2 - 121`, and applies `constr_data`
-/// to it. Whether that is a failure is *protocol-version-dependent*. Under
-/// PlutusV3 builtin semantics variant E — mainnet protocol major version 11,
-/// enacted 2026-07-18 — the alternative is a `Word64`, so a negative one fails
-/// the machine on real L1. So `retired_round_trip_pin` cannot be called on a
-/// bignum at all: not "returns False", but aborts. That is why this test holds
-/// the class to the first column only, and why the retired pin is absent from
+/// What the middle column cannot say, and why. The stdlib decoder does not
+/// decline a bignum the way it declines tag 102: it reads `c2` as a constructor
+/// tag, computes alternative `2 - 121`, and applies `constr_data` to it.
+/// Whether that is a failure is *protocol-version-dependent*. Under PlutusV3
+/// builtin semantics variant E — mainnet protocol major version 11, enacted
+/// 2026-07-18 — the alternative is a `Word64`, so a negative one fails the
+/// machine on real L1. So `retired_round_trip_pin` cannot be called on a bignum
+/// at all: not "returns False", but aborts. That is why this test holds the
+/// class to the first column only, and why the round-trip pin is absent from
 /// the assertions below.
 ///
 /// The runner reports that abort as RC=101 from a Rust `panic!` at
 /// `crates/uplc/src/machine/runtime.rs:945` (`TryFromBigIntError`). That panic
-/// is aiken-lang/aiken#1359 — a runner defect where a clean evaluation error
-/// belongs. It is not a Midgard failure, and the *verdict* it delivers (script
+/// is a runner defect where a clean evaluation error belongs. It is not a Midgard failure, and the *verdict* it delivers (script
 /// fails) is the one mainnet delivers at PV11.
 ///
 /// The third column is `bignum_datums_are_materialised` below.

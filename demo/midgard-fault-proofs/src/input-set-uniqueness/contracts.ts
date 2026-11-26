@@ -10,7 +10,7 @@
  * from the same parameterized chain whose step-01 hash the tests register as an
  * extra catalogue category.
  *
- * Blueprint-declared parameter order per step (the #609 arity guard checks
+ * Blueprint-declared parameter order per step (the arity guard checks
  * count, not order, so the order is pinned here):
  *
  * - step_01: `[step_02_validator_script_hash, step_03_validator_script_hash, computation_thread_token_policy_id, hub_oracle]`

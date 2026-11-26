@@ -293,17 +293,17 @@ test staged_deposit_requires_the_retained_opening() fail {
   deposit_source.open(staged_state(retained), staged_args(None)).value == original_data()
 }
 
-test staged_deposit_rejects_an_old_outref_policy_asset_receipt() fail {
+test staged_deposit_rejects_an_outref_policy_asset_receipt() fail {
   let (retained, payload, value) = capture([reference()], None)
   let out_ref: Data = reference().output_reference
-  let legacy: Data = [
+  let receipt: Data = [
     out_ref,
     builtin.b_data(policy()),
     builtin.b_data(user_events.out_ref_to_nonce(retained.event_id)),
   ]
   let state = final_yield.State {
     ..staged_state(retained),
-    deposit_source_cbor: cbor.serialise(legacy),
+    deposit_source_cbor: cbor.serialise(receipt),
   }
   deposit_source.open(
     state,

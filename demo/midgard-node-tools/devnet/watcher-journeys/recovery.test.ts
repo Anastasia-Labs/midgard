@@ -69,7 +69,9 @@ it.skipIf(runDirectory === undefined)(
       },
     };
     const runEnv = await readFile(join(runDirectory, "run.env"), "utf8");
-    const port = /^MIDGARD_PHASE4_OGMIOS_PORT=([0-9]+)$/mu.exec(runEnv)?.[1];
+    const port = /^MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT=([0-9]+)$/mu.exec(
+      runEnv,
+    )?.[1];
     if (port === undefined) throw new Error("Run omitted its Ogmios port");
     const response = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(10_000),

@@ -436,7 +436,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
         throw new Error("Promise admission canonical boundary changed");
       await args.drainReadResources?.(scope);
       scope?.assertCurrent();
-      // All asynchronous source and compatibility reads finish before this fence.
+      // All asynchronous source and resource reads finish before this fence.
       assertActorRuntimeIdle();
       const finalMetadata = actorSnapshot();
       if (

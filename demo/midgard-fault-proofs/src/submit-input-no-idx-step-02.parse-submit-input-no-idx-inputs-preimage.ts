@@ -74,8 +74,8 @@ export type SubmitInputNoIdxStep02CliConfig = SubmitProviderConfig & {
   readonly inputsPreimagePath: string;
   /**
    * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
-   * compact structure. New in #604: the door re-derives the anchored id from
-   * these bytes and authenticates field 0 against them.
+   * compact structure. The door recomputes the anchored id from these bytes
+   * and authenticates field 0 against them.
    */
   readonly nativeTxCompactPath: string;
   /**

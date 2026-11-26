@@ -186,8 +186,8 @@ test script_sources_commits_unique_supported_redeemers() {
   let carriage = inline_field_carriage([redeemer_cbor])
   let redeemer_chunk_proof = singleton_field_item_chunk_proof(8, redeemer_cbor)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
-  // Since `320ed869` the stage-1 redeemer scan no longer commits the redeemer
-  // leaf in a single step. `TransactionRedeemerItemBeginWitness` only opens the
+  // The stage-1 redeemer scan does not commit the redeemer leaf in a single
+  // step. `TransactionRedeemerItemBeginWitness` only opens the
   // item: it records `redeemer_total_count` and a pending
   // `redeemer_item_proof_v1` control hash (validation-machine-v1.ak:8580-8615).
   // A chain of `RedeemerItemStepWitness` steps then advances that control, and
@@ -813,16 +813,14 @@ test script_sources_commits_an_authenticated_output_item() {
   canonical_output_commitment_step(0)
 }
 
-/// Supersedes `script_sources_rejects_a_substituted_complete_output_item`:
-/// stage 4 does not reveal item bytes, so substitution attacks what the fold
+/// Stage 4 does not reveal item bytes, so substitution attacks what the fold
 /// accumulates.
 ///
-/// The forgery is in the **claimed successor's** output leaf rather than in an
-/// `ItemProofV1.item_commitment`, because the commitment the fold appends is
-/// derived from door-authenticated bytes and is not a prover field any more
-/// (see `canonical_output_commitment_step_with_successor`). The claim refuted is
-/// unchanged and is `C21-STAGE4` Option A's: the leaf appended at stage 4 must
-/// be `output_item_leaf_hash` over the *authenticated* item's `bounded_item_v1`
+/// The forgery is in the **claimed successor's** output leaf, because the
+/// commitment the fold appends is derived from door-authenticated bytes and is
+/// not a prover field (see `canonical_output_commitment_step_with_successor`).
+/// The claim refuted: the leaf appended at stage 4 must be
+/// `output_item_leaf_hash` over the *authenticated* item's `bounded_item_v1`
 /// commitment, and nothing else.
 test script_sources_rejects_a_forged_output_item_commitment() {
   !canonical_output_commitment_step_with_successor(
@@ -836,15 +834,9 @@ test script_sources_rejects_a_forged_output_item_commitment() {
   )
 }
 
-/// Was `script_sources_rejects_a_forged_output_item_length`, renamed for the
-/// quantity it now forges.
-///
-/// The old row forged `ItemProofV1.item_length`, whose only effect was on the
-/// `bounded_collection_v1.verify_item` membership leaf — the conjunct the flat
-/// reversion retired. The item's length is derived from authenticated bytes
-/// now, so the surviving count claim a prover controls is the fold's
-/// `output_total_count`, forged to 2 against a one-output field with the appended
-/// leaf held honest.
+/// The item's length is derived from authenticated bytes, so the count claim a
+/// prover controls is the fold's `output_total_count`, forged here to 2 against
+/// a one-output field with the appended leaf held honest.
 ///
 /// **Which conjunct refutes it, measured rather than assumed.** The forgery lands
 /// in the *claimed successor*, and this is the fold's opening step, so the pre
@@ -1106,30 +1098,17 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
 
 /// The mint fold's three steps, under §8's field-access door.
 ///
-/// **This vector's begin step was a tripwire and is now a positive assertion.**
-/// Under the counted scheme `script_sources_begin_mint_policy` authenticated its
-/// policy item with `bounded_collection_v1.verify_item(mint_hash, ...)` while
-/// `mint_hash` had already become §4's *flat* `blake2b_256` over field 5's §5.1
-/// enveloped preimage — a hash with no leaves, which
-/// `bounded-collection-v1.ak`'s own docstring says `verify_item` cannot be
-/// satisfied against. No fixture could make the begin step true, so this test
-/// asserted `!begin_step` beside the reason, with a note that the row "turns red
-/// the moment stage six is rebound onto the flat door".
+/// The begin step carries a §8.1 tier-1 carriage over the field-5 preimage,
+/// the door hashes it once against `mint_hash` (§4's flat `blake2b_256` over
+/// field 5's §5.1 enveloped preimage), and the policy item's length and
+/// `bounded_item_v1` commitment are derived from those authenticated bytes into
+/// the fold control. All three steps are asserted **positively**.
 ///
-/// #592 is that rebind, so the note is honoured here: the begin step now carries
-/// a §8.1 tier-1 carriage over the field-5 preimage, the door hashes it once
-/// against `mint_hash`, and the policy item's length and `bounded_item_v1`
-/// commitment are derived from those authenticated bytes into the fold control.
-/// All three steps are asserted **positively**.
-///
-/// The asset and finish steps are unchanged: they authenticate against
-/// `fold.item_commitment`, which the fold control carries and which is a genuine
-/// Merkle root over the item's chunks, so their openings were always
-/// satisfiable. What moved is only the provenance of that root — derived at the
-/// begin step from door-authenticated bytes instead of asserted by an
-/// `ItemProofV1`.
+/// The asset and finish steps authenticate against `fold.item_commitment`,
+/// which the fold control carries and which is a genuine Merkle root over the
+/// item's chunks, so their openings are satisfiable.
 test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
-  // §5.6 — the enveloped list of per-policy items, not the retired raw map.
+  // §5.6 — the enveloped list of per-policy items.
   let mint_cbor = native_tx_field_access_v1.encode_field_preimage(
     [
       #"82581c"
@@ -1261,11 +1240,9 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     inline_field_door(),
   )
   and {
-    // The rebound call site, asserted positively — see this test's note for what
-    // it used to assert and why.
+    // The begin step, asserted positively.
     begin_step,
-    // …and the tripwire's own reason, kept as a live statement rather than a
-    // claim about history: field 5's commitment is the flat `blake2b_256` over
+    // …and why it opens: field 5's commitment is the flat `blake2b_256` over
     // its §5.1 preimage, and the door reaches the policy item by authenticating
     // exactly those bytes. A carriage over anything else does not open.
     native_tx_field_access_v1.field_commitment(mint_cbor) == midgard_transaction_to_compact(

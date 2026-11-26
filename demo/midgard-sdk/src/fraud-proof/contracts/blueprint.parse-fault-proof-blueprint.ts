@@ -25,10 +25,9 @@ export type FaultProofBlueprintValidator = {
   readonly title: string;
   readonly compiledCode: string;
   /**
-   * The parameters the compiled script declares, in declaration order. Carried
-   * (rather than dropped at parse time, as it was before #609) because it is
-   * the only authority on how many terms must be applied before the script is
-   * a complete validator — see {@link applyBlueprintParams}.
+   * The parameters the compiled script declares, in declaration order: the
+   * only authority on how many terms must be applied before the script is a
+   * complete validator — see {@link applyBlueprintParams}.
    */
   readonly parameters: readonly FaultProofBlueprintParameter[];
 };
@@ -49,9 +48,9 @@ export const deriveValidationTraceDeploymentId = (
     blake2b(fromHex(fraudProofCataloguePolicyId), { dkLen: 32 }),
   );
   // The stage-one script-sources validators take this id as a plain
-  // `ByteArray` parameter and used to re-check its 32-byte width on every
-  // execution. Deployment parameterization is trusted on chain, so the width is
-  // asserted once here, where the value is produced, instead.
+  // `ByteArray` parameter and do not re-check its 32-byte width: deployment
+  // parameterization is trusted on chain, so the width is asserted once here,
+  // where the value is produced.
   if (!/^[0-9a-f]{64}$/u.test(deploymentId)) {
     throw new Error(
       "Validation-trace deployment id must be exactly 32 bytes of hexadecimal",
@@ -260,7 +259,7 @@ export const assertParameterShapes = (
  * ~14 s across a full fault-proof contract build; the wasm applier above cuts
  * that to roughly a tenth). Memoizing on the exact inputs therefore cannot
  * change any deployed byte: a cache hit is a proof the inputs were identical.
- * The #609 arity guard above runs before the lookup on every call, cached or
+ * The arity guard above runs before the lookup on every call, cached or
  * not, so under-/over-application still fails closed.
  */
 export const appliedScriptCache = new Map<string, string>();

@@ -77,7 +77,7 @@ Plutus witnesses, redeemers, auxiliary data, and an L2 validity upper bound.
   infrastructure.
 - A vulnerability in a third-party service or dependency that does not arise
   from Midgard's integration or use of it. Report it to its maintainer.
-- Legacy and reference code that no deployment runs, unless a deployed
+- Reference and other code that no deployment runs, unless a deployed
   component reaches it.
 - A documented public testnet limitation in itself (see
   [Public testnet limitations](#public-testnet-limitations)).

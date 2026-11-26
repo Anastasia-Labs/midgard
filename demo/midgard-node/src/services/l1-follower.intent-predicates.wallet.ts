@@ -168,7 +168,7 @@ export const referenceFunding = async (read: Read): Promise<boolean> => {
 };
 
 /**
- * Stake registration (E1: a script reward account, the PHAS membership
+ * Stake registration (a script reward account, the PHAS membership
  * reward account): wanted while some credential its own certificates
  * register is not shown registered by the latest certificate on it among
  * the canonical landed transactions the store holds. With no such

@@ -1,5 +1,5 @@
 /**
- * The native MPF owner's restart policy (owner ruling 2026-10-09): every
+ * The native MPF owner's restart policy: every
  * child failure restarts the child with backoff; the same failure
  * `restartLimit` times in a row holds the owner, which restarts no more; a
  * failure no restart repairs (the binary is not the pinned one) holds at

@@ -606,7 +606,7 @@ describe("Midgard MPF wrapper", () => {
   );
 
   it.effect(
-    "matches legacy roots after reopening a collapsed overlay trie",
+    "matches direct-mode roots after reopening a collapsed overlay trie",
     () =>
       Effect.gen(function* () {
         const entries = [
@@ -634,14 +634,14 @@ describe("Midgard MPF wrapper", () => {
         yield* overlay.beginBlockOverlay();
         const overlayRoot = yield* overlay.applyBatch(ops);
 
-        const legacy = yield* MidgardMpf.createScratchFromList(
-          "collapsed-legacy",
+        const reference = yield* MidgardMpf.createScratchFromList(
+          "collapsed-reference",
           entries,
           { mode: "direct" },
         );
-        const legacyRoot = yield* legacy.applyBatch(ops);
+        const referenceRoot = yield* reference.applyBatch(ops);
 
-        expect(overlayRoot).toEqual(legacyRoot);
+        expect(overlayRoot).toEqual(referenceRoot);
         expect((yield* overlay.get(Buffer.from("100001", "hex")))._tag).toBe(
           "None",
         );
@@ -650,7 +650,7 @@ describe("Midgard MPF wrapper", () => {
         );
         yield* overlay.discardBlockOverlay();
         yield* overlay.close();
-        yield* legacy.close();
+        yield* reference.close();
       }),
   );
 
@@ -739,13 +739,13 @@ describe("Midgard MPF wrapper", () => {
         });
         const overlayDiagnostics = yield* overlay.diagnostics();
 
-        const legacy = yield* MidgardMpf.createScratchFromList(
-          "test-mpf-path-hydration-legacy",
+        const reference = yield* MidgardMpf.createScratchFromList(
+          "test-mpf-path-hydration-reference",
           entries,
           { mode: "direct" },
         );
-        const legacyResult = yield* buildTransitionTraceResult({
-          ledgerMpf: legacy,
+        const referenceResult = yield* buildTransitionTraceResult({
+          ledgerMpf: reference,
           sourceEvents,
           withdrawalCount: 0,
           forcedTransactionCount: 0,
@@ -753,17 +753,19 @@ describe("Midgard MPF wrapper", () => {
           depositCount: 0,
         });
 
-        expect(overlayResult.finalUtxosRoot).toBe(legacyResult.finalUtxosRoot);
+        expect(overlayResult.finalUtxosRoot).toBe(
+          referenceResult.finalUtxosRoot,
+        );
         expect(overlayResult.transitionTraceRoot).toBe(
-          legacyResult.transitionTraceRoot,
+          referenceResult.transitionTraceRoot,
         );
         expect(overlayResult.eventToStepRoot).toBe(
-          legacyResult.eventToStepRoot,
+          referenceResult.eventToStepRoot,
         );
         expect(
           overlayResult.transitionTraceMembers.map((member) => member.value),
         ).toStrictEqual(
-          legacyResult.transitionTraceMembers.map((member) => member.value),
+          referenceResult.transitionTraceMembers.map((member) => member.value),
         );
         expect(overlayResult.pathHydration.uniquePaths).toBe(5);
         expect(overlayResult.pathHydration.maxBatchKeys).toBeGreaterThan(0);
@@ -804,7 +806,7 @@ describe("Midgard MPF wrapper", () => {
 
         yield* overlay.discardBlockOverlay();
         yield* overlay.close();
-        yield* legacy.close();
+        yield* reference.close();
       }),
   );
 
@@ -871,13 +873,13 @@ describe("Midgard MPF wrapper", () => {
           chunkOps: 512,
           retainDepth: 2,
         });
-        const legacy = yield* MidgardMpf.createScratchFromList(
-          "test-mpf-chunked-legacy",
+        const reference = yield* MidgardMpf.createScratchFromList(
+          "test-mpf-chunked-reference",
           entries,
           { mode: "direct" },
         );
         const expected = yield* buildTransitionTraceResult({
-          ledgerMpf: legacy,
+          ledgerMpf: reference,
           sourceEvents,
           withdrawalCount: 0,
           forcedTransactionCount: 0,
@@ -968,7 +970,7 @@ describe("Midgard MPF wrapper", () => {
             yield* overlay.close();
           }
         }
-        yield* legacy.close();
+        yield* reference.close();
       }).pipe(
         Effect.ensuring(
           Effect.sync(() =>
@@ -1109,8 +1111,8 @@ describe("Midgard MPF wrapper", () => {
             entries,
             { mode: "overlay" },
           );
-          const legacy = yield* MidgardMpf.createScratchFromList(
-            `test-mpf-collapse-closure-legacy-${testCase.childCount.toString()}`,
+          const reference = yield* MidgardMpf.createScratchFromList(
+            `test-mpf-collapse-closure-reference-${testCase.childCount.toString()}`,
             entries,
             { mode: "direct" },
           );
@@ -1123,7 +1125,7 @@ describe("Midgard MPF wrapper", () => {
             );
             const [actualRoot, expectedRoot] = yield* Effect.all([
               overlay.applyBatch(ops),
-              legacy.applyBatch(ops),
+              reference.applyBatch(ops),
             ]);
             expect(actualRoot).toStrictEqual(expectedRoot);
             expect(yield* overlay.persistedRootHex()).toBe(durableRoot);
@@ -1132,7 +1134,7 @@ describe("Midgard MPF wrapper", () => {
             yield* overlay.discardBlockOverlay();
           }).pipe(
             Effect.ensuring(
-              Effect.all([overlay.close(), legacy.close()], {
+              Effect.all([overlay.close(), reference.close()], {
                 discard: true,
                 concurrency: 2,
               }).pipe(Effect.catchAll(() => Effect.void)),

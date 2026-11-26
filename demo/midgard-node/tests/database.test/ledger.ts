@@ -277,12 +277,12 @@ export const registerLedgerTests = () => {
             yield* MempoolDB.insertMultiple([processedTx1, processedTx2]);
 
             const sql = yield* SqlClient.SqlClient;
-            const legacyRows = yield* sql<{
+            const rows = yield* sql<{
               readonly tx_id: Buffer;
               readonly tx: Buffer | null;
             }>`SELECT tx_id, tx FROM mempool ORDER BY tx_id`;
-            expect(legacyRows).toHaveLength(2);
-            expect(legacyRows.every((row) => row.tx !== null)).toBe(true);
+            expect(rows).toHaveLength(2);
+            expect(rows.every((row) => row.tx !== null)).toBe(true);
 
             // retrieve tx cbor by hash
             const gotOne = yield* MempoolDB.retrieveTxCborByHash(pTxId1);
@@ -1323,19 +1323,6 @@ export const registerLedgerTests = () => {
               repairedBy("backfill_missing_da_payload"),
             ),
           ).toEqual(repairedBy("backfill_missing_da_payload"));
-          // `reconcile deposit-projected --repair` and `reconcile
-          // merge-complete --repair` are deleted; nothing can produce these
-          // actions, so a result claiming them is refused.
-          for (const deleted of [
-            "reconcile_deposit_submission_attempt",
-            "reconcile_visible_deposit_utxos",
-            "project_deposits_to_mempool_ledger",
-            "merge_action",
-          ]) {
-            expect(() =>
-              parseReconciliationResult(repairedBy(deleted)),
-            ).toThrow("repairActions[0] must be one of");
-          }
           expect(() =>
             parseReconciliationResult({
               ...resolved,

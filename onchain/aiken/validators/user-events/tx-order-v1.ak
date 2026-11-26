@@ -129,11 +129,8 @@ validator spend(hub_oracle: ScriptHash) {
 
 /// `field_preimage_certificate_policy_id` is the §8.6 certificate minting
 /// policy, consulted by the field-access door on tier-3 carriage only. It is the
-/// same deployment role #592 threads into the validation-trace validators, so one
-/// deployed certificate policy serves both readers; the catalogue,
-/// deployment-registry and format-pin churn this parameter causes is recorded for
-/// #579's single regeneration batch (rider 2 of its owner-authorized scope
-/// amendment) and is never edited in this lane.
+/// same deployment role the validation-trace validators take, so one deployed
+/// certificate policy serves both readers.
 validator mint(
   hub_oracle: ScriptHash,
   field_preimage_certificate_policy_id: PolicyId,

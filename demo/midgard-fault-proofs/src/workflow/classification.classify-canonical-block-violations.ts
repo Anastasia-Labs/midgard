@@ -28,11 +28,10 @@ const classificationByViolationId = new Map<
 
 /**
  * Same-event family precedence: the catalogue order with exactly the
- * owner-ruled corners moved. The catalogue order itself stays append-only
+ * corners below moved. The catalogue order itself stays append-only
  * because deployment identity is derived from it.
  *
- * Decision 0009 (owner ruling 2026-11-10): `doubleWithdraw` ranks ahead of
- * `withdrawalMistag`.
+ * Decision 0009: `doubleWithdraw` ranks ahead of `withdrawalMistag`.
  * Two payable leaves naming one L2 output make the later one also a "valid
  * marked, output absent" `withdrawalMistag` finding at the same event; the
  * watcher proves the pair (two steps) rather than the mistag (five). Both
@@ -40,9 +39,8 @@ const classificationByViolationId = new Map<
  * pair has no `doubleWithdraw` finding at its event, so it stays
  * `withdrawalMistag`.
  *
- * Decision 0010 (owner ruling 2026-11-15): `nonExistentInputNoIndex`
- * ranks ahead of `nonExistentInput`, and `referenceInputNoIdx` ahead of
- * `noReferenceInput`.
+ * Decision 0010: `nonExistentInputNoIndex` ranks ahead of
+ * `nonExistentInput`, and `referenceInputNoIdx` ahead of `noReferenceInput`.
  * An input or reference input whose output index is out of range for a
  * producer committed by the same block is also absent from the event's
  * pre-state ledger, so the ledger-absence family finds it at the same event.
@@ -50,9 +48,8 @@ const classificationByViolationId = new Map<
  * slash the same block. An absent input with no same-block producer has no
  * NoIdx finding, so it stays with the ledger-absence family.
  *
- * Decision of 2026-11-17, by the precedent of 0009 and 0010: `withdrawnInput`
- * ranks ahead of `nonExistentInput`, and `withdrawnReferenceInput` ahead of
- * `noReferenceInput`. The owner may overrule it.
+ * `withdrawnInput` ranks ahead of `nonExistentInput`, and
+ * `withdrawnReferenceInput` ahead of `noReferenceInput`.
  * A valid withdrawal of the same block removes the output before the
  * transaction's event, so the ledger-absence family also finds the input
  * absent at the same event. The watcher proves the withdrawal. Both slash the

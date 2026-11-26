@@ -85,7 +85,7 @@ export const nodeEnvironment = (input: {
     // relative to the node checkout, not this run.
     MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
     // The node reads and submits through the cardano-node socket: `listen`
-    // through its follower, a command through the node's ledger (option E).
+    // through its follower, a command through the node's ledger.
     // `da-bond` passes `--l1 kupmios` for the stack's Kupo and Ogmios.
     ...(role === "command"
       ? {

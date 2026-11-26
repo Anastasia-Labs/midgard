@@ -133,13 +133,13 @@ export const createManifestBoundValueConservationWorkflow = async (
   };
   const bind = (contractName: string, utxo: UTxO) =>
     requireManifestBoundReferenceScriptUtxo({ binding, contractName, utxo });
-  const legacyNames = [
+  const stepNames = [
     "fraudProofValueNotPreserved",
     "fraudProofValueNotPreservedStep02",
     "fraudProofValueNotPreservedStep03",
     "fraudProofValueNotPreservedStep04",
   ];
-  for (const [index, name] of legacyNames.entries())
+  for (const [index, name] of stepNames.entries())
     bind(name, config.referenceScripts.steps[index]!);
   for (const position of CONSERVATION_POSITIONS)
     bind(

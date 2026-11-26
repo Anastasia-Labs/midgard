@@ -271,18 +271,18 @@ pub fn narrow_route_is_wider_than_generic(deployed: Bool, generic: Bool) -> Bool
 
 // ====================================================================// Cek and ValueAndMint per-kind route agreement controls.
 //
-// Indices 11 (`cek`) and 12 (`valueAndMint`) used to be served by one
-// aggregate resolver each. They are now `prepare_selected` plus one semantic
-// resolver per auxiliary kind, and each of those validators calls a narrow
-// wrapper -- `verify_cek_<kind>_semantics_v1` (finish, execution selection,
-// context step, core step) or `verify_value_and_mint_<kind>_semantics_v1`
-// (the eleven stage/cursor kinds) -- that pins its own discriminator and then
-// runs the very branch the aggregate dispatcher (`verify_cek_one_step_v1`,
-// `verify_value_and_mint_one_step_v1`) would have taken.
+// Indices 11 (`cek`) and 12 (`valueAndMint`) are each `prepare_selected` plus
+// one semantic resolver per auxiliary kind, and each of those validators calls
+// a narrow wrapper -- `verify_cek_<kind>_semantics_v1` (finish, execution
+// selection, context step, core step) or
+// `verify_value_and_mint_<kind>_semantics_v1` (the eleven stage/cursor kinds)
+// -- that pins its own discriminator and then runs the very branch the
+// aggregate dispatcher (`verify_cek_one_step_v1`,
+// `verify_value_and_mint_one_step_v1`) takes.
 //
 // As with the ScriptSources controls above, every honest fixture is run
 // through both routes and the verdicts must agree, on the accepting step and
-// on a mutated successor. The second property is the one the R5 totality
+// on a mutated successor. The second property is the one the totality
 // verifier relies on at 11/12: every wrapper must refuse every OTHER kind's
 // honest step with a clean `False`, so the kinds partition the phase's step
 // space exactly -- no step is claimable under two resolvers, and none is

@@ -66,8 +66,8 @@ export const WithdrawnReferenceInputStepCancel =
 //
 // The step-01 UTxO is the initialized fraud proof (its `data` is `None`), so
 // it is read with the generic computation-thread step datum. The Continue arm
-// carries the bare `NativeTxInclusionArgs` (this family predates the #545
-// carriage sum); the produced UTxO carries step-02's state plus the header's
+// carries the bare `NativeTxInclusionArgs`, not the carriage sum; the produced
+// UTxO carries step-02's state plus the header's
 // counted withdrawals commitment.
 
 export const WithdrawnReferenceInputTxInclusionArgsSchema =

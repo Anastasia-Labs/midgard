@@ -156,7 +156,7 @@ describe("the off-chain door", () => {
   it("rejects the same commitment mismatch at every tier", () => {
     // Tiers 1 and 2 already refused this; tier 3 refusing it too is what makes
     // carriage an encoding detail rather than a choice of how hard to check.
-    // (Under tier 3 the refusal happens one check earlier since #606 — at the
+    // (Under tier 3 the refusal happens one check earlier — at the
     // welded-hash equality — hence the two-message alternation.)
     for (const carriage of [
       { carriage: "Inline", preimage: bigPreimage } as const,

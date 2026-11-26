@@ -12,7 +12,7 @@ import { FieldCarriageSchema } from "../native-tx-field-access.js";
  * The wire twins of the field grammar certificate validator
  * (`onchain/aiken/validators/field-grammar-certificate.ak`). A field grammar
  * certificate lets a step read one item of a variable-width field without
- * walking the whole field, so the step's cost no longer grows with the field's
+ * walking the whole field, so the step's cost does not grow with the field's
  * item count.
  *
  * Aiken source of truth: the datum is `FieldGrammarCertificateV1` in

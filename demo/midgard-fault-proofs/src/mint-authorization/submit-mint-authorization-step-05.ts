@@ -41,10 +41,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   mintAuthorizationStepLabel,
@@ -90,9 +87,6 @@ export type MintAuthorizationStep05Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitMintAuthorizationStep05Result =
-  OutsideWorkflowSubmission<MintAuthorizationStep05Build>;
 
 type Step05SpendLayout = {
   readonly inputIndex: bigint;

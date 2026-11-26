@@ -11,7 +11,7 @@
  * awarded and closes into our case. Once the observe move is final the
  * watcher spends the copy back to our key address by our key alone, as it
  * does without the watcher's prover funding
- * (validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts),
+ * (validation-trace-dispute-one-step-canonical-decode-observe-copy.test.ts),
  * and the convicted block's removal waits.
  *
  * The category is not installed until its defender exists; this file

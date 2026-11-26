@@ -54,10 +54,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
   findNetworkIdFaults,
@@ -87,9 +84,6 @@ export type NetworkIdStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitNetworkIdStep01Result =
-  OutsideWorkflowSubmission<NetworkIdStep01Build>;
 
 export const buildNetworkIdStep01 = async ({
   lucid,

@@ -145,7 +145,7 @@ describe.each(routes)("installed Lucid parameterization from %s", (route) => {
         [nested, 42n, "22".repeat(32)],
       ]) {
         const expected = expectedApplication(lucid, params);
-        // eslint-disable-next-line midgard/apply-params-through-blueprint -- This regression must exercise Lucid itself, the broken #647 dependency path.
+        // eslint-disable-next-line midgard/apply-params-through-blueprint -- This regression must exercise Lucid itself, the broken dependency path.
         const actual = lucid.applyParamsToScript(compiledCode, params);
         expect(actual).toBe(expected);
         expect(actual).not.toBe(lucid.applyDoubleCborEncoding(compiledCode));

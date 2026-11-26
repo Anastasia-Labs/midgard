@@ -6,15 +6,8 @@ import "effect";
 import "../native-tx-field-access.js";
 import "./field-preimage-carriage.build-unsigned-field-preimage-publication-program.js";
 import "./field-preimage-carriage.resolve-certificate-reference-index.js";
-import "./field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.js";
+import "./field-preimage-carriage.resolve-midgard-field-carriage-against-reference-inputs.js";
 import "./field-preimage-carriage.build-unsigned-field-preimage-certification-program.js";
-export {
-  assertMidgardFieldCarriageResolvesAtDoor,
-  type FieldPreimageCertificationReferenceLayout,
-  requireFieldPreimageCertificateReferenceScript,
-  resolveFieldPreimageCertificationReferenceLayout,
-  resolveMidgardFieldCarriageAgainstReferenceInputs,
-} from "./field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.js";
 export { buildUnsignedFieldPreimageCertificationProgram } from "./field-preimage-carriage.build-unsigned-field-preimage-certification-program.js";
 export {
   assertFieldPreimagePublicationFits,
@@ -34,3 +27,8 @@ export {
   resolveChunkReferenceIndices,
   retireFieldPreimageCertificateRedeemer,
 } from "./field-preimage-carriage.resolve-certificate-reference-index.js";
+export {
+  requireFieldPreimageCertificateReferenceScript,
+  resolveFieldPreimageCertificationReferenceLayout,
+  resolveMidgardFieldCarriageAgainstReferenceInputs,
+} from "./field-preimage-carriage.resolve-midgard-field-carriage-against-reference-inputs.js";

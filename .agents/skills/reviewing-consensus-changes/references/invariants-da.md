@@ -4,7 +4,7 @@ Scope: `onchain/aiken/validators/da-params-governor.ak`, `da-attestation.ak`,
 `availability-challenge.ak`, `onchain/aiken/lib/midgard/availability-challenge*.ak`
 and the SDK availability builders.
 
-Status, recurrence and citation conventions are as in
+Status and citation conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md). This file is shallower
 than the state-queue and fraud-proof files: it covers the governor, the
 attestation apply and rescue paths, the pooled committee bond at apply and at
@@ -25,14 +25,8 @@ Enforced: `governed_threshold_floor` and `valid_datum`
 `da_params_governor_spend_rejects_continued_datum_below_floor`; all
 fail).
 
-Provenance: `989753337` (2026-08-07) introduced the floor. The review of
-that work (`535e2e836`, `9b3cca8db`) found that every test called the private
-`valid_datum` directly, so deleting the handler's call left all of them green;
-the tests drive the real spend and mint handlers. `ac67670d1` settled
-the `ceil(2n/3)` floor with `n >= 1`.
-
-Recurrence: 3. Review action: a test of a private predicate does not prove
-the handler calls it.
+Review action: a test of a private predicate does not prove the handler
+calls it; the tests above drive the real spend and mint handlers.
 
 ## DA2. An attestation applies only under the parameters that signed it
 
@@ -46,8 +40,6 @@ Enforced: `validators/da-attestation.ak`
 `[aiken-test: da-attestation/]` (`da_attestation_apply_rejects_rotated_committee`, `da_attestation_apply_rejects_governed_threshold_change`,
 `da_attestation_apply_rejects_stale_params_reference_input`,
 `da_attestation_apply_rejects_old_committee_quorum`; all fail).
-
-Provenance: `b6a414310` (2026-08-07, non-retroactive committee rotation).
 
 ## DA3. A stranded attestation can always be rescued
 
@@ -63,10 +55,8 @@ Enforced: `RescueStrandedAttestation` (`validators/da-attestation.ak`)
 `da_attestation_rescue_rejects_replayed_mint_binding`,
 `da_attestation_rescue_control_threshold_change_refunds_quorum_attestation`, `da_attestation_rescue_rejects_refund_short_of_attestation_value`, `da_attestation_rescue_rejects_redirected_beneficiary`).
 
-Provenance: `b6a414310` (partial-attestation rescue). Rotation without
-a rescue path strands funds, so DA2 and DA3 change together.
-
-Recurrence: 2.
+Rotation without a rescue path strands funds, so DA2 and DA3 change
+together.
 
 ## DA4. Availability-challenge fees are capped
 
@@ -81,19 +71,15 @@ than its governed cap. At timeout the cap bounds only the challenger's share
 Enforced: `lib/midgard/availability-challenge-validation.ak` (open, settle,
 close and timeout: `tx.fee > 0`, `0 <= c <= max_timeout_fee_lovelace`)
 `[aiken-test: availability-challenge.test/]`
-(`q58_settle_rejects_excessive_fee`,
-`q58_settle_rejects_batched_second_tranche_fee_charge`,
-`q58_timeout_rejects_challenger_fee_one_above_the_cap`,
-`..._on_an_empty_pool`, `q58_timeout_rejects_zero_fee_on_an_empty_pool`; all fail).
-
-Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave); `dd830b918`
-moved the timeout cap onto `c`
-([DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
+(`settle_rejects_excessive_fee`,
+`settle_rejects_batched_second_tranche_fee_charge`,
+`timeout_rejects_challenger_fee_one_above_the_cap`,
+`..._on_an_empty_pool`, `timeout_rejects_zero_fee_on_an_empty_pool`; all fail).
 
 ## DA5. An attestation applies only while the pooled bond backs it, and its value returns to its beneficiary
 
-Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is `f8c91dae8`).
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28).
 
 Rule: `ApplyToStateQueue` reads the authentic DA bond pool (payment credential
 `Script(da_bond_pool_policy_id)`, NFT quantity 1, inline datum) and requires
@@ -112,14 +98,12 @@ passes at exactly one bond; `..._rejects_pool_backing_below_one_bond`,
 The two index-distinctness checks are implied by the token and datum shapes
 and cannot fail alone; they are defence in depth.
 
-Provenance: `f8c91dae8` (spec #685 and the
-[DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md);
-the refund index closes the submitter taking the attestation's lovelace).
+Decision: the [DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md).
 
 ## DA6. A node's DA status binds one commitment, and every challenge step presents its preimage
 
-Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is `f8c91dae8` and `dd830b918`).
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28).
 
 Rule: apply writes `Attested{commitment_hash_v1(burned commitment)}`, with the
 commitment canonical and naming this deployment and header. An open decodes
@@ -141,25 +125,24 @@ pin); the timeout node match `timeout_node_status_matches`
 (`da_attestation_apply_rejects_node_attested_to_another_commitment` in
 `validators/da-attestation.ak`;
 `availability_open_rejects_record_preimage_of_another_attested_hash`,
-`q58_close_rejects_node_challenged_under_another_commitment` and
+`close_rejects_node_challenged_under_another_commitment` and
 `..._under_another_challenge`,
-`q58_timeout_rejects_node_challenged_under_another_commitment` and
+`timeout_rejects_node_challenged_under_another_commitment` and
 `..._under_another_challenge`; all fail). The reference-script pin is
 refused through each user: Apply
 (`da_attestation_apply_rejects_node_output_reference_script` in
 `validators/da-attestation.ak`, beside its control), Open
-(`availability_open_rejects_state_queue_output_with_reference_script`, control `q58_open_accepts_exact_distinct_inputs_outputs_and_signer`), Close (`q58_close_rejects_state_queue_output_with_reference_script`, control `q58_close_accepts_exact_distinct_terminal_outputs`),
+(`availability_open_rejects_state_queue_output_with_reference_script`, control `open_accepts_exact_distinct_inputs_outputs_and_signer`), Close (`close_rejects_state_queue_output_with_reference_script`, control `close_accepts_exact_distinct_terminal_outputs`),
 and at the core (`da_core_apply_rejects_node_output_reference_script`,
 `da_core_open_...` and `da_core_close_...` in
 `lib/midgard/state-queue.test.ak`, beside their control); all fail.
 
-Provenance: `f8c91dae8`; `dd830b918` added the reference-script pin (both in
-the [DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
+Decision: the [DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md).
 
 ## DA7. A challenge record is authentic only at the availability address holding its token
 
-Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is `f8c91dae8`).
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28).
 
 Rule: open pins the record output exactly (availability address, no reference
 script, `challenge_record_lovelace` plus the one minted DACH, inline datum
@@ -175,8 +158,8 @@ Idle acquire `[aiken-test: availability-challenge.test/]`
 (`availability_open_accepts_last_millisecond_of_challenge_window`,
 `availability_open_rejects_upper_bound_at_challenge_window_end`,
 `availability_open_rejects_record_at_foreign_script_address`,
-`q58_settle_rejects_record_at_foreign_address`,
-`q58_close_rejects_record_without_challenge_token`)
+`settle_rejects_record_at_foreign_address`,
+`close_rejects_record_without_challenge_token`)
 `[aiken-test: correction-lock/]`
 (`correction_lock_handler_rejects_availability_acquire_with_record_at_foreign_address`, `..._with_record_without_challenge_token`; all fail).
 
@@ -188,13 +171,12 @@ output) are implied by the address, value and token shapes each role must
 have, and none can fail alone: with any one removed, every test stays green,
 including the `q58_*_aliased_*` tests, whose refusals are overdetermined. They are defence in depth, as in DA5.
 
-Provenance: `f8c91dae8`
-([DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)).
+Decision: the [DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md).
 
 ## DA8. A lost challenge charges the pool, up to one bond, in the timeout transaction
 
-Status: VERIFIED (code and tests re-read at the cited lines in the
-restacked tree, base `77244f439`; provenance is `dd830b918`).
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28).
 
 Rule: `TimeoutChallenge` spends the authentic DA bond pool at
 `pool_input_index` (payment credential `Script(da_bond_pool_policy_id)`, NFT
@@ -235,10 +217,10 @@ Enforced: `validate_timeout_challenge`
 `get_authentic_pool_input`
 (`lib/midgard/da-bond-pool.ak`); the pool `Slash` arm
 (`validators/da-bond-pool.ak`, constructor 5, Idle lock) `[aiken-test: availability-challenge.test/]`. Accepted with
-exact amounts: `q58_timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee` and `q58_timeout_accepts_*` (above one bond, partial,
+exact amounts: `timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee` and `timeout_accepts_*` (above one bond, partial,
 below the penalty, empty pool, dust payout, `Withdrawing` keeping
 `unlock_at`, `c` at the cap). Refused, all fail:
-`q58_timeout_rejects_without_pool_input`,
+`timeout_rejects_without_pool_input`,
 `..._pool_index_naming_a_non_pool_input`,
 `..._counterfeit_pool_without_nft`,
 `..._pool_nft_at_another_credential`,
@@ -248,7 +230,7 @@ below the penalty, empty pool, dust payout, `Withdrawing` keeping
 `..._merged_challenger_output_one_lovelace_short` and `_over`,
 `..._second_challenger_output`,
 `..._refund_and_payout_split_across_two_outputs`, the
-`q58_timeout_rejects_pool_output_*` family (lovelace ±1, no
+`timeout_rejects_pool_output_*` family (lovelace ±1, no
 NFT, extra token, datum changed either way or to another `unlock_at`, stake
 credential, reference script), and
 `..._pool_output_index_aliased_with_challenger_output`, which the
@@ -290,9 +272,9 @@ so a timely challenger always meets a full bond `[review]`. Review action: a
 change that lets a timeout remove a non-head block, or lets Apply run against
 less than one bond, breaks this bound.
 
-Provenance: `dd830b918`; the one-bond-per-episode bound is the
-[DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md)'s
-liability rule.
+The one-bond-per-episode bound is the liability rule of the
+[DA bond pool decision](../../../../docs/midgard/decisions/da-committee-bond-pool.md).
+
 Blind spot: Slash never reads the availability mint redeemer; against a
 Close in its place it relies on Close's input and output counts and its node
 transition, so relaxing Close (for example, batching it) reopens a drain
@@ -312,12 +294,10 @@ Enforced: `validate_timeout_challenge`, one pass over `tx.mint` against the
 three hub-datum policies
 (`lib/midgard/availability-challenge-validation.ak`)
 `[aiken-test: availability-challenge.test/]`. Refused, all fail:
-`q58_timeout_rejects_registered_operators_mint`,
+`timeout_rejects_registered_operators_mint`,
 `..._active_operators_mint` and `..._retired_operators_mint`;
-accepted: `q58_timeout_accepts_mint_outside_the_operator_directories`. Each refusal goes green, that is accepted, with its own policy
+accepted: `timeout_accepts_mint_outside_the_operator_directories`. Each refusal goes green, that is accepted, with its own policy
 dropped from the condition. In the emulator,
 `demo/midgard-node/tests/availability-challenge-timeout-operator-directory.test.ts`
 composes a forced retirement into a timeout; the timeout withdrawal refuses
 it, and the same two as separate transactions land in one block.
-
-Provenance: 2026-10-15, with the operator-slash bounty routing changes.

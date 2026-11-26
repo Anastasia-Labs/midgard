@@ -57,10 +57,7 @@ import {
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
 import type { ProofMaterialsAccess } from "./workflow/proof-materials-view.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(1);
 const FIELD_COUNT = 9;
@@ -141,9 +138,6 @@ export type MinFeeStep02Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitMinFeeStep02Result =
-  OutsideWorkflowSubmission<MinFeeStep02Build>;
 
 export const buildMinFeeStep02 = async ({
   lucid,

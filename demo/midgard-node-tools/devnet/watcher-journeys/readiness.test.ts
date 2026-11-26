@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,18 +62,19 @@ it("resolves shared evidence before anchoring and preserves an older finalized s
   }
 });
 
-it("uses an existing legacy family capture only when no explicit evidence path is present", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "journey-native-legacy-"));
+it("refuses a directory that records no valid native evidence path", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "journey-native-path-"));
   try {
     await expect(readJourneyNativeEvidencePath(directory)).rejects.toThrow(
-      "No retained native evidence path",
+      "No native evidence path is recorded",
     );
-    const legacy = join(directory, "native-chain.ndjson");
-    await writeFile(legacy, "retained capture\n");
+    const capture = join(directory, "native-chain.ndjson");
     await writeJourneyArtifact(join(directory, "result.json"), {
       status: "passed",
     });
-    expect(await readJourneyNativeEvidencePath(directory)).toBe(legacy);
+    await expect(readJourneyNativeEvidencePath(directory)).rejects.toThrow(
+      "No native evidence path is recorded",
+    );
     for (const nativeEvidencePath of [
       null,
       "",
@@ -89,7 +90,7 @@ it("uses an existing legacy family capture only when no explicit evidence path i
       );
     }
     await writeJourneyArtifact(join(directory, "result.json"), {
-      nativeEvidencePath: legacy,
+      nativeEvidencePath: capture,
     });
     await writeJourneyArtifact(
       join(directory, "finalized-evidence-stamp.json"),

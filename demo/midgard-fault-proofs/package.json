@@ -578,10 +578,6 @@
     "./test-support/ledger-store-conformance": {
       "midgard-source": "./tests/support/ledger-store-conformance.ts",
       "types": "./tests/support/ledger-store-conformance.ts"
-    },
-    "./test-support/ledger-store-exit-bench": {
-      "midgard-source": "./tests/support/ledger-store-exit-bench.ts",
-      "types": "./tests/support/ledger-store-exit-bench.ts"
     }
   },
   "type": "module",
@@ -605,7 +601,8 @@
     "bench": "vitest run --config vitest.bench.config.ts",
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",
-    "test:retained-da-boundary-corpus": "node tests/fixtures/verify-retained-da-boundary-corpus.mjs",
+    "fixtures:retained-da-boundary-corpus-v1:sync": "node scripts/generate-retained-da-boundary-corpus-v1.mjs",
+    "fixtures:retained-da-boundary-corpus-v1:check": "node scripts/generate-retained-da-boundary-corpus-v1.mjs --check",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [

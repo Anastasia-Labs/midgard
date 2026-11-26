@@ -19,10 +19,10 @@ import {
 } from "./fabricated-cli-contracts.js";
 import { inspectContractsFromFiles } from "./inspect-contracts.inspect-contracts-from-files.js";
 import { parseNetwork } from "./inspect-contracts.parse-contract-deployment-info.js";
-import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { prepareTransitionTraceFromDaEnvelope } from "./prepare-transition-trace.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.submit-remove-fraudulent-block-from-files.js";
 import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.submit-unattested-timeout-correction-from-files.js";
+import { rejectUnadmittedSubmissionRoute } from "./submission-route-admission.js";
 import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01-from-files.js";
 import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.submit-da-hash-preimage-step02-from-files.js";
 import { submitFabricatedDepositStep01FromFiles } from "./submit-fabricated-deposit-step-01.submit-fabricated-deposit-step01.js";
@@ -38,8 +38,6 @@ import { submitInputNoIdxStep01FromFiles } from "./submit-input-no-idx-step-01.j
 import { submitInputNoIdxStep02FromFiles } from "./submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
 import { submitInputNoIdxStep03FromFiles } from "./submit-input-no-idx-step-03.js";
 import { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04-from-files.js";
-import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.submit-invalid-range-step01-from-files.js";
-import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.submit-invalid-range-step02-v1.js";
 import { submitInvalidSignatureStep01FromFiles } from "./submit-invalid-signature-step-01.js";
 import { submitInvalidSignatureStep02FromFiles } from "./submit-invalid-signature-step-02.submit-invalid-signature-step02-from-files.js";
 import { submitNoReferenceInputStep01FromFiles } from "./submit-no-reference-input-step-01.js";
@@ -51,8 +49,6 @@ import { submitReferenceInputNoIdxStep02FromFiles } from "./submit-reference-inp
 import { submitReferenceInputNoIdxStep03FromFiles } from "./submit-reference-input-no-idx-step-03.js";
 import { submitReferenceInputNoIdxStep04FromFiles } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04-from-files.js";
 import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trace-proof.js";
-import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
-import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.submit-zero-input-step02-v1.js";
 import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
@@ -88,7 +84,7 @@ export const main = async (): Promise<void> => {
     return;
   }
 
-  // Unlike the legacy caller-asserted prepare inputs below, the retained DA
+  // Unlike the caller-asserted prepare inputs below, the retained DA
   // envelope is authenticated byte-for-byte against the pinned committed
   // header hash before any proof artifact is written. Keep this security-grade
   // route ahead of the generic prepare rejection gate.
@@ -107,7 +103,7 @@ export const main = async (): Promise<void> => {
       args.sampleDoubleSpend
     ) {
       throw new Error(
-        "prepare-transition-trace accepts only authenticated retained-DA evidence; legacy --midgard-node-url, --transactions-file, and --sample-double-spend inputs are forbidden",
+        "prepare-transition-trace accepts only authenticated retained-DA evidence; the --midgard-node-url, --transactions-file, and --sample-double-spend inputs are forbidden",
       );
     }
     writeJson(
@@ -120,9 +116,8 @@ export const main = async (): Promise<void> => {
     return;
   }
 
-  // Admit only the allow-listed submission routes, and reject every
-  // retired or unadmitted one, before any blueprint/deployment read or
-  // provider/wallet construction.
+  // Admit only the allow-listed submission routes, before any
+  // blueprint/deployment read or provider/wallet construction.
   rejectUnadmittedSubmissionRoute({
     command: args.command,
     fraudCategory: args.fraudCategory,
@@ -136,12 +131,6 @@ export const main = async (): Promise<void> => {
     args.command !== "prepare-input-no-idx" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
-    args.command !== "submit-step-01" &&
-    args.command !== "submit-step-02" &&
-    args.command !== "submit-step-03" &&
-    args.command !== "submit-step-04" &&
-    args.command !== "submit-invalid-range-step-01" &&
-    args.command !== "submit-invalid-range-step-02" &&
     args.command !== "submit-fabricated-deposit-step-01" &&
     args.command !== "submit-fabricated-deposit-step-02" &&
     args.command !== "submit-fabricated-deposit-step-03" &&
@@ -150,17 +139,10 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-fabricated-withdrawal-step-02" &&
     args.command !== "submit-fabricated-withdrawal-step-03" &&
     args.command !== "submit-fabricated-withdrawal-step-04" &&
-    args.command !== "submit-non-existent-input-step-01" &&
-    args.command !== "submit-non-existent-input-step-02" &&
-    args.command !== "submit-non-existent-input-step-03" &&
-    args.command !== "submit-non-existent-input-step-04" &&
-    args.command !== "submit-zero-input-step-01" &&
-    args.command !== "submit-zero-input-step-02" &&
     args.command !== "submit-da-hash-preimage-step-01" &&
     args.command !== "submit-da-hash-preimage-step-02" &&
     args.command !== "submit-input-no-idx-step-01" &&
     args.command !== "submit-input-no-idx-step-02" &&
-    args.command !== "submit-input-no-idx-fold" &&
     args.command !== "submit-input-no-idx-step-03" &&
     args.command !== "submit-input-no-idx-step-04" &&
     args.command !== "submit-no-reference-input-step-01" &&
@@ -182,12 +164,11 @@ export const main = async (): Promise<void> => {
     );
   }
 
-  // The executable CLI has no operator-private compatibility route. The
-  // current REST/file/sample flags are retained solely as clearly labelled
-  // diagnostic imports and are rejected by the same security-grade gate every
-  // canonical builder uses. Security-grade callers route all four verbs through
-  // `executeCanonicalPrepareCommandV1`, supplying verified DA/L1 evidence from
-  // the watcher/public transport rather than claiming a local file is trusted.
+  // The REST/file/sample flags are labelled diagnostic imports, refused by the
+  // same security-grade gate every canonical builder uses. Security-grade
+  // callers route all four verbs through `executeCanonicalPrepareCommandV1`,
+  // supplying verified DA/L1 evidence from the watcher/public transport rather
+  // than claiming a local file is trusted.
   if (args.command.startsWith("prepare-")) {
     if (
       args.command === "prepare-zero-input" &&
@@ -290,140 +271,6 @@ export const main = async (): Promise<void> => {
     return;
   }
 
-  if (args.command === "submit-invalid-range-step-01") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.stateQueueBlockOutRef === undefined) {
-      throw new Error(
-        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.txInclusionPath === undefined) {
-      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
-    }
-    const output = await submitInvalidRangeStep01FromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
-      txInclusionPath: args.txInclusionPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-invalid-range-step-02") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    const output = await submitInvalidRangeStep02FromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-zero-input-step-01") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.stateQueueBlockOutRef === undefined) {
-      throw new Error(
-        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.txInclusionPath === undefined) {
-      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
-    }
-    const output = await submitZeroInputStep01FromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
-      txInclusionPath: args.txInclusionPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "submit-zero-input-step-02") {
-    if (args.threadOutRef === undefined) {
-      throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
-      );
-    }
-    if (args.nativeTxCompactPath === undefined) {
-      throw new Error(
-        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
-      );
-    }
-    const output = await submitZeroInputStep02FromFiles({
-      blueprintPath: args.blueprintPath,
-      deploymentInfoPath: args.deploymentInfoPath,
-      network: parseNetwork(args.network),
-      provider: args.provider,
-      blockfrostApiUrl: args.blockfrostApiUrl,
-      blockfrostKey: args.blockfrostKey,
-      kupoUrl: args.kupoUrl,
-      ogmiosUrl: args.ogmiosUrl,
-      walletSeedPhrase: args.walletSeedPhrase,
-      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
-      walletPrivateKey: args.walletPrivateKey,
-      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
-      threadOutRef: args.threadOutRef,
-      nativeTxCompactPath: args.nativeTxCompactPath,
-      awaitConfirmation: args.awaitConfirmation,
-    });
-
-    writeJson(output);
-    return;
-  }
-
   if (args.command === "submit-input-no-idx-step-01") {
     if (args.threadOutRef === undefined) {
       throw new Error(
@@ -496,25 +343,6 @@ export const main = async (): Promise<void> => {
 
     writeJson(output);
     return;
-  }
-
-  if (args.command === "submit-input-no-idx-fold") {
-    // Retired by #604, not renamed. `fraud_proofs/input_no_idx/step_02.Args` is
-    // a flat record on-chain: the `FoldStart`/`FoldNext` arms this command drove
-    // no longer exist, so there is no redeemer it could emit. The ordered fold
-    // was a way to reproduce a collection inside the step in order to re-hash it,
-    // and §4's flat commitment plus the §8.8 door removed the need — the whole
-    // preimage now travels under one §8 carriage tier and the step reads item
-    // `n` by arithmetic. Run `submit-input-no-idx-step-02`; if the preimage does
-    // not fit the step's own redeemer, §8's ladder publishes it.
-    throw new Error(
-      "submit-input-no-idx-fold is retired: input-no-idx step 02 has a single " +
-        "route since #575 moved it onto the \u00a78.8 field-opening door, and the " +
-        "FoldStart/FoldNext redeemer arms it drove no longer exist on-chain. " +
-        "Use submit-input-no-idx-step-02 --native-tx-compact <native-tx-compact.json>; " +
-        "\u00a78's carriage ladder publishes the preimage when it does not fit the " +
-        `redeemer.\n${usage}`,
-    );
   }
 
   if (args.command === "submit-input-no-idx-step-03") {

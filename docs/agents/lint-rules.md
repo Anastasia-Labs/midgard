@@ -1,7 +1,7 @@
 # Lint Rules
 
 The demo workspace's ESLint config loads a local plugin,
-`demo/scripts/lib/eslint-plugin-midgard/`, whose rules check owner rulings
+`demo/scripts/lib/eslint-plugin-midgard/`, whose rules check repository rules
 readable from the syntax tree; `pnpm --dir demo run lint` runs them, and so
 does Midgard Node CI. Each message ends with a `Fix:`. The rules follow values
 through local constants and parameter defaults in one file, not across files.
@@ -44,7 +44,7 @@ every stale site and adds none (`--check` only reports).
 - **Never attach a script inline in a fault-proof source tree**
   (`demo/midgard-fault-proofs/src/`, `demo/midgard-sdk/src/fraud-proof/`,
   `demo/midgard-watcher/src/fault-proofs/`): fault proofs deploy as reference
-  scripts (owner ruling 2026-08-26). Blind spot: it flags `x.attach.<Kind>(...)`
+  scripts. Blind spot: it flags `x.attach.<Kind>(...)`
   calls in those trees only, not a witness added another way or a builder
   outside them. [eslint: midgard/fault-proof-reference-scripts-only]
 - **Never apply parameters outside the blueprint shape guard.**

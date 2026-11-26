@@ -21,7 +21,6 @@ import "../da/libp2p-producer.create-da-libp2p-producer-transport.js";
 import "../da/libp2p-producer.publication-transport.js";
 import "../da/startup.js";
 import "../database/index.js";
-import "../e2e/phase1-accept-crash-checkpoint.js";
 import "../fibers/admission-backlog-gauge.js";
 import "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import "../fibers/settlement.js";

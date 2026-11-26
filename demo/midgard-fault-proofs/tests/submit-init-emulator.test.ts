@@ -37,15 +37,6 @@ import { describe, expect, it } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-  submitInit,
-  submitStep01,
-  submitStep02,
-  submitStep03,
-  submitStep04,
-} from "./support/legacy-submit-emulator.js";
-import {
   buildProvedDoubleSpendFixture,
   buildTransactionInclusionFixture,
   countedTransactionsRoot,
@@ -79,6 +70,15 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  parseSpendInputCbors,
+  parseSubmitStep01TxInclusion,
+  submitInit,
+  submitStep01,
+  submitStep02,
+  submitStep03,
+  submitStep04,
+} from "./support/submit-steps.diagnostic.js";
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a non-tail double-spend block by pruning successors first", async () => {
@@ -376,8 +376,8 @@ describe("fault-proof emulator integration", () => {
       transactionInclusion.tx1.nativeTxId,
     );
     expect(step02Result.nativeTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
-    // #604: the thread carries both §2.5 anchors; the field-0 commitments it
-    // used to forward are re-derived at the door instead.
+    // The thread carries both §2.5 anchors; the door reads the field-0
+    // commitments from the compact structures.
     expect(step02Result.verifiedTx2Id).toBe(
       transactionInclusion.tx2.nativeTxId,
     );
@@ -692,7 +692,7 @@ describe("fault-proof emulator integration", () => {
 
   it("removes a tail double-spend block without acquiring a lease", async () => {
     const fixture = await buildProvedDoubleSpendFixture();
-    // Owner ruling 2026-08-26: witness scripts resolve from published
+    // Witness scripts resolve from published
     // reference scripts — the init and step-04 transactions must carry no
     // inline script witnesses at all (every script is a reference input).
     for (const measurement of [

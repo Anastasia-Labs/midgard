@@ -59,10 +59,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import { deriveCanonicalDecodabilityNextOutput } from "./derive-canonical-decodability-next-output.js";
 import { prepareCanonicalDecodability } from "./prepare-canonical-decodability.js";
@@ -95,9 +92,6 @@ export type CanonicalDecodabilityStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitCanonicalDecodabilityStep01Result =
-  OutsideWorkflowSubmission<CanonicalDecodabilityStep01Build>;
 
 export const buildCanonicalDecodabilityStep01 = async ({
   lucid,

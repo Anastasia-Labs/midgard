@@ -108,7 +108,7 @@ describe("native-script-decoding compiled sizes and deployability", () => {
     );
 
     // Six distinct scripts: equal hashes would mean a parameter list was
-    // mis-ordered into another step's (the #609/#610 guards check arity, not
+    // mis-ordered into another step's (the arity guards check arity, not
     // order).
     expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(6);
 
@@ -130,7 +130,7 @@ describe("native-script-decoding compiled sizes and deployability", () => {
       // consumption transactions source the script through readFrom.
       expect(
         appliedBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-        `applied step_0${(index + 1).toString()} no longer fits a reference-script publication transaction`,
+        `applied step_0${(index + 1).toString()} does not fit a reference-script publication transaction`,
       ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
     }
   });
@@ -274,7 +274,7 @@ describe("step-01 redeemer envelope chart (both carriages)", () => {
     // optimization — restate the family's finding, do not widen the allowance.
     expect(
       exhaustionDepth,
-      "a work-feasible (2^128) membership depth no longer fits the redeemer-carried carriage; the published-chunk carriage is now mandatory for deep blocks — restate the family finding",
+      "a work-feasible (2^128) membership depth does not fit the redeemer-carried carriage; the published-chunk carriage is mandatory for deep blocks — restate the family finding",
     ).toBeGreaterThan(
       membershipProofBranchLevelsReachableWithWork(ADVERSARY_LOG2_WORK),
     );

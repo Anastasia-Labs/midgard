@@ -103,9 +103,7 @@ export type ReferenceInputNoIdxStep01Build = {
   readonly badTxId: string;
   /**
    * The §2.5 anchor this step wrote into thread state — the disputed
-   * transaction's id. It replaced `verifiedTxReferenceInputsHash` in #604: the
-   * thread no longer carries field 1's commitment, because step-02 re-opens the
-   * field through the §8.8 door from the anchor instead.
+   * transaction's id. Step-02 re-opens field 1 through the §8.8 door from it.
    */
   readonly verifiedTxId: string;
   readonly inputIndex: number;

@@ -1,55 +1,41 @@
 //// How the **validation machine** reaches one item of one of the nine
 //// committed fields — `docs/spec/midgard-tx.md` §4, §7, §8.8, §10.
 ////
-//// This module exists because the machine used to reach an item a way §4
-//// makes unsatisfiable. Every per-item step in
-//// `midgard/validation_machine_v1` used to carry a *counted* pair — a
-//// `bounded_collection_v1.ItemProofV1` folding a per-item Merkle frontier and a
-//// `bounded_item_v1.ChunkProofV1` folding the item's chunks — and check the
-//// first against the compact structure's own field hash. Since #567 those nine
-//// hashes are §4's flat `blake2b_256` over the field's whole §5.1 preimage, so a
-//// per-item Merkle root and a flat preimage hash could only agree by collision:
-//// the predicate was unsatisfiable at fifteen sites in eight phases. The same class `fraud_proofs/native_tx/transaction.ak`
-//// documents on `verify_midgard_transaction_field_chunk_v1` and the same class
-//// #587 retired for the tx-order receipt chain.
+//// The nine field hashes are §4's flat `blake2b_256` over the field's whole
+//// §5.1 preimage, so a per-item Merkle opening checked against one could only
+//// agree by collision. The machine therefore reaches items through §8's one
+//// door. `authenticated_field_view` hashes the field's preimage **once**
+//// against the flat commitment (tiers 1–2) or reaches it through a
+//// mint-verified digest manifest (tier 3), and every item is then reached by
+//// offset-and-slice inside bytes that are already authenticated. Nothing
+//// per-item is supplied by the prover: an item's bytes, its length and the
+//// field's item count are all *derived* from the view, so there is no per-item
+//// evidence to forge.
 ////
-//// The replacement is §8's one door. `authenticated_field_view` hashes the
-//// field's preimage **once** against the flat commitment (tiers 1–2) or reaches
-//// it through a mint-verified digest manifest (tier 3), and every item is then
-//// reached by offset-and-slice inside bytes that are already authenticated.
-//// Nothing per-item is supplied by the prover any more: an item's bytes, its
-//// length and the field's item count are all *derived* from the view, so there is
-//// no per-item evidence left to forge.
-////
-//// ## What a step carries instead
+//// ## What a step carries
 ////
 //// A `FieldCarriageV1` and two integers — which field, which item. That is the
 //// whole per-item wire surface. The carriage tier is the prover's choice among
-//// §8's three and the door verifies whichever is named; all three are admitted to
-//// machine-step evidence, which is why
-//// `MachineFieldDoorV1` carries both of the door's context arguments:
-//// `reference_inputs` for tiers 2–3 and the §8.6 certificate minting policy id
-//// for tier 3. The policy id is a **parameter of the validation-trace
-//// validators**, threaded from there; the catalogue, deployment-registry and
-//// format-pin churn that parameter causes is recorded for #579's single
-//// regeneration batch (rider 2 of its owner-authorized scope amendment) and is
-//// never edited in this lane.
+//// §8's three and the door verifies whichever is named; all three are admitted
+//// to machine-step evidence, which is why `MachineFieldDoorV1` carries both of
+//// the door's context arguments: `reference_inputs` for tiers 2–3 and the §8.6
+//// certificate minting policy id for tier 3. The policy id is a **parameter of
+//// the validation-trace validators**, threaded from there.
 ////
 //// Only tiers 1–3 together reach the largest genuine-Cardano field this program
-//// measures — a 16,225-byte field-2 preimage (`blob-chunk-boundary-v1`) — which
-//// is why a tier-1-only rebind was refused: it would green a vector for a step
-//// no prover could construct on L1.
+//// measures — a 16,225-byte field-2 preimage (`blob-chunk-boundary-v1`) — so a
+//// tier-1-only machine would green a vector for a step no prover could
+//// construct on L1.
 ////
 //// ## The field index is checked, not trusted
 ////
-//// §4 removed field-index domain separation: two fields with the same items
+//// §4 has no field-index domain separation: two fields with the same items
 //// commit to the same 32 bytes, and a flat hash says nothing about which slot it
 //// came from. So `field_index` arriving from a step's evidence is checked at the
 //// call site against the slot that site means: a literal at the six phases that
 //// read one field, `control.field_index` for `CanonicalDecode`, which walks all
 //// nine, and fields 0-or-1 for `InputSets`, which reads both and pins the choice
-//// through the successor's `source_kind`. A mismatch fails closed, exactly as the
-//// retired `ItemProofV1.field_index` guard did.
+//// through the successor's `source_kind`. A mismatch fails closed.
 ////
 //// ## Why the machine materialises the whole preimage, at every tier
 ////
@@ -73,13 +59,13 @@
 ////     a rule should have to reason about.
 ////
 //// Materialising fixes both for one `blake2b_256` over at most
-//// `max_transaction_aggregate_field_bytes` per step — the cost §12.5 already
-//// prices as the tier-2 per-step full-preimage re-hash, now reached from tier 3
-//// as well. Item access is then pure slicing at every tier, and
+//// `max_transaction_aggregate_field_bytes` per step — the cost §12.5 prices as
+//// the tier-2 per-step full-preimage re-hash, reached from tier 3 as well.
+//// Item access is then pure slicing at every tier, and
 //// `machine_field_item_chunk` is a slice rather than a chunk-digest check.
 ////
-//// The two derived quantities that are still **functions rather than record
-//// fields** are so because they cost real work at sites that do not need them:
+//// The two derived quantities that are **functions rather than record fields**
+//// are so because they cost real work at sites that do not need them:
 ////
 ////   * `machine_field_item_commitment` builds a `bounded_item_v1` frontier over
 ////     the item's chunks. Only the four phases that hand a partially-read item
@@ -88,43 +74,35 @@
 ////   * `machine_field_item_bytes` copies the item out of the preimage; the sites
 ////     that only need its length never ask.
 ////
-//// ## Where the counted commitments still live, and why that is not this defect
+//// ## Where counted commitments live, and why they are sound
 ////
-//// `bounded_item_v1` is **not** retired here. Four phases hand a partially-read
-//// item forward across steps (`PhaseANativeScripts`'s token-head scan,
-//// `ScriptSources`'s stage-zero and mint folds, and the redeemer item proof), and
-//// their control state carries an `item_commitment` that later steps open chunk
-//// proofs against. That commitment is a genuine Merkle root over the item's
-//// chunks, so opening it is satisfiable and sound — it is not the §4 mismatch
-//// #592 names. What changes is its *provenance*: it is now **derived** here from
-//// bytes the door authenticated, instead of arriving from a prover's
-//// `ItemProofV1`. The continuation sites are untouched and their control
-//// encodings do not move, which is why eight phases of trace state, and every
-//// successor the machine's tests pin, stay exactly as they were.
+//// Four phases hand a partially-read item forward across steps
+//// (`PhaseANativeScripts`'s token-head scan, `ScriptSources`'s stage-zero and
+//// mint folds, and the redeemer item proof), and their control state carries
+//// an `item_commitment` that later steps open chunk proofs against. That
+//// commitment is a genuine `bounded_item_v1` Merkle root over the item's
+//// chunks, so opening it is satisfiable and sound, and it is **derived** here
+//// from bytes the door authenticated, never supplied by the prover.
 ////
-//// ## Hand-off boundary: committed garbage is #596's, not this module's
+//// ## Hand-off boundary: committed garbage is `canonical-decodability`'s
 ////
 //// The §8.8 door **aborts** on committed bytes that are not a §5.1 envelope.
 //// For a prover supplying the wrong bytes that is the correct fail-closed
-//// answer (§7.3) and it stays. For an *operator-committed* ungrammatical
-//// preimage it means no `CanonicalDecode` step is producible by anyone, so the
-//// two verdicts that phase used to render for that case —
-//// `FieldItemWidthIllegal` and `FieldPreimageLengthMismatch` — no longer
-//// cover it. Under the retired counted scheme the case was not even expressible
-//// (the commitment *was* a root over items, so items always existed).
+//// answer (§7.3). For an *operator-committed* ungrammatical preimage it means
+//// no `CanonicalDecode` step is producible by anyone, so neither
+//// `FieldItemWidthIllegal` nor `FieldPreimageLengthMismatch` covers it. The
+//// §12.7 fault kind `canonical-decodability`, "the committed preimage of field
+//// *i* is not a §5.1 envelope", closes that hatch by direct fault rather than
+//// by softening the door. This module's boundary is therefore exact:
 ////
-//// Owner ruling #593 Ruling 2 closes that hatch by direct fault rather than by
-//// softening the door: a new §12 fault kind, "the committed preimage of field
-//// *i* is not a §5.1 envelope", owned by **#596**. This module's boundary is
-//// therefore exact and is stated so a reader meets it here:
-////
-////   * still rendered by `CanonicalDecode`, and reachable — a declared
+////   * rendered by `CanonicalDecode`, and reachable — a declared
 ////     `NativeTxFieldPreimageLengthsV1` length that disagrees with the
 ////     authenticated preimage's own length (`FieldPreimageLengthMismatch`), and
 ////     an item whose §5.1-authenticated width is not a legal encoding for its
 ////     field (`FieldItemWidthIllegal`);
-////   * **not** rendered here, and #596's — a committed preimage whose §5.1
-////     envelope does not decode at all. The door aborts; no verdict is emitted.
+////   * **not** rendered here, and `canonical-decodability`'s — a committed
+////     preimage whose §5.1 envelope does not decode at all. The door aborts;
+////     no verdict is emitted.
 
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
@@ -170,9 +148,7 @@ pub type MachineFieldDoorV1 {
 /// is load-bearing rather than stylistic.
 ///
 /// `item_length` is the item's **payload** length, its §5.1 byte-string wrapper
-/// stripped: exactly what the retired `ItemProofV1.item_length` and
-/// `ChunkProofV1.total_length` both carried, so the call sites that compared
-/// those two to each other now have one authenticated number instead.
+/// stripped, so the call sites have one authenticated length.
 pub type MachineFieldItemV1 {
   view: FieldViewV1,
   field_index: Int,
@@ -239,7 +215,7 @@ pub fn open_machine_field_item_by_commitment(
 // once to settle the count at view construction, once to reach the item — so
 // a step's cost grows with the field's item count. The certified route reads
 // the item through the field grammar certificate instead
-// (`midgard/field_grammar_certificate_v1`), so its cost no longer grows with
+// (`midgard/field_grammar_certificate_v1`), so its cost does not grow with
 // the field's item count: the preimage is hashed once against the same
 // commitment, the certificate bound to that commitment supplies the item
 // count, and the item is reached from the nearest waypoint in at most
@@ -576,9 +552,8 @@ pub fn machine_field_item_bytes(item: MachineFieldItemV1) -> ByteArray {
   field_read_range(item.view, item.item_offset, item.item_length)
 }
 
-/// Chunk `chunk_index` of the item, in `bounded_item_v1.chunk_bytes` units —
-/// the same window the retired `ChunkProofV1.chunk` carried, now sliced out of
-/// authenticated bytes instead of opened against a per-item root.
+/// Chunk `chunk_index` of the item, in `bounded_item_v1.chunk_bytes` units,
+/// sliced out of authenticated bytes.
 ///
 /// The stepping stays because the phases that use it step *within* one item
 /// across several machine steps, and their control state counts chunks — not to
@@ -608,9 +583,8 @@ pub fn machine_field_item_chunk(
 /// The four phases that hand a partially-read item to a later step put this in
 /// their control state, and the later step opens chunk proofs against it. It is
 /// a real Merkle root over the item's chunks, so those openings are satisfiable
-/// and sound; what the rebind changed is that the root is now computed here from
-/// bytes the door authenticated, instead of being asserted by a prover's
-/// `ItemProofV1` against a flat field hash it could never match.
+/// and sound, and it is computed here from bytes the door authenticated rather
+/// than asserted by a prover.
 pub fn machine_field_item_commitment(item: MachineFieldItemV1) -> ByteArray {
   bounded_item_v1.from_bytes(
     item.field_index,

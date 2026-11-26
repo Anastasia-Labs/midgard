@@ -18,11 +18,8 @@ import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-appl
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, "../../..");
 /**
- * #609: this leg used to be dormant unless `MIDGARD_REAL_BLUEPRINT_PATH` was
- * set, so its assertions ran nowhere by default and went stale unnoticed (it
- * still claimed the CEK direct resolver declared four parameters long after the
- * blueprint declared five). It now defaults to the in-tree blueprint, and the
- * env var only redirects it.
+ * This leg defaults to the in-tree blueprint, so its assertions always run;
+ * `MIDGARD_REAL_BLUEPRINT_PATH` only redirects it.
  */
 const currentTreeBlueprintPath =
   process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
@@ -228,11 +225,9 @@ describe("validation resolver production-builder parameter application", () => {
       ).not.toBe(independentlyAppliedSuccessor);
     }
 
-    // #605: under Plutus V3 an under-applied script is an always-succeeds
-    // script -- it would let any prover collect the award. Every strict prefix
-    // of the declared parameter list must therefore differ from what is
-    // deployed, which is exactly the fault the stale four-vs-five parameter
-    // claim let through.
+    // Under Plutus V3 an under-applied script is an always-succeeds script --
+    // it would let any prover collect the award. Every strict prefix of the
+    // declared parameter list must therefore differ from what is deployed.
     for (const [validator, titles, deployed] of [
       [selectionValidator, selectionTitles, selectionSemantic],
       [contextStepValidator, contextStepTitles, contextStepSemantic],

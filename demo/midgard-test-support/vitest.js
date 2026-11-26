@@ -64,10 +64,7 @@ const cmlMemoryReserveExecArgv = `--import=${
  * allocate linear memory outside the V8 heap, and linear memory never shrinks:
  * whatever a file's heaviest journey needed stays resident for the life of the
  * worker. A fresh process per file hands that memory back when the file ends,
- * so one file's peak never becomes the next file's floor. (Through
- * `@lucid-evolution/uplc` 0.2.22 the same isolation was also what kept the
- * per-evaluation leak, fixed in lucid-evolution PR #728, from reaching the
- * ~4 GiB wasm32 ceiling and surfacing as `EvaluatorError: unreachable`.)
+ * so one file's peak never becomes the next file's floor.
  *
  * `maxForks` is the separate, purely-scheduling bound, and is the caller's to
  * justify — the packages that use this differ in why they pick their ceiling.
@@ -90,8 +87,8 @@ const cmlMemoryReserveExecArgv = `--import=${
  * value-conservation case 819 s -> 383 s, 4,624 -> 25 major GCs), a 30-file
  * fault-proof sample 1242 s -> 773 s, node emulator files 5% and watcher
  * files 1% faster. The preload also runs a full GC each time resident memory
- * outside the JS heap climbs 64 MB, standing in for the GC trigger the grows
- * used to give: without it CML's garbage, freed only by finalizers after a
+ * outside the JS heap climbs 64 MB, standing in for the GC trigger a grow
+ * gives: without it CML's garbage, freed only by finalizers after a
  * GC, walked the transition-trace lifecycle file through the whole
  * reservation and into an 85 s GC storm that cost the run its results (the
  * preload's note has the numbers). Peak worker RSS still rises with the
@@ -242,7 +239,7 @@ const workspaceBundleGuard = fileURLToPath(
  * needs it, a source project.
  *
  * Why: with one fresh process per test file (`isolatedForksPool`), every file
- * used to have Vite transform and evaluate the whole workspace graph it
+ * would have Vite transform and evaluate the whole workspace graph it
  * reaches, module by module, over the worker RPC — 2,300–2,600 modules for a
  * file that touches the fault-proofs barrel, most of a file's start-up time.
  * Here the workspace code the suite reaches, this package's own `src/`
@@ -260,7 +257,7 @@ const workspaceBundleGuard = fileURLToPath(
  * What a bundle changes, and how each is held:
  * - A `vi.mock` of anything outside the source region (a package, a builtin,
  *   or this package's `src/`), a `vi.spyOn` on a bundled module's namespace,
- *   and `vi.resetModules` no longer reach bundled code. Files using them
+ *   and `vi.resetModules` do not reach bundled code. Files using them
  *   (directly or through local helpers) are routed to the source project;
  *   `workspace-bundle-guard.js` fails any mock or reset the routing misses.
  * - A file that would load a bundled module from source as well (an entry

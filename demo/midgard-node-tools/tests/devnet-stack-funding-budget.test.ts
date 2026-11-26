@@ -77,22 +77,8 @@ describe("devnet genesis fee runway", () => {
     expect(BigInt(FUNDING_POLICY.totalSupplyLovelace)).toBeLessThan(
       45_000_000_000_000_000n,
     );
-    expect(
-      BigInt(FUNDING_POLICY.legacyMainBudgetLovelace) * 7n +
-        ROLE_COLLATERAL_LOVELACE * 7n +
-        1_000_000_000n,
-    ).toBeLessThan(spendable);
-    const legacy = readFileSync(
-      new URL(
-        "../devnet/phase4-process/scripts/fund-wallets.sh",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    expect(legacy).toContain("legacyMainBudgetLovelace");
-    expect(legacy).toContain('"$lovelace" -ge "$required_balance"');
     const generator = readFileSync(
-      new URL("../devnet/phase4-process/scripts/generate.sh", import.meta.url),
+      new URL("../devnet/isolated-chain/scripts/generate.sh", import.meta.url),
       "utf8",
     );
     expect(generator).toContain("funding-policy.json");

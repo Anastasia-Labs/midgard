@@ -26,7 +26,6 @@ import "midgard-node/services/index";
 import "midgard-node/transactions/reference-scripts";
 import "../package.json" with { type: "json" };
 import "./commands/e2e-finalize-summary.js";
-import "./commands/e2e-journal-kill-recovery-acceptance.js";
 import "./commands/e2e-process-cleanup.js";
 import "./commands/e2e-service.js";
 import "./commands/e2e-stress-l2-throughput/index.js";

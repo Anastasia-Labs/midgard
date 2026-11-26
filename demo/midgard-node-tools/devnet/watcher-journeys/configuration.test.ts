@@ -21,7 +21,7 @@ it.skipIf(runDirectory === undefined)(
     );
     await verifyJourneyConfiguration({
       runDirectory: runDirectory!,
-      ogmiosUrl: `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`,
+      ogmiosUrl: `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT}`,
     });
   },
 );

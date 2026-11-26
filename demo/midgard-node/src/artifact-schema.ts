@@ -11,7 +11,7 @@
  *   optional keys, trims strings, messages like "<label> must be a
  *   non-empty string".
  * - The strict dialect (`exactKeysRecord`, `boundedNonEmptyString`, …),
- *   originally from the MPF commit-candidate artifacts: exact key-set
+ *   used by the MPF commit-candidate artifacts: exact key-set
  *   equality, bounded NUL-free strings, messages like "<label> must be a
  *   bounded nonempty string". Stricter semantics, not just different words.
  *
@@ -285,7 +285,7 @@ export const nodeSignal = (value: unknown, label: string): NodeJS.Signals =>
   oneOf(value, label, NODE_SIGNAL_NAMES);
 
 // ---------------------------------------------------------------------------
-// Strict dialect (originally the MPF commit-candidate artifact primitives).
+// Strict dialect (the MPF commit-candidate artifact primitives).
 // Exact key-set equality, bounded strings, canonical paths/digests. Messages
 // and acceptance are pinned by artifact tests; do not fold into the canonical
 // combinators above.

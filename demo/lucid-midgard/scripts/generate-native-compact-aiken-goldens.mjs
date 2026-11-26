@@ -19,12 +19,11 @@
  * whole-module golden channels in `midgard-core`/`midgard-sdk`.
  *
  * Binding is by constant **name**, through
- * `@al-ft/midgard-core/scripts/golden-channel.mjs`. It used to be by value, and
- * that was a latent hazard: sibling fixtures legitimately share bytes (every
- * empty field commits to the same hash), so a value-keyed `replaceAll` could
- * rewrite a constant belonging to a different fixture, or to a locally
- * constructed struct in an unrelated shape test. A name that is missing is now an
- * error rather than a silent no-op.
+ * `@al-ft/midgard-core/scripts/golden-channel.mjs`, not by value: sibling
+ * fixtures legitimately share bytes (every empty field commits to the same
+ * hash), so a value-keyed `replaceAll` could rewrite a constant belonging to a
+ * different fixture, or to a locally constructed struct in an unrelated shape
+ * test. A missing name is an error, not a silent no-op.
  *
  * `--check` asserts the checked-in modules are exactly what the fixtures imply,
  * without writing — the contract every generator in this repo shares. Before
@@ -276,14 +275,9 @@ const FIXTURE_FAMILIES = [
     },
     integerConstants: {},
     // §4's flat commitment of a preimage — `blake2b_256` over the bytes, which is
-    // what the Aiken twin computes. These were generated separately from the
-    // `hashes.*` above because the two were *not* the same quantity: the compact
-    // form carried the retired counted commitment on the TypeScript side while
-    // Aiken had been flat since #567, and keeping both generated meant the
-    // convergence would show up as two constants becoming equal rather than as a
-    // hand edit. #585 made them equal, and the `preimageCommitmentAgreement`
-    // map below now *enforces* it, so this pair is a cross-check rather than a
-    // gap.
+    // what the Aiken twin computes. It equals the matching `hashes.*` above,
+    // and the `preimageCommitmentAgreement` map below enforces that, so this
+    // pair is a cross-check.
     preimageCommitmentConstants: {
       golden_core_spend_inputs_preimage_hash: "preimages.spendInputsCborHex",
       golden_core_reference_inputs_preimage_hash:
@@ -370,7 +364,7 @@ const derivedFacetMismatches = (derived, fixtureSubtree, prefix = "") => {
  *
  * Deliberately a same-file redundancy check, not an Aiken-keyed one: the Aiken
  * modules legitimately lag the JSON between a fixture sync and this run, which is
- * the normal working order, and an Aiken-keyed interlock used to abort on it.
+ * the normal working order, and an Aiken-keyed interlock would abort on it.
  * `tests/native-compact-goldens.test.ts` asserts the "stale generated artifact"
  * wording for exactly this case: reject the tampered fixture, never repair it.
  */
@@ -409,8 +403,8 @@ for (const family of FIXTURE_FAMILIES) {
       bytes(fixtureValueAt(fixture, dottedPath, family.label)),
     );
     // §4: a field's committed hash *is* the flat commitment of its preimage.
-    // Before #585 these two derivations disagreed by construction; emitting a
-    // pair that disagrees again would publish a golden no on-chain door accepts.
+    // Emitting a pair that disagrees would publish a golden no on-chain door
+    // accepts.
     const committedPath = family.preimageCommitmentAgreement?.[name];
     if (committedPath !== undefined) {
       const committed = fixtureValueAt(fixture, committedPath, family.label);

@@ -1,6 +1,6 @@
 /**
  * Default `MAX_DURABLE_ADMISSION_BACKLOG`: 60 s at the 5,000 TPS design rate
- * (design D5). Provisional until the M1 measurement sets it.
+ * Provisional until the admission latency measurement sets it.
  */
 export const DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG = 300_000;
 
@@ -14,7 +14,7 @@ export const DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES =
 
 /**
  * Percent of both backlog bounds that anonymous submissions (`/submit`) may
- * fill. Peer-forwarded txs may fill the rest (design D5), so a public burst
+ * fill. Peer-forwarded txs may fill the rest, so a public burst
  * cannot stop operators sharing their users' txs.
  */
 export const ANONYMOUS_ADMISSION_SHED_PERCENT = 80;

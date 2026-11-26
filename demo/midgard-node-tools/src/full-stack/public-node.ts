@@ -222,7 +222,7 @@ async function assertCaVerifiesCertificate(
 }
 
 /**
- * Phase 1: every public input a deployment needs before it spends anything.
+ * Checks every public input a deployment needs before it spends anything.
  * Runs in loadStackConfig, so `--check` and a full run refuse alike. Moves
  * the node's secrets from the private node configuration into `env` for the
  * host deployment commands. The release itself is signed later

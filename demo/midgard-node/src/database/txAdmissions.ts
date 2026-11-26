@@ -3,7 +3,6 @@ import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";
 import "@effect/sql";
 import "effect";
-import "../e2e/phase1-accept-crash-checkpoint.js";
 import "../services/follower-write-gate.js";
 import "../sha256.js";
 import "./deposits.js";

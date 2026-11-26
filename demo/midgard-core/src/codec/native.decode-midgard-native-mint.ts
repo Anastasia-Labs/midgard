@@ -200,8 +200,8 @@ export const decodeMidgardNativeMint = (
   // §5.6: field 5 is the enveloped list of per-policy items. The decoder checks
   // policy-id and asset-name ordering and rejects duplicates, so CML never sees
   // a mint the committed bytes did not canonically spell. An empty field is
-  // exactly `80`, like every other field — the retired raw-map form spelled it
-  // `a0` and is prohibited.
+  // exactly `80`, like every other field; a raw map (`a0` when empty) is
+  // prohibited.
   const items = decodeMidgardFieldItems(5, preimageCbor).items;
   if (items.length === 0) {
     return undefined;

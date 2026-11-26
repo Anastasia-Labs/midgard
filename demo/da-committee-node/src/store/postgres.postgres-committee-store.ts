@@ -42,7 +42,6 @@ import {
   assertPostgresDecisionSignature,
   assertPostgresDecisionSourceState,
   assertSignatureRowIdentity,
-  COMMITTEE_TABLES,
   decodeParsedRow,
   decodeRecord,
   decodeRow,
@@ -136,7 +135,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
     const store = new PostgresCommitteeStore(pool, instanceLock);
     try {
-      await store.renameLegacyTables();
       await initializeCommitteeSchema(pool, instanceLock, options.openChecks);
       store.retirement.load(await store.getRetirementFloor());
     } catch (error) {
@@ -834,22 +832,6 @@ export class PostgresCommitteeStore implements CommitteeStore {
     });
   }
 
-  /** Rename legacy watcher_* tables in place to preserve existing data.
-   * Skip each rename when its committee_* table already exists. */
-  private async renameLegacyTables(): Promise<void> {
-    const statements = COMMITTEE_TABLES.map(
-      (table) => `
-      DO $$
-      BEGIN
-        IF to_regclass('committee_${table}') IS NULL
-           AND to_regclass('watcher_${table}') IS NOT NULL THEN
-          ALTER TABLE watcher_${table} RENAME TO committee_${table};
-        END IF;
-      END
-      $$;`,
-    );
-    await this.pool.query(statements.join("\n"));
-  }
   private async upsertRecord<T extends { readonly headerHash: string }>(
     tableName: string,
     headerHash: string,

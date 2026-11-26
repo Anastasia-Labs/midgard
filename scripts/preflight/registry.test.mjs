@@ -137,6 +137,18 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
       }
       continue;
     }
+    // This corpus is transaction bytes the midgard-validation boundary tests
+    // build and TypeScript consumers decode; no Aiken module reads it.
+    if (check.id === "golden:retained-da-boundary-corpus-v1") {
+      for (const path of [
+        "demo/midgard-fault-proofs/scripts/generate-retained-da-boundary-corpus-v1.mjs",
+        "demo/midgard-fault-proofs/tests/fixtures/retained-da-boundary-corpus-v1.json",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
     // This fixture is TypeScript program material that only a vitest suite
     // decodes and executes; no Aiken module reads it.
     if (check.id === "golden:cek-program-large-integer") {
@@ -407,7 +419,6 @@ test("a changed file no trigger names is reported as uncovered", () => {
   assert.deepEqual(selection.uncovered, ["some-new-top-level-file.txt"]);
 });
 
-// These used to depend on the contributor finding verification.md's manual table.
 test("docs, specification and devnet edits select their required checks", () => {
   for (const [path, expected] of [
     [
@@ -439,7 +450,7 @@ test("docs, specification and devnet edits select their required checks", () => 
     ["Makefile", ["spec-build"]],
     [".github/workflows/latex-ci.yml", ["spec-build"]],
     [
-      "demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh",
+      "demo/midgard-node-tools/devnet/isolated-chain/scripts/generate.sh",
       ["devnet-assets"],
     ],
   ]) {
@@ -478,14 +489,12 @@ test("new validation runs the documented commands with its own prerequisites", (
     ["spec-build", ["nix"], [["make", "spec"]]],
     [
       "devnet-assets",
-      ["node-modules", "blueprint"],
+      ["node-modules"],
       [
         [
           "node",
           "--test",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
+          "demo/midgard-node-tools/devnet/isolated-chain/tests/assets.test.mjs",
         ],
       ],
     ],

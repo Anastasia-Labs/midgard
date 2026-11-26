@@ -209,7 +209,7 @@ export const MissingSignatureStep02Datum =
 /**
  * Mirrors `midgard/fraud_proofs/missing_signature/step_02.Args`.
  * `required_signers_opening` must be the `BodyFieldOpening` arm (field 4 is
- * the body's; the arm is derived by `fieldOpeningV1ForField`, never chosen).
+ * the body's; the arm is derived by `fieldOpeningForField`, never chosen).
  * The ordinal indexes field 4's fixed 28-byte stride; out-of-domain aborts
  * on-chain (`field_item_at`, §7.3 abort-never-clamp).
  */

@@ -13,13 +13,13 @@
 //// Why the tx-id and not the field hash. Under §4's plain hashing a field
 //// commitment carries no field index and no domain tag, so field 0 and field 1
 //// preimages with the same items hash alike, and a hash on its own says
-//// nothing about which slot it came from. Carrying the *hash* forward is what
-//// forced every downstream step to re-hash a whole reproduced item list to use
-//// it — the shape measured in #551, where reproducing the spend-input
-//// collection put the double-spend and no-input proofs past the ledger's memory cap at the
-//// admissible 296-input cardinality. Carrying the *tx-id* forward instead
-//// costs the same 32 bytes of thread state and buys the door: positional
-//// extraction happens inside it, and the read that follows is a slice.
+//// nothing about which slot it came from. Carrying the *hash* forward would
+//// force every downstream step to re-hash a whole reproduced item list to use
+//// it, and reproducing the spend-input collection puts the double-spend and
+//// no-input proofs past the ledger's memory cap at the admissible 296-input
+//// cardinality. Carrying the *tx-id* forward costs the same 32 bytes of thread
+//// state and buys the door: positional extraction happens inside it, and the
+//// read that follows is a slice.
 ////
 //// What binds what:
 ////
@@ -31,31 +31,27 @@
 ////     bytes simply fail. Nothing is trusted about its provenance.
 ////   * the field index is a **literal at the call site**, never a redeemer
 ////     argument, so a step that means to read field 0 cannot be steered onto
-////     field 1 — which matters precisely because §4 removed the domain
-////     separation that used to make that impossible.
+////     field 1, which matters because §4's field hashes carry no domain
+////     separation.
 ////   * the carriage tier is the prover's choice among §8's three, and the door
-////     verifies whichever is named — for every field, including 6–8 under
-////     tier 3 since #606's repair (owner ruling 2026-08-16). The §8.6
-////     certificate datum carries a mint-welded `field_hash`, and the door
-////     requires it to equal the commitment reached from the **anchored**
-////     structures — for a witness-set field, the chain that reaches the
-////     anchored `witness_set_hash` — so a certificate minted against a
-////     fabricated witness set wears the fabricated hash and fails at the
-////     door. The former fields-6–8 tier-3 refusal
-////     (`carriage_reaches_the_anchor`, §8.3 erratum E2 limit 3) lifted with
-////     that weld.
+////     verifies whichever is named, for every field, including 6–8 under tier
+////     3. The §8.6 certificate datum carries a mint-welded `field_hash`, and
+////     the door requires it to equal the commitment reached from the
+////     **anchored** structures — for a witness-set field, the chain that
+////     reaches the anchored `witness_set_hash` — so a certificate minted
+////     against a fabricated witness set wears the fabricated hash and fails at
+////     the door.
 ////
 //// A step that opens **more than one field** of the same transaction says so
 //// once. `anchored_native_tx` verifies the anchor and hands back an
 //// `AnchoredNativeTxV1`; `anchored_field_view` and `anchored_field_walk` then
 //// open each field against it, one carriage per field, with the §2.5 pairing
-//// re-run every time — the one per-field guard this module owns, since #606's
-//// repair deleted the second (`carriage_reaches_the_anchor`; see
+//// re-run every time, the one per-field guard this module owns (see
 //// `field_pairs_with`). The single-field `opened_field_view` and
 //// `opened_field_walk` below are exactly that sequence with one field in
 //// it. Why the split is worth a type: re-deriving the transaction id costs
 //// roughly 211k memory units, and a two-field step through the single-field
-//// entry points paid it twice over — while the obvious cheap fix, reaching
+//// entry points pays it twice over, while the obvious cheap fix, reaching
 //// `authenticated_field_view` directly with one pre-verified structure, buys
 //// the saving by stepping outside that guard.
 ////
@@ -109,7 +105,7 @@ use midgard/validation_trace_v1.{Forced, Normal, ValidationSourceKind}
 
 // §2.5's positional field table, named. Call sites pass one of these literals
 // rather than a redeemer argument, so which slot a step reads is a property of
-// the compiled validator. Spelling them out is not decoration: §4 removed
+// the compiled validator. Spelling them out is not decoration: §4 has no
 // field-index domain separation, so fields 0 and 1 — and 3 and 4 — commit
 // identically for identical items, and the index is the *only* thing that tells
 // a reference-input opening from a spend-input one.
@@ -171,12 +167,12 @@ pub type FieldOpeningV1 {
 /// `anchored_field_walk`).
 ///
 /// **Internal representation, not a frozen wire surface.** `FieldOpeningV1` is
-/// a redeemer field on the Q1x step validators, so its constructor order is wire
-/// format and cannot move; this type appears in no datum, redeemer or validator
-/// parameter, has no SDK twin, and is only ever built inside the caller that
-/// immediately hands it to `anchored_native_tx`. Its constructors are laid out in
-/// `FieldOpeningV1`'s order for readability — same §2.5 split, same order — and
-/// nothing off-chain depends on that.
+/// a redeemer field on the family step validators, so its constructor order is
+/// wire format and cannot move; this type appears in no datum, redeemer or
+/// validator parameter, has no SDK twin, and is only ever built inside the
+/// caller that immediately hands it to `anchored_native_tx`. Its constructors
+/// are laid out in `FieldOpeningV1`'s order for readability — same §2.5 split,
+/// same order — and nothing off-chain depends on that.
 pub type NativeTxOpeningV1 {
   /// Fields 0–5. No witness set is consulted, so none is carried.
   BodyTxOpening { native_tx_compact_cbor: ByteArray }
@@ -209,9 +205,8 @@ pub type NativeTxOpeningV1 {
 pub type NativeTxAnchorV1 {
   /// Fields 0–5. 32 bytes of thread state.
   BodyAnchor { tx_id: ByteArray, source_kind: Int }
-  /// Fields 6–8. 64 bytes of thread state — the same width the retired
-  /// per-collection-hash idiom cost, spent on a value that covers all three
-  /// witness-set fields instead of one.
+  /// Fields 6–8. 64 bytes of thread state, covering all three witness-set
+  /// fields.
   WitnessAnchor {
     tx_id: ByteArray,
     witness_set_hash: ByteArray,
@@ -258,22 +253,23 @@ pub opaque type AnchoredNativeTxV1 {
 /// authenticate-once).
 ///
 /// Both levels §2.5 has are checked here, exactly as the single-field entry
-/// points always checked them: `verify_native_tx_compact_cbor_v1` re-derives the
+/// points check them: `verify_native_tx_compact_cbor_v1` re-derives the
 /// transaction id from the supplied bytes, and for a witness-set opening the
 /// re-derived compact structure's `witness_set_hash` must be the **anchored**
 /// one. What is *not* checked here is anything per-field — the field index and
 /// the carriage tier are `anchored_field_view`'s and `anchored_field_walk`'s,
 /// because a handle exists precisely to be opened at more than one of each.
 ///
-/// **Why this is a separate function at all.** `verify_native_tx_compact_cbor_v1`
-/// re-derives the id by hashing the body CBOR, and that hash is the dominant
-/// per-opening cost — measured at roughly 211k memory units.
-/// A step opening two fields through the single-field entry points paid it
-/// twice, and paid it a third time if it also needed the compact structure for
-/// itself. The saving is not available by reaching `authenticated_field_view`
-/// directly: that route leaves the caller outside the §2.5 pairing, which is
-/// the guard #575 closed a reproduced forgery with. So the opening that pays
-/// once lives here, where the guard still applies to every field it opens.
+/// **Why this is a separate function at all.**
+/// `verify_native_tx_compact_cbor_v1` re-derives the id by hashing the body
+/// CBOR, and that hash is the dominant per-opening cost — measured at roughly
+/// 211k memory units. A step opening two fields through the single-field entry
+/// points pays it twice, and a third time if it also needs the compact
+/// structure for itself. The saving is not available by reaching
+/// `authenticated_field_view` directly: that route leaves the caller outside
+/// the §2.5 pairing, the guard that refuses a forged witness set. So the
+/// opening that pays once lives here, where the guard still applies to every
+/// field it opens.
 pub fn anchored_native_tx(
   opening: NativeTxOpeningV1,
   anchor: NativeTxAnchorV1,
@@ -385,7 +381,7 @@ pub fn anchored_native_tx_version(anchored: AnchoredNativeTxV1) -> Int {
 /// `WitnessTxOpening` handle it is the anchored value (checked in
 /// `anchored_native_tx`), but for a `BodyTxOpening` handle it is the prover's,
 /// and the handle does not say which arm produced it. Handing it out would put
-/// the one ingredient #575's reproduced forgery needs — an unanchored
+/// the one ingredient a witness-set forgery needs — an unanchored
 /// `witness_set_hash` to authenticate an arbitrary witness set against — one
 /// `authenticated_field_view` call away from a value the type system labels
 /// anchored. Reading a witness-set field goes through `anchored_field_view` or
@@ -650,7 +646,7 @@ pub fn opened_certified_field(
 /// `None` is `field_item_at` over the view `opened_field_view` opens, with the
 /// same checks in the same order. `Some(i)` reads the item through the field
 /// grammar certificate at reference input `i`, bound as
-/// `opened_certified_field` binds it, so the step's cost no longer grows with
+/// `opened_certified_field` binds it, so the step's cost does not grow with
 /// the field's item count. Both routes open the field through
 /// `authenticated_field_view_with_commitment_by`, so a step carries the door
 /// once. Both return the same bytes for the same field and index, and both
@@ -855,13 +851,10 @@ pub fn opened_certified_field_walk_from_grammar(
 /// is reachable from an honest family, which is exactly why it is asserted
 /// rather than assumed.
 ///
-/// Until #606 (owner ruling 2026-08-16) a second per-field guard lived here:
-/// `carriage_reaches_the_anchor`, the §8.3-erratum-E2-limit-3 refusal of
-/// tier-3 carriage at fields 6–8. It lifted with the repair — the §8.6
-/// certificate datum now carries a mint-welded `field_hash` and the door
-/// itself requires it to equal the commitment derived from the anchored
-/// structures, so every tier reaches the anchor for every field and the
-/// refusal had nothing left to refuse.
+/// Tier-3 carriage needs no second guard here: the §8.6 certificate datum
+/// carries a mint-welded `field_hash` and the door requires it to equal the
+/// commitment derived from the anchored structures, so every tier reaches the
+/// anchor for every field.
 fn field_pairs_with(anchored: AnchoredNativeTxV1, field_index: Int) -> Bool {
   expect
     anchored.opens_witness_set_fields == (
@@ -879,21 +872,6 @@ fn tx_opening_of(opening: FieldOpeningV1) -> NativeTxOpeningV1 {
       WitnessTxOpening { native_tx_compact_cbor, witness_set }
   }
 }
-
-// `carriage_reaches_the_anchor` — the §8.3-erratum-E2-limit-3 refusal of
-// tier-3 carriage at the witness-set fields — lived here until #606's repair
-// (owner ruling 2026-08-16) and was deleted with it rather than left as a
-// guard that cannot fail. Its argument was that the §8.6 certificate's
-// authority was a token named `(tx_id, field_index)`, minted against a
-// `witness_set_hash` the minter's own redeemer supplied — a value §3's id
-// preimage does not cover — so for fields 6–8 the certificate bound the
-// preimage to nothing the thread anchored. The repair moved the binding into
-// the datum: the mint welds `field_hash` to the verified chunk vector, and
-// the door refuses a certificate whose `field_hash` differs from the
-// commitment it derived from the anchored structures. A certificate minted
-// against a fabricated witness set wears the fabricated hash and fails that
-// equality, so every tier now reaches the anchor for every field. E2's
-// disposition in `docs/spec/midgard-tx.md` §8.3 records the resolution.
 
 fn carriage_of(opening: FieldOpeningV1) -> FieldCarriageV1 {
   when opening is {
@@ -931,7 +909,7 @@ fn carriage_of(opening: FieldOpeningV1) -> FieldCarriageV1 {
 /// crosses them today; taking the pair means none can.
 ///
 /// **Two limits, both loud, both documented in `docs/spec/midgard-tx.md` §8.3
-/// erratum E2.** For a variable-width field this is O(N) by construction, so a
+/// (whole-field walks and witness-set authentication).** For a variable-width field this is O(N) by construction, so a
 /// family that folds one is buying a cost that grows with the disputed
 /// transaction — measured for a direct whole-field walk over field 6 (script
 /// witnesses) at ~2.7× the execution-basis memory at the field-6 maximum's 224-witness
@@ -940,7 +918,7 @@ fn carriage_of(opening: FieldOpeningV1) -> FieldCarriageV1 {
 /// carriage tiers 1–2: under tier 3 it aborts rather than hand back the §5.1
 /// header's self-assertion, so such a field cannot be folded under Certified
 /// carriage at all. Both aborts are unconditional — nothing here clamps — and
-/// resolving either is §10's resumable walk, i.e. #565/#579.
+/// resolving either is §10's resumable walk.
 pub fn fold_opened_field(
   opened: Pair<FieldViewV1, FieldWalkCheckpointV1>,
   state: a,

@@ -71,7 +71,7 @@ describe("V1 purpose-kind to redeemer-pointer mapping", () => {
 /**
  * The field index a `canonicalDecode` step is reading.
  *
- * #597: `TransactionFieldItemWitness` carries only a `FieldCarriageV1` — the
+ * `TransactionFieldItemWitness` carries only a `FieldCarriageV1` — the
  * phase takes both the field index and the item index from its own control, so
  * the auxiliary does not repeat them. The control is position 4 of the step's
  * work-witness array, which is where the machine writes it, so reading it here
@@ -90,13 +90,10 @@ export const canonicalDecodeFieldIndex = (
 /**
  * The carriage plan input a field-reading step carries for one field.
  *
- * This replaces a `carriage: { carriage: "Inline" }` assertion, and it is
- * stronger than what it replaces rather than weaker. A step no longer names a
- * tier at all — §8.4's partition is applied at evidence commitment, where a
- * transaction exists to resolve reference inputs against — so "the producer
- * chose tier 1" is no longer a property of the trace to assert. What is worth
- * pinning is the thing the arm now means: the step read the **real** field, byte
- * for byte, out of the transaction under test.
+ * A step names no tier — §8.4's partition is applied at evidence commitment,
+ * where a transaction exists to resolve reference inputs against — so what is
+ * worth pinning is that the step read the **real** field, byte for byte, out
+ * of the transaction under test.
  */
 export const expectedFieldPlanInput = (
   txCbor: Buffer,
@@ -110,7 +107,7 @@ export const expectedFieldPlanInput = (
 /**
  * The §5.1 preimage a field-reading step read.
  *
- * Since #600 a step carries the carriage **plan input**, so this is a field read
+ * A step carries the carriage **plan input**, so this is a field read
  * rather than a tier assertion: the tier is chosen later, at evidence
  * commitment, and these rows are about which bytes a step named.
  */

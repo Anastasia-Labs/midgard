@@ -773,14 +773,12 @@ fn tier_three_decoy_preimage() -> ByteArray {
 /// absent a guard the fold would report absence and this step would finalize a
 /// slashing proof against an honest operator.
 ///
-/// What stands here since #606's repair (owner ruling 2026-08-16) is the
-/// door's welded-hash equality: the decoy certificate wears the decoy vector's
+/// What stands here is the door's welded-hash equality: the decoy certificate wears the decoy vector's
 /// commitment in its mint-welded `field_hash`, and `certified_chunks` requires
 /// that value to equal the commitment reached through the **anchored**
 /// `witness_set_hash` — which is the committed witness set's, not the decoys'.
-/// Remove that expect and this test passes — the E2 exposure, reopened at a
-/// real step. E2's disposition in `docs/spec/midgard-tx.md` §8.3 records the
-/// repair.
+/// Remove that expect and this test passes, a forged witness set accepted at a
+/// real step (`docs/spec/midgard-tx.md` §8.3).
 test missing_signature_step_04_rejects_certified_carriage() fail {
   let block = fixture.challenged_block_v1()
   let preimage = tier_three_decoy_preimage()

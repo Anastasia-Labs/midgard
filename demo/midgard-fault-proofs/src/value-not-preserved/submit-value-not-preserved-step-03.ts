@@ -60,7 +60,6 @@ import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.j
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
@@ -147,9 +146,6 @@ export type ValueNotPreservedStep03Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitValueNotPreservedStep03Result =
-  OutsideWorkflowSubmission<ValueNotPreservedStep03Build>;
 
 export const buildValueNotPreservedStep03 = async ({
   lucid,

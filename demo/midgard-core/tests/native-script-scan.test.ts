@@ -19,7 +19,7 @@ const signature = (fill: number): MidgardNativeScript => ({
 });
 
 describe("native script syntax scan V1", () => {
-  it("iteratively scans canonical trees beyond the retired count caps", () => {
+  it("iteratively scans a 41-node canonical tree", () => {
     const script: MidgardNativeScript = {
       type: "all",
       scripts: Array.from({ length: 40 }, (_, index) => signature(index)),
@@ -33,7 +33,7 @@ describe("native script syntax scan V1", () => {
     expect(isExactMidgardNativeScriptStructureTerminal(terminal)).toBe(true);
   });
 
-  it("iteratively scans canonical trees beyond the retired depth cap", () => {
+  it("iteratively scans a depth-20 canonical tree", () => {
     let script = signature(0x44);
     for (let depth = 0; depth < 20; depth += 1) {
       script = { type: "all", scripts: [script] };

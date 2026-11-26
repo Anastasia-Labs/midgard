@@ -169,8 +169,8 @@ export const effectiveMints = (
 /**
  * §5.6: field 5 is the **enveloped list of per-policy items** under the §5.1
  * grammar — `82 ‖ 58 1C policy_id ‖ map(k) ‖ asset entries` per item, and an
- * empty mint is exactly `80` like every other field. The retired raw-map
- * `encode_mint_preimage` form (`a0` when empty) is prohibited.
+ * empty mint is exactly `80` like every other field; a raw map (`a0` when
+ * empty) is prohibited.
  *
  * `sortMidgardMintItems` puts the items into §5.6's canonical key order at both
  * levels; `encodeMidgardFieldPreimageForField` then *enforces* that order rather

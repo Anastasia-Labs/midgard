@@ -1,6 +1,6 @@
 /**
- * The follow loop's failure classes (owner ruling 2026-10-09: retry only
- * what is transient): how `classifyStreamFailure` sorts the transport's
+ * The follow loop's failure classes (retry only what is
+ * transient): how `classifyStreamFailure` sorts the transport's
  * typed failures (the shared rows are in `role-failure.conformance.test.ts`),
  * and that the loop reopens a stream or restarts the store on a
  * transient failure however often it repeats, and stops under

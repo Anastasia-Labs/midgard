@@ -25,9 +25,6 @@ vi.mock("../src/services/index.js", async (importOriginal) => ({
 vi.mock("../src/services/settlement.js", () => ({
   settlementWalletAddress: () => "unused-before-native-preflight",
 }));
-vi.mock("../src/e2e/phase1-accept-crash-checkpoint.js", () => ({
-  assertPhase1AcceptCrashCheckpointConfiguration: Effect.void,
-}));
 vi.mock("../src/services/native-mpf-startup.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../src/services/native-mpf-startup.js")

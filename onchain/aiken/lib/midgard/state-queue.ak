@@ -174,8 +174,7 @@ pub type CompletedFraudWitness {
 /// reward; the handler locates it as the single output at the prover's bounty
 /// address (`operator_directory.bounty_routing_is_exact_v1`).
 /// `OperatorAlreadySlashed` consumes no operator-directory node, so it has no
-/// bond to route, and the handler refuses any reward-shaped output on that arm
-/// (2026-08-11 owner ruling).
+/// bond to route, and the handler refuses any reward-shaped output on that arm.
 pub type SlashingApproach {
   SlashActiveOperator { active_operators_redeemer_index: Int }
   SlashRetiredOperator { retired_operators_redeemer_index: Int }

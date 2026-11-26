@@ -686,8 +686,6 @@ test empty_material_refuses_a_spare_carriage_entry() fail {
 }
 
 /// The other direction: a field with material and no entry left to spend on it.
-/// This is what stood here before #594 as the whole of the predicate — material
-/// meant refusal — and it survives as the missing-carriage case.
 test material_bearing_order_fails_closed_on_a_body_field() fail {
   material(sample_v1_transaction(False), [], [])
 }

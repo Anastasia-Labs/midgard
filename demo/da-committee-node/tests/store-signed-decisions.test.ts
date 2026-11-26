@@ -161,7 +161,7 @@ describe("signed decisions (class B) for the obligations projection", () => {
     ]);
   });
 
-  it("retains unknown legacy clocks without substituting coverage end", async () => {
+  it("retains unknown clocks without substituting coverage end", async () => {
     const store = await openTestCommitteeStore();
     await store.saveL1SourceState(sourceState);
     const headerHash = "e5".repeat(28);

@@ -6,21 +6,17 @@
  *
  * The shared door is specified in
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
- * Thread state carries `verified_tx_id`, the §2.5 anchor; the
- * redeemer carries a `FieldOpening` rather than a reproduced
- * `reference_inputs_preimage`.
+ * Thread state carries `verified_tx_id`, the §2.5 anchor; the redeemer carries
+ * a `FieldOpening`.
  *
- * **Position, not encoding, is what separates field 1 from field 0.** The header
- * this replaces claimed a spend-inputs preimage "can never open this commitment"
- * because the items were committed under a different `from_items` index; §4
- * removed field-index domain separation, so identical items commit identically
- * in both slots and it is the index named at the door — mirrored here by
+ * **Position, not encoding, is what separates field 1 from field 0.** §4 has
+ * no field-index domain separation, so identical items commit identically in
+ * both slots and it is the index named at the door — mirrored here by
  * {@link planFaultProofFieldOpening} — that refuses the substitution.
  *
- * This family's on-chain step 02 takes a single flat `Args` record: there is no
- * `Complete`/`CompletePublished`/`FoldStart`/`FoldNext` sum, hence no fold to
- * drive from here. What varies now is only §8's carriage tier, and the plan
- * chooses it from the preimage's own length.
+ * This family's on-chain step 02 takes a single flat `Args` record. What varies
+ * is only §8's carriage tier, and the plan chooses it from the preimage's own
+ * length.
  */
 
 import "@al-ft/midgard-sdk/core";

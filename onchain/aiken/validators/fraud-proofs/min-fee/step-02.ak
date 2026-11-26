@@ -125,7 +125,7 @@ validator main(
         //    as committed bytes, in both directions. The fee formula reads
         //    each field's byte length only, never an item, so the step
         //    authenticates the bytes against their commitment and does not
-        //    walk the field's grammar: its cost no longer grows with a
+        //    walk the field's grammar: its cost does not grow with a
         //    field's item count. The witness half is bound to the
         //    thread-carried `bad_tx.witness_set_hash` before any witness
         //    field is read (§3's transaction id commits the body alone).
@@ -645,7 +645,7 @@ test min_fee_step_02_fixture_only_at_a_large_inline_field() {
 }
 
 /// The same large field carried inline: the step reads its byte length
-/// only, so the cost no longer grows with the field's item count.
+/// only, so the cost does not grow with the field's item count.
 test min_fee_step_02_accepts_a_fee_below_the_minimum_at_a_large_inline_field_cost() {
   run_large(large_case(False, True, 1))
 }

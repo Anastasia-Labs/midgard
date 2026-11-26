@@ -58,8 +58,8 @@ import {
  * lambda VALUE instead of running the validator body. Evaluation terminates
  * without error, and the ledger reads "no error" as SUCCESS — the deployment is
  * an unconditional always-succeeds script whose Aiken guards never execute.
- * That is exactly how ten validation-trace semantic resolvers shipped after
- * #592 added their `field_preimage_certificate_policy_id` parameter.
+ * Ten validation-trace semantic resolvers once shipped that way after gaining
+ * a `field_preimage_certificate_policy_id` parameter.
  * Applying too MANY is a well-formed script with a wrong hash, which surfaces
  * days later as a credential that matches nothing on chain.
  *

@@ -121,11 +121,8 @@ export type PreparedInputNoIdxProofFit = {
   readonly producingTxCompactCborBytes: number;
   /**
    * §5.1's envelope over field 0's items — the bytes §8.4 partitions on.
-   *
-   * #604: this replaced the retired `completeItemCarriage`/`step02Execution`
-   * pair, which reported a direct/fold split that no longer exists. Step-02 has
-   * one route; what varies is which §8 tier the preimage travels under, and
-   * §8.4 decides that from this length alone.
+   * Step-02 has one route; what varies is which §8 tier the preimage travels
+   * under, and §8.4 decides that from this length alone.
    */
   readonly step02SpendInputsPreimageBytes: number;
   /** The tier §8.4 selects for that preimage: `Inline`, `RawUtxo` or `Certified`. */

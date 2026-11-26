@@ -34,10 +34,10 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 
 /**
- * #690 AC2: the pooled DA bond from a real init backs the node's first
+ * The pooled DA bond from a real init backs the node's first
  * attestation, and a pool that cannot back one (drained below one bond, or
  * withdrawing) makes the node skip the round with a typed warning instead of
- * failing its attestation loop (decision E5).
+ * failing its attestation loop.
  */
 
 const BOOTSTRAP_TIMEOUT_MS = 600_000;

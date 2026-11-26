@@ -82,7 +82,7 @@ export const PublishedChunkInclusionArgs =
 /**
  * How a step's membership opening reaches L1. Constructor order mirrors the
  * aiken `NativeTxInclusionCarriage` sum exactly: `RedeemerCarriedInclusion`
- * first (the pre-#545 route, proof in the redeemers), `PublishedChunkInclusion`
+ * first (proof in the redeemers), `PublishedChunkInclusion`
  * second (proof published beforehand, this transaction names its chunks).
  */
 export const NativeTxInclusionCarriageSchema = Data.Enum([

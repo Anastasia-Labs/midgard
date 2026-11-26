@@ -6,7 +6,7 @@
  *
  * ## What this axis is
  *
- * The membership-depth axis (covered by published-chunk carriage, issue #545)
+ * The membership-depth axis (covered by published-chunk carriage)
  * is about how deep a proof the challenged BLOCK can force. This
  * one is about how many inputs the challenged TRANSACTION spends. Two of the
  * four foundational families carry it, and they carry it differently:
@@ -82,7 +82,8 @@
  * measured directly instead, as a per-input memory spread across two
  * cardinalities on the same route, in the closing row of this file.
  *
- * The legacy submitters (`buildStep03`, `buildStep04`, `neSubmitStep02`)
+ * The double-spend and non-existent-input submitters (`buildStep03`,
+ * `buildStep04`, `neSubmitStep02`)
  * expose the programmatic `publishCarriage` option `buildInputNoIdxStep02`
  * has: `publish` demotes the ladder's `Inline` pick to tier 2, the preimage
  * publishes once as raw carriage (§8.7) and the step references it for a

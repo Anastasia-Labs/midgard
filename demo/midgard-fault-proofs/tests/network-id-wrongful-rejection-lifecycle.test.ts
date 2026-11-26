@@ -512,9 +512,9 @@ describe("networkId wrongful-rejection real lifecycle", () => {
   it("scans the maximum raw-carriage outputs field in batches, mints, and removes", async () => {
     const { harness, refs } = await makeHarness();
     // The scan folds the field in `scan_batch` batches, so the supported shape
-    // is no longer bounded by what one transaction can decode: it is the
+    // is not bounded by what one transaction can decode: it is the
     // largest field raw-UTxO carriage can hold. The pinned count is that
-    // planner bound, re-derived here so a carriage change cannot silently
+    // planner bound, computed here so a carriage change cannot silently
     // shrink the family's coverage.
     const outputCount = MAXIMUM_SUPPORTED_OUTPUT_COUNT;
     expect(outputCount).toBe(

@@ -121,9 +121,8 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   script failures, times relative to the emulator
   ([SKILL.md](../SKILL.md#6-time-and-fees-in-emulator-tests)).
 - **Does not prove:** real provider response shapes, submit lag against a
-  real node, or chain-sync behavior. Emulator ledger rules also lag the real
-  ledger at times: lucid 0.6.5 was needed before the emulator refused a
-  reference input that is also spent (`967b1698b`). When the emulator is more
+  real node, or chain-sync behavior. Emulator ledger rules can lag the real
+  ledger. When the emulator is more
   permissive than the ledger, update the dependency rather than skipping the
   negative.
 
@@ -178,9 +177,10 @@ transport, provider behavior or recovery on real services. Use
 [midgard-e2e-acceptance](../../midgard-e2e-acceptance/SKILL.md) before
 operating services, and
 [demo/midgard-node-tools/devnet/AGENTS.md](../../../../demo/midgard-node-tools/devnet/AGENTS.md)
-for devnet configuration. A live run found the Ogmios v6 `queryNetwork/tip`
-shape that every test double had wrong (`b4a427d61`, `9eabcdc0c`); once found,
-the durable guard is a lower-level test whose double answers the real shape.
+for devnet configuration. A live run catches a provider response shape that
+every test double has wrong, such as Ogmios v6 `queryNetwork/tip`; once it
+does, the durable guard is a lower-level test whose double answers the real
+shape.
 
 ## Whole-workspace runs
 

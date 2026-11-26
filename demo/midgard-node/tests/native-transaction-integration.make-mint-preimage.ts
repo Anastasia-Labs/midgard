@@ -107,9 +107,8 @@ export const makeProtectedScriptValueOutput = (
 /**
  * The §5.1 preimage of field 8, built through the production encoder.
  *
- * The retired counted scheme concatenated bare four-element arrays here; §5.1
- * wraps every item of every field in a definite byte string, so the array-of-
- * arrays form no longer decodes. The `tag` stays a number because that is what
+ * §5.1 wraps every item of every field in a definite byte string, so an
+ * array-of-arrays form does not decode. The `tag` stays a number because that is what
  * `CML.RedeemerTag` and `MidgardRedeemerTag` hand the call sites — §5.3's
  * purpose-tag table does the translation.
  *
@@ -218,9 +217,8 @@ export const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
  * The flat `(policy, asset, quantity)` entries the call sites spell are grouped
  * per policy and sorted into §5.6's canonical key order — plain byte order —
  * at both levels, because the encoder *enforces* that order
- * rather than imposing it, and the decoder rejects anything else. The retired
- * scheme spelled this field as a raw CBOR map and is no longer a field preimage
- * at all.
+ * rather than imposing it, and the decoder rejects anything else, a raw CBOR
+ * map included.
  */
 export const makeMintPreimage = (
   entries: readonly {
@@ -261,11 +259,11 @@ export const makeMintPreimage = (
 };
 
 /**
- * The retired empty-mint spelling, `a0`, kept only so the negative test below
- * can prove it is refused. §5.1 gives every one of the nine fields exactly one
- * empty spelling — `80`, which is {@link EMPTY_CBOR_LIST}.
+ * Cardano's empty-mint spelling, an empty map `a0`. §5.1 gives every one of the
+ * nine fields exactly one empty spelling — `80`, which is
+ * {@link EMPTY_CBOR_LIST}.
  */
-export const RETIRED_MINT_MAP_CBOR = Buffer.from(encodeCbor(new Map()));
+export const EMPTY_MINT_MAP_CBOR = Buffer.from(encodeCbor(new Map()));
 
 /**
  * A §5.1-valid field-5 preimage whose single §5.6 item is deliberately

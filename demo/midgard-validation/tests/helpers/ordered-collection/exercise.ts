@@ -57,9 +57,8 @@ export const exerciseMidgardOrderedCollectionBoundary = ({
   }
 
   // §4 authenticates a field once, over its whole preimage, against the hash the
-  // compact structure carries. The retired counted chain verified each chunk
-  // opening here instead; under §4 a per-item opening has nothing to be checked
-  // against, so the single whole-field check is the authentication.
+  // compact structure carries; that single whole-field check is the
+  // authentication.
   const reconstructed = reconstructMidgardTransaction({
     transactionId,
     transactionCommitment,
@@ -154,7 +153,7 @@ export const exerciseMidgardOrderedCollectionBoundary = ({
     itemCount: fieldChunks[0]!.collectionProof.itemCount,
     revealStepCount: fieldChunks.length,
     completeFoldStepCount: completeChunks.length,
-    // #597: a step's reveal is its §8 carriage, and which carriage is not a
+    // A step's reveal is its §8 carriage, and which carriage is not a
     // choice — `selectMidgardFieldCarriageTier` is §8.4's partition, so a
     // preimage of this length has exactly one admissible tier. Measuring the
     // admitted tier is what makes this figure the reveal a prover actually
@@ -164,7 +163,7 @@ export const exerciseMidgardOrderedCollectionBoundary = ({
     //
     // The indices below are representative, because this is a *size*
     // measurement and a positional index is a small integer whichever UTxO it
-    // names. Since #600 that shape is supplied the same way production supplies
+    // names. That shape is supplied the same way production supplies
     // a real one — as the carriage resolver `encodeValidationAuxiliaryWitnessCbor`
     // takes — so this measurement sits on the production seam rather than beside
     // it. Resolving *real* indices needs a concrete transaction (§8.7 addresses

@@ -56,7 +56,7 @@ describe("watcher canonical V1 rule bundle", () => {
   });
 
   it.each(["Preprod"] as const)(
-    "loads the exact W02-bound profile on %s",
+    "loads the exact deployment-authority-bound profile on %s",
     (network) => {
       const { authority, bundle, verifiedIdentity } = fixture(network);
       const loaded = loadWatcherRuleBundle({
@@ -372,7 +372,7 @@ describe("watcher canonical V1 rule bundle", () => {
     );
   });
 
-  it("requires raw signed W02 authority and rejects forged summaries, signatures, policies, and trust roots", () => {
+  it("requires raw signed deployment authority and rejects forged summaries, signatures, policies, and trust roots", () => {
     const { authority, bundle, verifiedIdentity } = fixture();
 
     authorityRejected(

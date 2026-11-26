@@ -1,10 +1,9 @@
 # Review lenses and calibration
 
 Hand this file, whole, to every reviewer in pass 1 and pass 2. Each lens is a
-question to hunt with, not a box to tick. Each one comes from a defect or a
-false alarm this repository has already had; the history is cited so that you
-can check it, and so that nobody relaxes a lens without knowing what it
-closes. Facts are as of 2026-09-25.
+question to hunt with, not a box to tick. Each one names the defect class or
+false alarm it targets; do not relax a lens without knowing what it closes
+`[review]`. Facts are as of 2026-09-25.
 
 ## Calibration
 
@@ -17,7 +16,7 @@ A finding is reported only when all of these hold:
 2. **A trace.** Each step from that source to the outcome, with `path:line`.
 3. **An outcome that matters.** An honest block removed or an honest party
    slashed; a fraudulent block that cannot be proven; value created, taken or
-   frozen; liveness lost; a transaction that no longer fits its budget in a
+   frozen; liveness lost; a transaction that cannot fit its budget in a
    supported shape; a guard that cannot fail.
 4. **Reachability.** Why nothing earlier in the transaction, the thread, or
    the SDK refuses the input first.
@@ -34,12 +33,10 @@ no look for excess is half a review.
 These are **not** findings:
 
 - A validator that does not re-check its own `validator main(...)`
-  parameters. On-chain code trusts deployment parameters by owner ruling; see
-  the parameter-trust lens.
+  parameters. On-chain code trusts deployment parameters; see the
+  parameter-trust lens.
 - "`tx_id` should hash `witness_set_hash`." The two commitments are separate
   by design; see the anchoring lens for what the real question is.
-- Legacy fault-proof families that still attach step scripts inline. The
-  reference-script ruling governs new work; see that lens.
 - "Consider more validation" with no input that gets through.
 - A failure only we could cause, or whose whole cost is fees, a rebuilt
   transaction or a repeated read. A transaction of ours landing
@@ -60,12 +57,10 @@ These are **not** findings:
 
 On-chain code trusts deployment parameters: a validator never re-checks a
 `validator main(...)` parameter's width, cardinality or domain
-([contracts.md](../../../../docs/agents/contracts.md)). The owner ruled this on
-2026-09-04; commit `fa52b3844` removed about 22 parameter-only checks from
-fifteen validators and libraries, because they spent execution units on every
-spend re-proving a fixed fact. The shape checks moved to the SDK, into
-`assertParameterShapes`, which `applyBlueprintParams` calls on every
-application
+([contracts.md](../../../../docs/agents/contracts.md)), because such a check
+spends execution units on every spend re-proving a fixed fact. The shape
+checks live in the SDK, in `assertParameterShapes`, which
+`applyBlueprintParams` calls on every application
 `[runtime: assertParameterShapes, demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:364]`.
 
 Ask:
@@ -82,16 +77,13 @@ Ask:
 ### 2. Always-succeeds scripts
 
 Under Plutus V3 a validator that receives too few parameters reduces to a
-lambda value, and the ledger reads "no error" as success. Ten validation-trace
-semantic resolvers shipped that way after a parameter was added that the SDK
-did not apply: a challenger could defeat any honest block (found by the
-symmetric-soundness emulator test; fixed in `ac54d01a1`).
+lambda value, and the ledger reads "no error" as success. A resolver deployed
+with one parameter too few lets a challenger defeat any honest block.
 `applyBlueprintParams` refuses too few and too many parameters
 `[runtime: applyBlueprintParams]`.
 
-Blind spot: a site that deploys `compiledCode` bare never reaches that guard.
-`f26292930` and `9d84bf552` closed the known bare loaders, and on 2026-11-23 `demo/*/src` held 43 `compiledCode`
-reads.
+Blind spot: a site that deploys `compiledCode` bare never reaches that guard;
+on 2026-11-23 `demo/*/src` held 43 `compiledCode` reads.
 
 Ask:
 
@@ -110,9 +102,9 @@ Ask:
 ### 3. Decoders and the pinned compiler
 
 Every `expect` over `Data` is a decoder, and its domain is the set of values
-it accepts. Stock Aiken v1.1.22 named generated decoders by the local type
-name only, so two same-named types in different modules shared one decoder,
-and the shipped blueprint had under-strict decoders on the adjudication path
+it accepts. Stock Aiken v1.1.22 names generated decoders by the local type
+name only, so two same-named types in different modules share one decoder and
+the blueprint gets under-strict decoders on the adjudication path
 (`MintRedeemer` alone is declared in 12 modules). The fork that
 `demo/flake.lock` pins fixes it, and every script, the pre-commit hook and CI
 run only that compiler, through `scripts/aiken`
@@ -158,7 +150,7 @@ Ask:
   (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`). The bad-settlement
   slash builder, `incompleteResolveSettlementProgram` in
   `demo/midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts`,
-  still uses a bare
+  uses a bare
   `setMinFee` (see
   [invariants-user-events.md](invariants-user-events.md) UE7).
 - Mint and burn: is each minted token's quantity, name and destination
@@ -178,14 +170,14 @@ Precision example, a finding that looked real and was not: "`tx_id` does not
 commit `witness_set_hash`." The transaction id is the Level-2 commitment over
 the body and the witness-set hash is a separate Level-1 commitment, by design.
 Adding the witness-set hash to the id's preimage would be the bug. The real
-question was whether the witness-set hash a proof reads is still tied to the
+question is whether the witness-set hash a proof reads is still tied to the
 block-authenticated commitment.
 
-The real defect of that shape: a field-preimage certificate could be minted
-over a fabricated witness set, because the consuming door selected the
-certificate by token name without comparing its field hash to the anchored
-commitment. `d14c3e9aa` welded `field_hash` into the mint-verified
-datum and added the equality at the door. The decision record states the rule:
+The real defect of that shape: a door that selects a field-preimage
+certificate by token name, without comparing its field hash to the anchored
+commitment, accepts a certificate minted over a fabricated witness set. The
+certificate mint welds `field_hash` into its verified datum, and the door
+checks the equality. The decision record states the rule:
 "Token naming or an anchored witness-set hash without that comparison cannot
 substitute for content authentication"
 ([field-carriage decision](../../../../docs/midgard/decisions/field-carriage-authentication-and-budgeting.md)).
@@ -201,17 +193,14 @@ Ask:
 ### 6. Reference scripts for fault-proof steps
 
 Fault proofs and their supporting witness scripts deploy as published
-reference scripts, never attached inline, whatever their size. The in-tree
-record of this owner ruling (2026-08-26) is the header of
-`demo/midgard-fault-proofs/src/witness-reference-scripts.ts`; `d3df3323e`
-(2026-08-29, "require published reference scripts") removed the inline
-fallback. Submitters hash-check each reference script against the script the
-transaction executes, and a missing entry fails closed
+reference scripts, never attached inline, whatever their size
+(`demo/midgard-fault-proofs/src/witness-reference-scripts.ts`). Submitters
+hash-check each reference script against the script the transaction executes, and a missing entry fails closed
 `[runtime: requireWitnessReferenceScriptUtxo]`
 (`witness-reference-scripts.ts`; linear families use
 `requireLinearFaultReferenceScript`,
-`demo/midgard-fault-proofs/src/linear-fault-family.ts`). Older families
-that still attach inline are not a precedent for new work.
+`demo/midgard-fault-proofs/src/linear-fault-family.ts`). A family that
+attaches inline is not a precedent for new work.
 
 Blind spot: the runtime check covers only the builders that call it, and
 the lint `midgard/fault-proof-reference-scripts-only` refuses a new
@@ -247,22 +236,17 @@ Ask:
 
 ### 8. Gates that cannot fail
 
-A gate that cannot fail looks exactly like a healthy one. One sweep confirmed
-24 of them. Recurring shapes:
+A gate that cannot fail looks exactly like a healthy one. Its shapes:
 
 - a zero-collection Aiken selector that exits 0
   (`[script: onchain/aiken/scripts/run-focused-check.mjs]` and
   `guard-focused-selector.mjs` fail closed on zero);
 - an Aiken `test ... fail` over an `and { }`, which passes as soon as any one
-  conjunct is false, including the one the test meant to exercise (fixed in
-  `7d01f2b71`);
-- a runtime gate whose condition is always met in production: the watcher's
-  predecessor-ledger gate checked `replayContext === undefined`, which a
-  launch-scope family always set (`1b53eafd8`);
+  conjunct is false, including the one the test meant to exercise;
+- a runtime gate whose condition is always met in production, such as an
+  `=== undefined` test of a field every production caller sets;
 - a check whose expected value comes from the artifact under test;
-- a fix applied to one copy of duplicated code while a twin keeps the defect:
-  the empty-payload bind was fixed family by family over five commits, and a
-  hand-parsing copy with no caller remains
+- a fix applied to one copy of duplicated code while a twin keeps the defect
   ([invariants-fraud-proofs.md](invariants-fraud-proofs.md) FP6).
 
 Ask:
@@ -309,7 +293,7 @@ the sibling `Check ... golden vectors` steps. Blind spot: editing a producer
 then regenerating re-greens both suites, so the channel shows drift only when
 the goldens are not regenerated.
 
-History: on-chain `parse_script_ref`
+Open instances: on-chain `parse_script_ref`
 (`onchain/aiken/lib/midgard/ledger-output-v1.ak`) accepts tag-0
 reference-script bytes as opaque, while the TypeScript codec parses them and
 throws on malformed bytes (`demo/midgard-core/src/codec/versioned-script.ts`),
@@ -338,14 +322,11 @@ credential; redeemers by purpose `[review]`. The emulator enforces only the
 ledger rules its version implements, so an emulator pass is evidence, not
 proof.
 
-History: native-script-decoding step-03 built positional reference-input
-indices from the carriage UTxOs alone, while the ledger sorts the complete
-reference-input set, so whenever the step's own reference script sorted first
-the index named the wrong UTxO (`fc635c8f9`). The emulator itself once let
-a transaction's reference inputs overlap its inputs, which the ledger refuses
-when a PlutusV3 script runs; lucid-evolution 0.6.5 added the rule, and a
-duplicate-operator slash that proved itself with the node being removed is
-now refused as it would be on chain (`967b1698b`).
+Easy to miss: positional reference-input indices built from a subset (the
+carriage UTxOs alone) name the wrong UTxO whenever another reference input
+sorts first, because the ledger sorts the complete set. The ledger refuses
+reference inputs that overlap inputs when a PlutusV3 script runs; the
+emulator enforces that rule from lucid-evolution 0.6.5.
 
 Ask:
 
@@ -362,23 +343,18 @@ When a change replaces or retires a path (a new redeemer arm, a rewritten
 step, a family moved onto a new door), list the guards the old path enforced
 and find each one on the new path `[review]`.
 
-History:
+Easy to miss:
 
-- The first rebind onto the authenticated field door re-derived the witness-set hash but dropped the MPF anchoring the
-  old path had; review reproduced an end-to-end forgery, and `2fec6b0fb`
-  restored the anchor.
-- `c07ac1326` (2026-04-07), an off-chain PR about queuing block
-  submission, deleted the state queue's `end_time` equality; it stayed gone
-  until `66d2d5d54` (2026-07-29).
-- `3e3090aa1` (2026-08-31) removed the link-removal arm's operator check on a
-  sound argument (a descendant's operator legitimately differs after
-  rotation) without binding the anchor's operator in its place. See
-  [invariants-state-queue.md](invariants-state-queue.md) SQ5; the relaxation
-  awaits an owner ruling in #643.
+- a rebind onto a new door that re-derives a hash but drops the anchoring
+  equality the old path had
+  ([invariants-fraud-proofs.md](invariants-fraud-proofs.md) FP5);
+- an unrelated change, such as an off-chain PR, that deletes a consensus
+  equality ([invariants-state-queue.md](invariants-state-queue.md) SQ1);
+- a check removed on a sound argument with nothing weaker in its place.
 
-The counter-example is also instructive: `d14c3e9aa` deleted
-`carriage_reaches_the_anchor` rather than keep a guard that could no longer
-fail once the certificate mint welded the field hash.
+The converse holds too: a guard that can no longer fail is deleted, not kept.
+Once the certificate mint welds the field hash, `carriage_reaches_the_anchor`
+has nothing left to check.
 
 Ask:
 
@@ -400,12 +376,10 @@ authenticated commitment, is a free choice. A free choice lets a challenger
 dispute an honest step with a different valid successor and remove an honest
 block `[review]`.
 
-History: on 2026-09-30 a change to the CEK redeemer-context select replaced a
-pinned choice ("the item at `redeemer_count - cursor - 1`") with a bound ("any
-purpose below `purpose_bound`"). A challenger could then skip a lower purpose
-that carries a redeemer, and an emulator scenario showed the award accepted
-against an honest block. The first review pass missed it because no lens
-asked this question.
+Easy to miss when a pinned choice becomes a bound: a CEK redeemer-context
+select that admits "any purpose below `purpose_bound`" instead of "the item at
+`redeemer_count - cursor - 1`" lets a challenger skip a lower purpose that
+carries a redeemer and win the award against an honest block.
 
 Ask:
 
@@ -429,11 +403,11 @@ Ask:
 
 ### 14. Excess
 
-Every finding a reviewer raises about a gap pushes code in; nothing pushed it
-out until the owner did. On 2026-11-21 the owner had the fault-proof workflow's
-remembered sends, coin holds, restart wait, rebroadcast and three-minute
-wallet-only bound deleted: each covered a case that was unrealistic or cost
-only fees, and the ledger plus the node's mempool already answered it.
+Every finding a reviewer raises about a gap pushes code in; this lens pushes
+it out. Remembered sends, coin holds, restart waits, rebroadcasts and
+wallet-only time bounds in a fault-proof workflow are the standing example:
+each covers a case that is unrealistic or costs only fees, and the ledger plus
+the node's mempool already answer it.
 
 Ask:
 

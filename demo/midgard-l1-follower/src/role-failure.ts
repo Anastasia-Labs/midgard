@@ -1,6 +1,5 @@
 /**
- * The one failure classification every role shares (owner ruling
- * 2026-10-09): a process exits only when a restart could
+ * The one failure classification every role shares: a process exits only when a restart could
  * plausibly fix the failure. `classifyRoleFailure` sorts a failure into a
  * `RoleFailureClass` by the codes and messages in one table; each role's
  * adapter maps the class to what it does, and differs only where the role

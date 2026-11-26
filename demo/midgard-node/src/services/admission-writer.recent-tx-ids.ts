@@ -2,7 +2,7 @@ import { hash, randomBytes } from "node:crypto";
 
 import type { Status } from "../database/txAdmissions.js";
 
-/** Recently written tx ids the admission path remembers (design D9). */
+/** Recently written tx ids the admission path remembers. */
 export const ADMISSION_RECENT_TX_ID_CAPACITY = 1 << 20;
 
 const INITIAL_CAPACITY = 1 << 12;

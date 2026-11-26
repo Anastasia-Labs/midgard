@@ -145,8 +145,8 @@ export class MidgardMpf {
   }
 
   /** Builds a deterministic Level-backed fixture with `fromList`, then reopens
-   * only its root. This is intentionally benchmark-only: production bootstrap
-   * continues to use the audited confirmed-ledger migration path. */
+   * only its root. Only tests and the `mpf-replay` command seed with it:
+   * production bootstrap stamps the audited confirmed-ledger root. */
   public static createLevelFromListForBenchmark(
     trieName: string,
     levelDBFilePath: string,
@@ -506,7 +506,7 @@ export class MidgardMpf {
    * logical reset only: the overlay's original rollback root remains intact
    * and callers must explicitly flush/promote after their journal or recovery
    * boundary. Non-overlay callers persist the root marker immediately for
-   * standalone migration and recovery tooling.
+   * standalone recovery tooling.
    */
   public resetToRoot(root: Buffer): Effect.Effect<void, MpfError> {
     return Effect.gen(this, function* () {

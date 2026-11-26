@@ -82,10 +82,8 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDKCore.MidgardValidators>
     const payout = yield* mkAuthVal("payout");
     const withdrawal = yield* mkAuthVal("withdrawal");
     const txOrder = yield* mkAuthVal("tx_order");
-    // #579 retired the `txOrderFieldPreimage` and `txOrderFieldReceipt`
-    // stand-ins with the tx-field family itself. This one always-succeeds spend
-    // validator is all that survives of them, and it now serves only the two
-    // roles that are still deployed. This service exists to give the node a
+    // One always-succeeds spend validator serves the two certificate roles.
+    // This service exists to give the node a
     // contract set that always succeeds, so the §8.6 certificate below is a
     // spend+mint pair like every other authenticated role, not a real
     // certificate policy.
@@ -147,8 +145,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDKCore.MidgardValidators>
     // service builds the real da-hash-preimage chain from the Aiken blueprint.
     const daHashPreimage = zeroInput;
 
-    // Same devnet aliasing for the three families registered by #547: the
-    // always-succeeds blueprint carries no `no_reference_input`,
+    // Same devnet aliasing for three more families: the always-succeeds blueprint carries no `no_reference_input`,
     // `reference_input_no_idx`, or `invalid_signature` stub, so each reuses
     // the stub of the family it mirrors on-chain. Devnet only: the production
     // contracts service builds the real chains from the Aiken blueprint.

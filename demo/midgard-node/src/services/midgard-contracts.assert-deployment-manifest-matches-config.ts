@@ -100,7 +100,7 @@ export const assertDeploymentManifestMatchesConfig = (
       `economics.slashingPenaltyLovelace manifest=${manifest.economics.slashingPenaltyLovelace.toString()} config=${nodeConfig.OPERATOR_SLASHING_PENALTY_LOVELACE.toString()}`,
     );
   }
-  // B5: a housekeeping window shorter than the manifest's declared retention
+  // A housekeeping window shorter than the manifest's declared retention
   // is a config fault, refused here at startup rather than pruned against.
   try {
     resolveHousekeepingRetentionDays({

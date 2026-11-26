@@ -439,7 +439,7 @@ fn after_mint() -> vm_machine_types.CekRedeemerContextControlV1 {
 }
 
 /// The control after the spend (frontier index 0) was selected and folded
-/// first, as the retired witness-list order did.
+/// first, as the witness-list order does.
 fn after_spend() -> vm_machine_types.CekRedeemerContextControlV1 {
   expect Some(spend_purpose) = script_context_v1.script_purpose_summary_v1(
     0,
@@ -508,7 +508,7 @@ test redeemer_fold_refuses_a_select_with_another_redeemer_item() fail {
   )
 }
 
-// M5. The retired witness-list order folded the spend first. Its second
+// M5. The witness-list order folds the spend first. Its second
 // select names the mint at frontier index 1 from the bound 0 that step left.
 test redeemer_fold_refuses_the_witness_list_order() fail {
   honest_select_step(spend_and_mint(), after_spend(), 1, 0)

@@ -83,7 +83,7 @@ export type NativeScriptDecodingProverEvidence = {
   readonly txInclusion: (
     finding: NativeScriptDecodingFinding,
   ) => Promise<SubmitStep01TxInclusion>;
-  /** Optional #545 published-chunk carriage for the step-01 opening. */
+  /** Optional published-chunk carriage for the step-01 opening. */
   readonly publishedProofChunks?: (
     finding: NativeScriptDecodingFinding,
   ) => Promise<readonly PublishedProofChunk[] | null>;

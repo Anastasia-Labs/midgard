@@ -141,7 +141,7 @@ describe("watcher projection on the fork simulator: fresh replay + independent c
       expect(failure(outcome)).toBe("ok");
     });
 
-  it("holds the ruling-2 pins through many pruned depth-k forks", async () => {
+  it("holds the pinned reads through many pruned depth-k forks", async () => {
     const seen = coverage();
     const outcome = await run(LONG_PRUNED, [projection(seen)]);
     expect(failure(outcome)).toBe("ok");

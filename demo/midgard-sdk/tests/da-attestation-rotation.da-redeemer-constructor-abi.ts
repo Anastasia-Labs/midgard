@@ -119,11 +119,10 @@ describe("DA redeemer constructor ABI", () => {
   });
 
   it("abi 3 — the apply redeemer carries the governed-params reference index", () => {
-    // The added field. Without it the apply handler has no way to reach
-    // the current DA params, which is precisely how rotation stayed
-    // non-retroactive.
+    // Without this field the apply handler has no way to reach the current
+    // DA params, which is how rotation stays non-retroactive.
     // The pooled-bond apply appends the pool reference and
-    // the beneficiary refund and no longer names an availability-policy mint.
+    // the beneficiary refund and names no availability-policy mint.
     expect(aikenConstructorFields("MintRedeemer", "ApplyToStateQueue")).toEqual(
       [
         "da_attestation_input_index",

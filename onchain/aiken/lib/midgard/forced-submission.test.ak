@@ -35,11 +35,11 @@ test forced_source_golden_vectors() {
   }
 }
 
-test forced_source_rejects_obsolete_envelope() fail {
-  let obsolete = #"84"
+test forced_source_rejects_a_four_element_envelope() fail {
+  let four_element = #"84"
     |> bytearray.concat(bytearray.drop(compact, 1))
     |> bytearray.concat(#"00")
-  expect _decoded = compact.decode_forced_tx_compact_v1(obsolete)
+  expect _decoded = compact.decode_forced_tx_compact_v1(four_element)
 }
 
 test forced_source_rejects_noncanonical_encoding() fail {

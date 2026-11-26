@@ -3,24 +3,7 @@ import {
   type NormalizedTimeRange,
 } from "@al-ft/midgard-sdk/fraud-proof";
 
-import { type SubmitProviderConfig } from "./runtime.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
-
-export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
-  readonly blueprintPath: string;
-  readonly deploymentInfoPath: string;
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletPrivateKey?: string;
-  readonly walletPrivateKeyEnv?: string;
-  readonly threadOutRef: string;
-  readonly stateQueueBlockOutRef: string;
-  readonly txInclusionPath: string;
-  readonly awaitConfirmation?: boolean;
-};
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export type InvalidRangeStep01Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -50,9 +33,6 @@ export type InvalidRangeStep01Build = {
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
-
-export type SubmitInvalidRangeStep01Result =
-  OutsideWorkflowSubmission<InvalidRangeStep01Build>;
 
 export type InvalidRangeStep01Layout = {
   readonly inputIndex: bigint;

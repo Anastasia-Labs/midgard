@@ -297,7 +297,7 @@ it("uses the operator's withdrawal validity separately from body/signature fidel
   ).toBe(Effect.runSync(SDKFraudProof.withdrawalContentCommitment(info)));
 });
 
-it("parses complete opening artifacts and refuses the obsolete datum-only shape", () => {
+it("parses complete opening artifacts and refuses any other field set", () => {
   for (const parse of [
     parseSubmitFabricatedDepositAuthenticContent,
     parseSubmitFabricatedWithdrawalAuthenticContent,

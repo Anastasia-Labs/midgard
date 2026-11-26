@@ -94,6 +94,6 @@ if (findings.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    `No forbidden HTTP/URL tokens found in ${files.length.toString()} migrated DA libp2p target file(s).\n`,
+    `No forbidden HTTP/URL tokens found in ${files.length.toString()} DA libp2p target file(s).\n`,
   );
 }

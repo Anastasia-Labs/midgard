@@ -191,9 +191,7 @@ export const validateDaPayloadConsensus = (body: SDKDa.DaPayloadBody): void => {
     }
     // No `transaction_commitment` to check: the committed source carries the
     // proof-source triple and nothing derived from it, so the three equalities
-    // above are the whole of the binding. The retired field was
-    // `computeMidgardNativeTxProofCommitmentV1(derived)` by construction, and a
-    // check of a value against its own derivation could only ever pass.
+    // above are the whole of the binding.
     return decodedTxId;
   };
 

@@ -77,12 +77,11 @@ validator main(
         //    against the commitment extracted positionally from the compact
         //    structures `verified_tx2_id` binds.
         //
-        //    This is the step #551 measured. Under
-        //    the retired idiom it reproduced tx2's entire spend-input
-        //    collection to re-hash it, which put the proof past the ledger's
-        //    memory cap at the admissible 296-input cardinality. The door hashes
-        //    the preimage once and the read below is arithmetic, so the cost no
-        //    longer scales with how many inputs tx2 spends.
+        //    The door hashes the preimage once and the read below is
+        //    arithmetic, so the cost does not scale with how many inputs tx2
+        //    spends; reproducing tx2's spend-input collection to re-hash it
+        //    would put the proof past the ledger's memory cap at the admissible
+        //    296-input cardinality.
         let tx2_spend_inputs_view = opened_field_view(
           tx2_spend_inputs_opening,
           BodyAnchor { tx_id: verified_tx2_id, source_kind: 0 },

@@ -1,9 +1,9 @@
 /**
  * Manifest-bound family assembly: one module that turns a family definition
  * plus a runtime config into a manifest-bound workflow, and one generic
- * run-or-resume that launches it. Every family used to restate this
- * lifecycle by hand; a fix to the signer assertion, the certificate
- * requirement or the prerequisite order now lands here once.
+ * run-or-resume that launches it. A fix to the signer assertion, the
+ * certificate requirement or the prerequisite order lands here once for
+ * every family.
  *
  * Assembly order, which the table-driven test locks at the interface:
  *   1. bind the deployment with the definition's step datum schemas;

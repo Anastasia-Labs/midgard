@@ -139,11 +139,9 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
       try: () => {
         const material = deriveTxOrderMaterial({
           submittedTxCbor,
-          // §8.5/§8.7 under #594's ruling: reclaim is an ordinary key spend at
-          // any time after the mint, so the min-Ada authority a tier-3
-          // certificate records has to be a key the creator can sign with. The
-          // event witness script hash stood here while no plan was publishable
-          //; it never was the right authority.
+          // §8.5/§8.7: reclaim is an ordinary key spend at any time after the
+          // mint, so the min-Ada authority a tier-3 certificate records has to
+          // be a key the creator can sign with.
           owner: creatorPaymentKeyHash,
         });
         const plan = planTxOrderMaterialCarriage({
@@ -248,7 +246,7 @@ export const buildUnsignedTxOrderTxWithMetadataProgram = (
       witnessScript,
       witnessRegistrationRedeemer,
       label: "tx order",
-      // #594: the tx-order policy's redeemer is `user_events.MintRedeemer` inside
+      // The tx-order policy's redeemer is `user_events.MintRedeemer` inside
       // its own `MintRedeemer`, beside the §8 carriage vector. The indices in that
       // vector are positional in the final transaction's reference-input set, so
       // they are resolved from `ctx` here and not from the order this builder

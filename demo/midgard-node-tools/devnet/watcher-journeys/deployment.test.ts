@@ -81,8 +81,8 @@ it.skipIf(runDirectory === undefined)(
       zeroSlot: 0,
       slotLength: genesis.slotLength * 1000,
     };
-    const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
-    const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
+    const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_ISOLATED_CHAIN_KUPO_PORT}`;
+    const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT}`;
     const provider = new JourneyLocalKupmios(
       kupoUrl,
       ogmiosUrl,
@@ -223,7 +223,7 @@ it.skipIf(runDirectory === undefined)(
           `${runDirectory}:/run`,
           "--entrypoint",
           "cardano-cli",
-          runEnv.MIDGARD_PHASE4_CARDANO_NODE_IMAGE!,
+          runEnv.MIDGARD_ISOLATED_CHAIN_CARDANO_NODE_IMAGE!,
           "latest",
           ...args,
         ],
@@ -236,7 +236,7 @@ it.skipIf(runDirectory === undefined)(
       `${runDirectory}/cardano/ipc:/ipc`,
       "--entrypoint",
       "sh",
-      runEnv.MIDGARD_PHASE4_POSTGRES_IMAGE!,
+      runEnv.MIDGARD_ISOLATED_CHAIN_POSTGRES_IMAGE!,
       "-ec",
       "chmod 0666 /ipc/node.socket",
     ]);

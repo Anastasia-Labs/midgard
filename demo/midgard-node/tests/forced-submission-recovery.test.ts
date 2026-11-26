@@ -6,10 +6,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
-import {
-  isMidgardConsensusProfile,
-  MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core/consensus-profile";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
@@ -160,8 +157,8 @@ describe("forced submission persistence and recovery", () => {
     );
   });
 
-  it("refuses the old source encoding and old profile identity instead of inferring a migration", async () => {
-    const oldBytes = encodeMidgardNativeTxCanonical(
+  it("refuses native transaction bytes as a forced inclusion source", async () => {
+    const nativeBytes = encodeMidgardNativeTxCanonical(
       materializeMidgardNativeTxFromCanonical({
         ...submitted,
         validity: "TxIsValid",
@@ -170,16 +167,12 @@ describe("forced submission persistence and recovery", () => {
     await expect(
       Effect.runPromise(
         DB.encodeForcedInclusionValueV1({
-          nativeTxCbor: oldBytes,
+          nativeTxCbor: nativeBytes,
           verdict: "ForcedTxValid",
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         }),
       ),
     ).rejects.toThrow();
-    const { forcedTransactionSourceEncoding: removedEncoding, ...oldProfile } =
-      MIDGARD_CONSENSUS_PROFILE;
-    expect(removedEncoding).toBe("midgard-forced-submission-v1");
-    expect(isMidgardConsensusProfile(oldProfile)).toBe(false);
     expect(await run(DB.retrieveAllEntries())).toEqual([]);
   });
 });

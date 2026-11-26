@@ -6,9 +6,8 @@
 //// `spend_input_at`, and the checkpoint wire form. Nothing reaches inside the
 //// walk: no test names a private helper, reads a §5.1 head itself, or asserts
 //// an intermediate offset the seam does not already hand back. That is
-//// deliberate — the walk's internals are exactly the part #571's intra-item
-//// cases are expected to change, and a suite that pinned them would have to be
-//// rewritten alongside them.
+//// deliberate — the walk's internals are the part most likely to change, and a
+//// suite that pinned them would have to be rewritten alongside them.
 ////
 //// The four claims, and how each is actually established here:
 ////
@@ -1285,11 +1284,11 @@ fn uninterrupted_tally() -> Int {
   total
 }
 
-/// AC2, whole. Transaction one exhausts its budget after seven items and
-/// commits `field_walk_checkpoint_hash`; the thread carries that digest and
-/// nothing else. Transaction two re-supplies the 53 positional bytes, re-opens
-/// the field under a **different carriage tier**, and finishes — and lands on
-/// the answer the uninterrupted walk gives.
+/// Resume across transactions, whole. Transaction one exhausts its budget after
+/// seven items and commits `field_walk_checkpoint_hash`; the thread carries
+/// that digest and nothing else. Transaction two re-supplies the 53 positional
+/// bytes, re-opens the field under a **different carriage tier**, and finishes
+/// — and lands on the answer the uninterrupted walk gives.
 ///
 /// The interruption is real: transaction two's fold budget is exactly the
 /// thirteen items transaction one did not reach, so a walk that restarted at

@@ -1010,7 +1010,7 @@ test("excluded fraud-proof categories are distinct catalogue names", () => {
   );
 });
 
-test("the curated emulator profile is the emulator profile with an operator list and the P1 catalogue", () => {
+test("the curated emulator profile is the emulator profile with an operator list and the public catalogue", () => {
   const profiles = readProfiles();
   const strip = ({
     name: _name,

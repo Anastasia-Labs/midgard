@@ -338,19 +338,16 @@ pub fn script_sources_stage_four_with_successor(
       successor_is_exact(ScriptSourcesControlV1 { ..control, stage: 5 }),
     }
   } else {
-    // The fold consumes only the authenticated
-    // (field_index, item_index, item_length, item_commitment) tuple. Under the
-    // retired counted scheme `verify_item` bound that tuple into `outputs_hash`
-    // — which §4 made unsatisfiable — and it is now bound the other way round:
-    // the door authenticates the whole field-2 preimage against `outputs_hash`
-    // and the item's length and `bounded_item_v1` commitment are *derived* from
-    // it, so the tuple is authenticated by construction rather than by an
-    // opening. What has not changed is why the item's bytes are not revealed
-    // here: doing so re-proved only that an authenticated commitment has a
-    // preimage — which canonicalDecode and the stage-5 LedgerOutputProof
-    // traversal already establish for every output — while making stage-4
-    // evidence grow with output size and unbuildable above the L1 envelope for
-    // legal 16,384-byte outputs (C21-STAGE4-GAP). The carriage keeps stage-4
+    // The fold consumes only the authenticated (field_index, item_index,
+    // item_length, item_commitment) tuple. The door authenticates the whole
+    // field-2 preimage against `outputs_hash` and the item's length and
+    // `bounded_item_v1` commitment are *derived* from it, so the tuple is
+    // authenticated by construction rather than by an opening. The item's bytes
+    // are not revealed here: doing so would re-prove only that an authenticated
+    // commitment has a preimage — which canonicalDecode and the stage-5
+    // LedgerOutputProof traversal already establish for every output — while
+    // making stage-4 evidence grow with output size and unbuildable above the
+    // L1 envelope for legal 16,384-byte outputs. The carriage keeps stage-4
     // *redeemer* evidence O(1) in output size only under tiers 2–3, where the
     // preimage rides reference inputs; a tier-1 plan for a large field-2
     // preimage is refused by the L1 transaction size, not by this rule.

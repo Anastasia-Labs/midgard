@@ -16,7 +16,7 @@ describe("durable admission monotone timestamps", () => {
           yield* NodeSchema.ensure;
           yield* resetApplicationTables;
 
-          const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
+          const txCanonicalCbor = Buffer.from("monotone-timestamp");
           const txId = createHash("sha256").update(txCanonicalCbor).digest();
           const admitted = yield* TxAdmissionsDB.tryInsert({
             txId,
@@ -47,7 +47,7 @@ describe("durable admission monotone timestamps", () => {
             future[0]!.future.getTime(),
           );
 
-          const secondCbor = Buffer.from("phase1-monotone-timestamp-second");
+          const secondCbor = Buffer.from("monotone-timestamp-second");
           const secondTxId = createHash("sha256").update(secondCbor).digest();
           const second = yield* TxAdmissionsDB.tryInsert({
             txId: secondTxId,

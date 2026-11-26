@@ -224,8 +224,7 @@ export const buildSizeBalancedNativeTxFixture =
           addressWitnesses.map(encodeMidgardAddressWitnessItem),
         ),
         // §5.1: fields 6 and 8 carry the per-item byte-string envelope like the
-        // other seven. `encodeCborArrayRaw` was the retired counted-era raw
-        // concatenation and is prohibited.
+        // other seven; a raw concatenation is prohibited.
         scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(
           scriptWitnesses.map(encodeMidgardVersionedScript),
         ),

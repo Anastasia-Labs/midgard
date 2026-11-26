@@ -67,7 +67,7 @@ export const sameProcess = (owner) => {
     current !== undefined &&
     current.start === owner.start &&
     current.boot === owner.boot &&
-    (!owner.namespace || current.namespace === owner.namespace)
+    current.namespace === owner.namespace
   );
 };
 
@@ -131,10 +131,9 @@ const ownerState = (record, directory) => {
     return "unknown";
   const self = processIdentity();
   if (owner.boot !== self.boot) return "abandoned";
-  if (owner.namespace && owner.namespace !== self.namespace) return "unknown";
+  if (owner.namespace !== self.namespace) return "unknown";
   const current = processIdentity(owner.pid);
   if (sameProcess(owner) && current.state !== "Z") return "owned";
-  if (!owner.namespace || record.tracksProcessGroups !== true) return "unknown";
   return groupsState(directory, record.token);
 };
 
@@ -236,7 +235,6 @@ export const withResource = async (
     resource,
     token: randomUUID(),
     owner: processIdentity(),
-    tracksProcessGroups: true,
     root: realpathSync(process.cwd()),
     createdAt: new Date().toISOString(),
   };

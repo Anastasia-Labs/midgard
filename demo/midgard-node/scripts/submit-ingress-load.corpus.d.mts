@@ -17,7 +17,7 @@ export declare const corpusCounts: (
   junkMix: Partial<JunkMix>,
 ) => Record<CorpusKind, number>;
 
-export type CorpusManifest = {
+type CorpusManifest = {
   readonly formatVersion: number;
   readonly seed: string;
   readonly networkId: number;

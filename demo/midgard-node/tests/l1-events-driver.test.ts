@@ -1,7 +1,7 @@
 /**
  * The node's follower-change driver (`createFollowerDriver`)
  * over a simulated chain on a SQLite and a Postgres follower store: which
- * change each run applies, the ticket hooks' order, and the holds `/readyz`
+ * change each run applies, the hooks' order, and the holds `/readyz`
  * names. The Postgres sink it drives is covered by
  * `follower-events-ingestion.test.ts`.
  */
@@ -85,7 +85,7 @@ const recordingSink = (answers: (SinkResult | Error)[] = []) => {
   };
 };
 
-/** Every ticket hook, each logging `name:change` and answering `answer`. */
+/** Every hook, each logging `name:change` and answering `answer`. */
 const loggingHooks = (
   log: string[],
   answer: (
@@ -120,7 +120,7 @@ describe.each(["sqlite", "postgres"] as const)(
       return { store, chain };
     };
 
-    it("applies each advance and rewind once with the projection there, then every ticket hook in order", async () => {
+    it("applies each advance and rewind once with the projection there, then every hook in order", async () => {
       const { store, chain } = await followed();
       const deposit = eventOrder("deposit", nonceRef());
       const withdrawal = eventOrder("withdrawal", nonceRef());

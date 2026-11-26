@@ -15,7 +15,7 @@ import {
 import { headerHash, MockNode, within } from "./mock-node.js";
 
 /**
- * Opt-in conformance against a real cardano-node: a phase4 devnet run
+ * Opt-in conformance against a real cardano-node: a isolated-chain devnet run
  * directory (running-the-devnet skill) whose cardano-node is up. Set
  * MIDGARD_L1_TRANSPORT_DEVNET_RUN_DIR to that run directory.
  */
@@ -35,7 +35,7 @@ const runEnv = (): Record<string, string> =>
 
 describe.skipIf(!enabled)("real node conformance (devnet)", () => {
   const env = enabled ? runEnv() : {};
-  const magic = Number(env.MIDGARD_PHASE4_NETWORK_MAGIC);
+  const magic = Number(env.MIDGARD_ISOLATED_CHAIN_NETWORK_MAGIC);
   const socketPath = enabled
     ? join(runDirectory!, "cardano/ipc/node.socket")
     : "";
@@ -51,7 +51,7 @@ describe.skipIf(!enabled)("real node conformance (devnet)", () => {
         `${runDirectory}:/run`,
         "--entrypoint",
         "cardano-cli",
-        env.MIDGARD_PHASE4_CARDANO_NODE_IMAGE!,
+        env.MIDGARD_ISOLATED_CHAIN_CARDANO_NODE_IMAGE!,
         "latest",
         ...args,
       ],

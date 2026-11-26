@@ -598,10 +598,10 @@ test committed_field_shape_verdict_at_two_hundred_fifty_items() {
 ///
 /// These two controls are not decoration and they are what this ledger inherits
 /// from §12.7's precedent. A whole-test reading includes fixture construction,
-/// and this lane's fixture is `encode_field_preimage` over a list of `count`
+/// and this module's fixture is `encode_field_preimage` over a list of `count`
 /// items — a fold of `concat` whose own cost grows with the cardinality being
-/// priced. Differencing the two *rows* alone would therefore charge the walk for
-/// the producer as well.
+/// priced. Differencing the two *rows* alone would therefore charge the walk
+/// for the producer as well.
 test committed_field_shape_verdict_fixture_only_at_two_hundred_fifty_items() {
   let preimage = minimum_width_preimage(lower_item_cardinality)
   let block = committed_block(spend_inputs_field_index, preimage)

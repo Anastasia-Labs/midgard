@@ -157,7 +157,7 @@ const sameJson = (left: unknown, right: unknown) =>
   canonicalJson(left, "classification") ===
   canonicalJson(right, "classification");
 
-/** The classification the reference-script deployment used, from phase 1. */
+/** The classification the reference-script deployment used, as `checkPublicInputs` checked it. */
 const deployedClassification = async (processes: StackProcesses) =>
   JSON.parse(
     await readFile(
@@ -241,7 +241,7 @@ async function reopenPublicRelease(processes: StackProcesses) {
 }
 
 /**
- * Phase 2, once the deployment is final: the stack signs the public release
+ * Once the deployment is final, the stack signs the public release
  * for it into public.releaseDirectory with the release input's signing key,
  * through the same code as the release signing command, which also opens
  * the written release as public listen does. A resume reopens and verifies

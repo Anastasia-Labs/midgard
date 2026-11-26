@@ -71,8 +71,8 @@ const cmlMintToPreimageCbor = (
     policies.set(Buffer.from(policyId.to_raw_bytes()), encodedAssets);
   }
 
-  // §5.6: field 5 is the enveloped list of per-policy items, not the retired
-  // raw map. `sortMidgardMintItems` imposes §5.6's canonical key order at both
+  // §5.6: field 5 is the enveloped list of per-policy items, not a raw map.
+  // `sortMidgardMintItems` imposes §5.6's canonical key order at both
   // levels and `encodeMidgardFieldItemsV1` then enforces it, so CML's iteration
   // order cannot leak into committed bytes.
   return encodeMidgardFieldPreimageForField({

@@ -432,7 +432,7 @@ test state_queue_removal_rejects_wrong_fraud_proved_anchor() fail {
   )
 }
 
-/// W-T5 terminal-branch control: once every descendant is gone, the target
+/// Terminal-branch control: once every descendant is gone, the target
 /// itself can be removed only when its header is terminal and names the
 /// operator being slashed.
 test state_queue_removal_removes_terminal_fraud_proved_block() {

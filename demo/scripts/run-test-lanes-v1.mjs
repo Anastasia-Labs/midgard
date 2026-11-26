@@ -5,7 +5,7 @@
  * instead of a serial `pnpm -r` walk.
  *
  * The measured serial pass is ~126 minutes on a 32-core machine because the
- * two dominant suites used to run one after the other. Lane A is fault proofs;
+ * two dominant suites run one after the other. Lane A is fault proofs;
  * watcher runs as a serial prelude because several of its measured setup paths
  * already sit close to 60/120-second Vitest budgets in isolation and time out
  * under either heavy lane. After node's emulator-snapshot optimization made
@@ -51,8 +51,7 @@
  * `pretest` scripts (lucid-midgard's prebuild chain covers validation and
  * core, then the SDK, and node's own build emits its workers), which lane B
  * runs serially; no other lane builds or
- * reads `dist`, so no two `tsup --clean` runs can ever unlink the same chunk
- * again (the race that used to sit inside the typecheck scripts themselves).
+ * reads `dist`, so no two `tsup --clean` runs can unlink the same chunk.
  */
 
 import { spawn } from "node:child_process";

@@ -219,34 +219,19 @@ pub fn transaction_field_commitment(
 /// width is not a legal encoding for the field, which is what
 /// `reject_invalid_field_type` renders.
 ///
-/// **This function was stale, and #592 is where it showed.** §5.1 gave all nine
-/// fields one envelope at #567: every item is a definite byte string, so its
-/// encoded width is uniformly `header(len) + len`. This function still carried
-/// the *retired counted grammar's* three-way split — fields 6 and 8 concatenated
-/// raw item CBOR with no wrapper (`Some(item_length)`), and a field-5 policy item
-/// was the map entry with its one-byte array wrapper removed
-/// (`Some(item_length - 1)`). Under the counted scheme nothing measured it
-/// against real bytes, because the item's extent came from a prover's
-/// `ItemProofV1` rather than from the preimage. §8's door derives the extent from
-/// the authenticated preimage instead, so the walk position this function
-/// advances is now compared with §5.1's own arithmetic on every step, and the
-/// disagreement is immediate: a field-6, field-8 or field-5 scan computed a
-/// `next_encoded_length` short by the wrapper and therefore rendered
-/// `reject_field_preimage_size` for an honest transaction. Three of #592's
-/// twenty-two rows failed on exactly that
-/// (`canonical_decode_authenticates_one_bounded_script_item`,
-/// `maximum_cardano_spend_redeemer_terminal_fold_matches_typescript`,
-/// `maximum_mint_field_terminal_matches_typescript`), and a fourth
-/// (`canonical_decode_rejects_a_wrong_claimed_successor`) *passed the wrong
-/// successor* because the rejection it claimed was the one the stale arithmetic
-/// produced.
+/// §5.1 gives all nine fields one envelope: every item is a definite byte
+/// string, so its encoded width is uniformly `header(len) + len`. §8's door
+/// derives the item's extent from the authenticated preimage, so the walk
+/// position this function advances is compared with §5.1's own arithmetic on
+/// every step; a width short by the wrapper would render
+/// `reject_field_preimage_size` for an honest transaction.
 ///
-/// The one width that is not a legal encoding is kept, and one is added:
+/// Two widths are not legal encodings:
 ///
 ///   * field 5 with a zero-length item — a mint-policy item is
 ///     `[policy_id, asset_map]` and cannot be empty;
 ///   * field 2 above `max_serialized_output_preimage_bytes` — the §5.3 output
-///     cap, and the case the field-access door's header names as the surviving
+///     cap, and the case the field-access door's header names as the
 ///     `reject_invalid_field_type` path. It is reachable only for the
 ///     variable-width fields: the six fixed-stride ones refuse a wrong width at
 ///     the read itself (`field_item_extent`), before any rule sees it.
@@ -313,7 +298,7 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // bytes)` -- where `min_ada_output_overhead_bytes` is the fixed 160-byte UTxO
 // entry overhead the target ledger adds to every output before pricing it. The
 // `coins_per_utxo_byte` this is instantiated at is `env.coins_per_utxo_byte`,
-// the compiled deployment pin of the C70 target snapshot
+// the compiled deployment pin of the target snapshot
 // (`PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310`), held
 // identical in `env/default.ak` and `env/testnet.ak`.
 //
@@ -338,14 +323,13 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // additional Midgard margin, so an output the target network funds adequately
 // is never rejected here for carrying too little Ada.
 //
-// WIRED (R8 of decision 0005). The counterpart duty -- binding
+// WIRED. The counterpart duty -- binding
 // this floor to a machine rejection code -- is discharged in
 // `value_and_mint_stage_three` below: the ValueAndMint output-descriptor step
 // evaluates `output_meets_min_ada_v1` over the descriptor it has just
 // authenticated and, on failure, takes the exact rejecting terminal carrying
 // `OutputBelowMinAda { output_index }`. The rate is a compiled deployment constant,
-// not an operator-declared field, per the owner ruling on #627 (option B): a
-// rate change is a redeploy event.
+// not an operator-declared field: a rate change is a redeploy event.
 pub const min_ada_output_overhead_bytes = 160
 
 pub fn min_ada_lovelace_v1(

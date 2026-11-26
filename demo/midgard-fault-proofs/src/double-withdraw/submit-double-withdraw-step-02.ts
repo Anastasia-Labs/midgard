@@ -44,10 +44,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
@@ -94,9 +91,6 @@ export type DoubleWithdrawStep02Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitDoubleWithdrawStep02Result =
-  OutsideWorkflowSubmission<DoubleWithdrawStep02Build>;
 
 export const buildDoubleWithdrawStep02 = async ({
   lucid,

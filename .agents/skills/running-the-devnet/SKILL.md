@@ -11,7 +11,7 @@ Before assembling allocation, process cleanup or status scripts, read
 checks ownership/availability and calls the existing generator. Inspect
 `contrib resources list` and `workspace inspect` for other owners. Diagnosis
 collects redacted observations without opening protocol stores.
-For an acceptance rerun at one pinned commit (devnet-stack stages, phase4
+For an acceptance rerun at one pinned commit (devnet-stack stages, isolated-chain
 `up.sh`/`down.sh`, watcher journeys), write a campaign file and use
 `contrib devnet campaign run --input FILE` (`--plan` first) instead of
 hand-written stage scripts; it builds once, freezes the blueprint, bounds and
@@ -24,7 +24,7 @@ not repeat its runbook here. [review]
 
 | Stack                  | Chain                                   | Entry point                                                             |
 | ---------------------- | --------------------------------------- | ----------------------------------------------------------------------- |
-| Phase4 isolated devnet | Private `Custom` chain, one pool        | `demo/midgard-node-tools/devnet/phase4-process/scripts/*.sh`            |
+| Isolated-chain devnet  | Private `Custom` chain, one pool        | `demo/midgard-node-tools/devnet/isolated-chain/scripts/*.sh`            |
 | Watcher-journey devnet | Same generator, host paths for watcher  | `demo/midgard-node-tools/devnet/watcher-journeys/scripts/generate.sh`   |
 | Demo-node Docker stack | Follows `NETWORK` (Preprod) via Mithril | `demo/midgard-node/docker-compose.yaml` + `docker-compose.kupmios.yaml` |
 
@@ -38,21 +38,21 @@ probe.
 
 ## Before touching a running devnet
 
-1. **Find out whose it is.** Phase4 compose projects are
-   `midgard_phase4_process_<run id>` and their ports come from the run's
+1. **Find out whose it is.** Isolated-chain compose projects are
+   `midgard_isolated_chain_<run id>` and their ports come from the run's
    `run.env` (`require_run_dir` in
-   `demo/midgard-node-tools/devnet/phase4-process/scripts/common.sh`). Work
+   `demo/midgard-node-tools/devnet/isolated-chain/scripts/common.sh`). Work
    only on a run directory you generated. [review]
 2. **Pick your own ports and run id.** Prefer `node scripts/contrib.mjs devnet generate --run-id <id>`.
    It derives all three ports from checkout plus invocation and refuses occupied
    ports. The underlying generator
-   (`demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh`)
+   (`demo/midgard-node-tools/devnet/isolated-chain/scripts/generate.sh`)
    keeps the main checkout on Ogmios 2337, Kupo 2442 (harness services; the
    node, watcher and committee do not read them), Postgres 5544 and project
-   `midgard_phase4_process_<run id>`; a linked worktree gets
-   `midgard_phase4_process_<hash>_<run id>` and ports shifted by its own
+   `midgard_isolated_chain_<run id>`; a linked worktree gets
+   `midgard_isolated_chain_<hash>_<run id>` and ports shifted by its own
    offset, and it prints both. Two runs in one checkout still collide: set
-   `MIDGARD_PHASE4_RUN_ID` and all three `MIDGARD_PHASE4_*_PORT` variables. [review]
+   `MIDGARD_ISOLATED_CHAIN_RUN_ID` and all three `MIDGARD_ISOLATED_CHAIN_*_PORT` variables. [review]
 3. **The demo-node stack binds host port 5433 for Postgres in the main
    checkout** (`demo/midgard-node/docker-compose.yaml`), the same port as the
    test Postgres from `scripts/start-test-postgres.sh`; only one of them can
@@ -79,7 +79,7 @@ restart anything:
 | Any validator source, or any `aiken build`                                                                                               | Rebuild with `deployment:build`, then redeploy to exercise it      | [runtime: `verifyBlueprintDeploymentProfile`] the node refuses a `plutus.json` whose hash differs from `plutus.json.deployment.json`. **Blind spot:** once the build record matches, nothing at `listen` compares the manifest's `artifacts.blueprintHash` with the blueprint on disk; the node keeps running the scripts the manifest recorded, so a changed validator is silently not under test |
 | Node, DA committee or watcher TypeScript only                                                                                            | Relaunch                                                           | `[review]`                                                                                                                                                                                                                                                                                                                                                                                         |
 | A change to a database schema                                                                                                            | Recreate the database (drop it and create it empty), then relaunch | [runtime: `NodeSchema.ensure`] `listen` creates the schema on an empty database and refuses one created by a different schema                                                                                                                                                                                                                                                                      |
-| Anything in a phase4 run's source, `dist`, images or config                                                                              | A new phase4 run                                                   | [script: `phase4-process/scripts/reset.sh`] reset refuses node and tools source or `dist`, image, configuration and snapshot drift before touching the run. **Blind spot:** it never rehashes the blueprint, so a validator-only change passes reset `[review]`                                                                                                                                    |
+| Anything in an isolated-chain run's images or config | A new isolated-chain run | [script: `isolated-chain/scripts/generate.sh`] generation refuses an existing run directory; nothing compares a generated run with the tree `[review]` |
 
 The detail behind each row, with file references, is in
 [references/staleness.md](references/staleness.md). Read it when a change is

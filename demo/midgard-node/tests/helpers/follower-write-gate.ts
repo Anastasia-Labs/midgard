@@ -51,7 +51,7 @@ export const holdFollowerWriteGate = (detail: string) =>
 /**
  * Two follower-change drivers' capabilities at one follower view: `stale`
  * took the gate first and `current` took it from it, as a successor's
- * driver does. Only `current` writes; a fixture no longer does either.
+ * driver does. Only `current` writes; a fixture does not either.
  */
 export const supersededDriver = Effect.gen(function* () {
   const view = yield* writeFollowerTip(10);

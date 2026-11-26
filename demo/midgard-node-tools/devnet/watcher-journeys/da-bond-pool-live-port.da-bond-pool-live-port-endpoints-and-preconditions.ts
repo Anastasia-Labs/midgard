@@ -42,22 +42,24 @@ describe("DA bond pool live port: endpoints and preconditions", () => {
   it("builds Kupo and Ogmios URLs from run.env ports and rejects bad ports", () => {
     expect(
       journeyEndpointsFromRunEnv({
-        MIDGARD_PHASE4_KUPO_PORT: "31442",
-        MIDGARD_PHASE4_OGMIOS_PORT: "31337",
+        MIDGARD_ISOLATED_CHAIN_KUPO_PORT: "31442",
+        MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: "31337",
       }),
     ).toEqual({
       kupoUrl: "http://127.0.0.1:31442",
       ogmiosUrl: "http://127.0.0.1:31337",
     });
     expect(() =>
-      journeyEndpointsFromRunEnv({ MIDGARD_PHASE4_OGMIOS_PORT: "31337" }),
-    ).toThrow("MIDGARD_PHASE4_KUPO_PORT must be a TCP port");
+      journeyEndpointsFromRunEnv({
+        MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: "31337",
+      }),
+    ).toThrow("MIDGARD_ISOLATED_CHAIN_KUPO_PORT must be a TCP port");
     expect(() =>
       journeyEndpointsFromRunEnv({
-        MIDGARD_PHASE4_KUPO_PORT: "70000",
-        MIDGARD_PHASE4_OGMIOS_PORT: "31337",
+        MIDGARD_ISOLATED_CHAIN_KUPO_PORT: "70000",
+        MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: "31337",
       }),
-    ).toThrow("MIDGARD_PHASE4_KUPO_PORT must be a TCP port");
+    ).toThrow("MIDGARD_ISOLATED_CHAIN_KUPO_PORT must be a TCP port");
   });
 
   it("accepts Kupo only when it matches every address", () => {

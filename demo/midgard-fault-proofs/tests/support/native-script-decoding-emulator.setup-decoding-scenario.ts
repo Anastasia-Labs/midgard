@@ -54,7 +54,7 @@ export const makeDecodingEmulatorHarness = async () => {
       realNativeScriptDecoding: true,
       alwaysFraudProofCatalogue: true,
     },
-    // The #545 published-chunk carriage withdraws from the merkelized
+    // The published-chunk carriage withdraws from the merkelized
     // verifier's reward account, which must be registered before any step
     // takes that route.
     registerAdditionalRewardAccounts: registerChunkedVerifyRewardAccount,

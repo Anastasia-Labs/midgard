@@ -125,9 +125,9 @@ export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = asDataType<DepositEvent>(DepositEventSchema);
 
 /**
- * Twin of `midgard/ledger_state.MidgardTxValidity`. #640 collapsed the old
- * six-arm enum to the bare validity bit; the per-reason vocabulary moved to
- * `RejectionReasonV1` behind the forced leaf's `OperatorVerdictV1`.
+ * Twin of `midgard/ledger_state.MidgardTxValidity`: the bare validity bit. The
+ * per-reason vocabulary is `RejectionReasonV1` behind the forced leaf's
+ * `OperatorVerdictV1`.
  */
 export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
@@ -224,26 +224,10 @@ export const BoundedItemChunkProof = asDataType<BoundedItemChunkProof>(
   BoundedItemChunkProofSchema,
 );
 
-// `TxFieldPreimageV1Schema` and `TxFieldReceiptV1Schema` used to sit here as the
-// twins of `midgard/ledger_state`'s two counted publication datums. Both retired
-// in #587 with the chain they described: under `docs/spec/midgard-tx.md` §4 a
-// field commitment is one flat `blake2b_256` over the whole preimage, so the
-// per-item Merkle opening they carried has nothing to be checked against and the
-// receipt mint policy that read them was unsatisfiable for any payload whose
-// commitments were the §4 flat hashes of real material (a payload declaring
-// counted roots could still satisfy it, which is why the replacement closes the
-// gap by construction rather than by arithmetic). The §8 replacement is
-// `FieldPreimageCertificateV1` in `native-tx-field-access.ts`, whose manifest
-// is over §8.4 chunks of a preimage rather than over items of a counted
-// collection — so it is a different artifact, not a renamed one, and nothing here
-// forwards to it.
-
 /**
  * Twin of `midgard/ledger_state.TxOrderPayload`.
  *
- * **No `terminal_receipt_reference`.** It named the last link of the counted
- * publication receipt chain, which retired in #587 — see the note above this
- * comment. The §8 re-expression of the availability
+ * **No `terminal_receipt_reference`.** The §8 re-expression of the availability
  * role it served is not in this datum; `verify_order_material` on the Aiken side
  * carries the `field_carriage_availability` note that says what the mint checks
  * today and which issue owns the rest.
@@ -282,15 +266,11 @@ export const TxOrderEvent = asDataType<TxOrderEvent>(TxOrderEventSchema);
 /**
  * Twin of `midgard/ledger_state.L2TransactionSource`.
  *
- * **No `transaction_commitment`.** It used to sit between `tx_id` and `source`.
- * Under `docs/spec/midgard-tx.md` §4's flat reversion the transition-trace
- * family authenticates the compact bytes against the tx-id anchor through the
- * §8.8 door and never reads it, leaving `validation_claim_v1` as the only
- * consumer — and that consumer compared the carried value against the
- * `native_tx_proof_commitment_v1` it re-derived from `source` in the same
- * expression. The on-chain type dropped the field and re-anchored on the
- * derivation; this schema moves with it, because a committed leaf that encodes
- * three fields where the validator expects two does not decode.
+ * **No `transaction_commitment`.** Under `docs/spec/midgard-tx.md` §4 the
+ * transition-trace family authenticates the compact bytes against the tx-id
+ * anchor through the §8.8 door, and `validation_claim_v1` derives
+ * `native_tx_proof_commitment_v1` from `source`, so the on-chain type has two
+ * fields; a committed leaf that encodes three does not decode.
  */
 export const L2TransactionSourceSchema = Data.Object({
   tx_id: H32Schema,

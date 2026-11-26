@@ -197,8 +197,7 @@ export const encodeMidgardFieldItems = (
 /**
  * The §5.1 preimage of one field: `definite_array_header(N)` followed by one
  * definite byte-string-wrapped `enc_i` per item. An empty field is exactly `80`
- * — all nine, including mint (§5.6), which under the retired scheme spelled it
- * `a0`.
+ * — all nine, including mint (§5.6).
  *
  * Twin of the six `encode_*_preimage` producers in `preimages.ak`, which differ
  * from each other only in the item encoder they map.

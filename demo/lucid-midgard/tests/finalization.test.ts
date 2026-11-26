@@ -338,9 +338,7 @@ describe("TxBuilder finalization", () => {
       fieldCommitment(8, EMPTY_CBOR_LIST),
     );
     // §4 is plain hashing over the preimage bytes, so the committed field hash
-    // *is* `blake2b_256` of the preimage. Under the retired counted scheme this
-    // was deliberately unequal — a domain-tagged Merkle root over decomposed
-    // items — and the inequality was what the assertion pinned.
+    // *is* `blake2b_256` of the preimage.
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
       computeHash32(tx.body.spendInputsPreimageCbor),
     );

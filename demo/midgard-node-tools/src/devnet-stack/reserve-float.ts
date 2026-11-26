@@ -2,8 +2,7 @@ import type { Journal } from "./journal.js";
 
 /**
  * Operator liquidity provisioning for the reserve, not a repair. It works
- * around a protocol-level fragmentation gap that is queued for an owner
- * decision:
+ * around a protocol-level fragmentation gap:
  *
  * each absorbed deposit becomes its own NoDatum reserve UTxO holding the
  * deposit's original assets, and one AddFunds step takes min(held,

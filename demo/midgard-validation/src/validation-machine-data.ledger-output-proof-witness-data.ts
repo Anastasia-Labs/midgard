@@ -49,7 +49,7 @@ import {
  * The byte comparison applies to tier 1 and to nothing else: tiers 2 and 3 carry
  * reference-input indices rather than bytes, so there is no preimage here to
  * disagree with. What is behind those indices is §8.7 content addressing, which
- * the door resolves and `assertMidgardFieldCarriageResolvesAtDoorV1` guards.
+ * the door resolves.
  */
 export const resolvedFieldCarriageData = (
   resolveFieldCarriage: ValidationMachineFieldCarriageResolver,

@@ -21,7 +21,7 @@ import {
 import { parseHex, requireRecord } from "./json-file.js";
 
 /**
- * The `--native-tx-compact` file every re-derived step-02-class command takes:
+ * The `--native-tx-compact` file every field-opening step command takes:
  * the §2.5 compact structure of the transaction its thread is disputing.
  *
  * It is a file of its own rather than a key added to each family's existing
@@ -169,11 +169,9 @@ const committedFieldCommitment = ({
  * from the material handed to the submitter — that is what makes the compact
  * bytes below the disputed transaction's rather than the prover's.
  *
- * `itemCbors` are the field's canonical §5.3 item bytes, in committed order.
- * They are the same complete list the retired `..._preimage` redeemer argument
- * carried; what changed is that they are now enveloped by §5.1 and travel under
- * a carriage tier instead of being reproduced as a typed list the validator
- * re-hashed.
+ * `itemCbors` are the field's canonical §5.3 item bytes, in committed order,
+ * the complete list. They are enveloped by §5.1 and travel under a carriage
+ * tier.
  *
  * `fieldPreimage` instead preserves an already committed envelope byte for
  * byte. Fixed fields authenticate the canonical count and total stride length

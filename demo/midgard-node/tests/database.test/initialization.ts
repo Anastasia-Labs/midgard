@@ -38,20 +38,6 @@ export const registerInitializationTests = () => {
         ),
     );
 
-    it.effect("drops the superseded admission-payload hash lookup index", () =>
-      isolatedDb(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const indexes = yield* sql<{ readonly index_name: string }>`
-            SELECT indexname AS index_name
-            FROM pg_indexes
-            WHERE schemaname = 'public'
-              AND indexname = 'idx_tx_admission_payloads_tx_id_hash'`;
-          expect(indexes).toEqual([]);
-        }),
-      ),
-    );
-
     it.effect(
       "uses a dedicated active-lease index for owner and tx-id point lookups",
       () =>

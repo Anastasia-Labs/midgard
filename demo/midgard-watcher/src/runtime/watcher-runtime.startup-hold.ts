@@ -19,8 +19,7 @@ import type { WatcherRuntime } from "./watcher-runtime.launch-checks.js";
 export { WatcherStartupHeldError };
 
 /**
- * Whether a startup failure exits rather than holds (owner ruling
- * 2026-10-09): only one a restart may clear. That is L1 transients that
+ * Whether a startup failure exits rather than holds: only one a restart may clear. That is L1 transients that
  * outlasted the startup budget (`WatcherL1UnavailableError`), and a failure
  * the shared table (`classifyRoleFailure`) classes `transient` or `restart`
  * (a dropped connection, a port in use), each anywhere on the cause chain.

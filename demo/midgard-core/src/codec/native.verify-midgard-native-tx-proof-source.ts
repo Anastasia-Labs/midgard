@@ -181,9 +181,7 @@ export const verifyMidgardNativeTxProofSource = ({
 /**
  * §5.1's one uniform byte-list decode, which all nine fields share.
  *
- * Under the retired counted scheme this was a general `asArray`/`asBytes` pass
- * that accepted any CBOR array of byte strings. §5.1 is narrower and fails
- * closed: a non-minimal array or item header, an item count that disagrees with
+ * It is narrower than a general `asArray`/`asBytes` pass and fails closed: a non-minimal array or item header, an item count that disagrees with
  * the walked content, and trailing bytes after item `N-1` all reject. Routing
  * this through the one §5.1 decoder is what makes the loose reader and the
  * field-access door agree on which byte forms exist.

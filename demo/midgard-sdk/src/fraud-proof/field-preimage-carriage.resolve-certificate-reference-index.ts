@@ -59,7 +59,7 @@ export const deriveFieldPreimageCertification = (
   }
   return {
     datumCbor: certificateDatumCbor(certificate),
-    // #606: one constant name for every certificate of the policy; the datum
+    // One constant name for every certificate of the policy; the datum
     // (including the mint-welded `field_hash`) is where identity lives.
     assetNameHex: FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
     chunkCount: certificate.chunkDigests.length,
@@ -203,8 +203,7 @@ export const resolveChunkReferenceIndices = ({
 
 /**
  * Locates a tier-3 certificate in a resolved reference-input set by its
- * **datum**, never by `OutputReference` (§8.7) and — since #606's constant
- * asset name — never by token alone.
+ * **datum**, never by `OutputReference` (§8.7) and never by token alone.
  *
  * The token names the policy and nothing else: every certificate of the
  * policy carries the same constant name, so two certificates for different

@@ -10,11 +10,11 @@ import { Data, type TSchema } from "@lucid-evolution/lucid";
  * runtime and completely unrelated at the type level, so every schema-backed
  * codec has to cross that gap exactly once per schema.
  *
- * Those crossings used to be written inline as `FooSchema as unknown as Foo`,
- * several hundred of them, which drowned out the raw `as unknown as` casts that
- * do encode a real assumption about a value's shape — test doubles, structural
- * widenings, `globalThis` pokes. The idiom lives here now, so a grep for the
- * raw cast is a signal worth reading again.
+ * Written inline as `FooSchema as unknown as Foo`, several hundred crossings
+ * would drown out the raw `as unknown as` casts that do encode a real
+ * assumption about a value's shape — test doubles, structural widenings,
+ * `globalThis` pokes. The idiom lives here, so a grep for the raw cast is a
+ * signal worth reading.
  *
  * A raw `as unknown as` outside this module is therefore a claim that needs
  * justifying, not boilerplate.

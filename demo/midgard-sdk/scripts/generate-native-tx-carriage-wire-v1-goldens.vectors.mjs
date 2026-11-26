@@ -96,7 +96,7 @@ export const certificateOwner = repeatedByte(0x11, 28);
 
 export const certificateTxId = repeatedByte(0x22, 32);
 
-// The #606 mint-welded datum commitment slot. A distinct repeated byte, not a
+// The mint-welded datum commitment slot. A distinct repeated byte, not a
 // recomputed hash: what this channel pins is the *wire* shape — field order
 // and encoding — and the semantic weld (`field_hash == hash(concat(chunks))`)
 // is pinned by the field-access golden channel and the .ak selectors instead.

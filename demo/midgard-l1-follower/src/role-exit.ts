@@ -1,6 +1,5 @@
 /**
- * The exit deadline every role shares (owner ruling
- * 2026-10-09): once a process has decided to exit non-zero, its shutdown has
+ * The exit deadline every role shares: once a process has decided to exit non-zero, its shutdown has
  * `ROLE_EXIT_DEADLINE_MS` to finish, and past that the process exits
  * anyway, so a hung finalizer cannot keep a failed process up.
  */

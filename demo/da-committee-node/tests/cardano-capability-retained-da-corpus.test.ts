@@ -40,7 +40,7 @@ const boundaryCorpusInput = (): string | URL => {
   const override = process.env.MIDGARD_BOUNDARY_CORPUS_JSON;
   if (override === undefined) {
     return new URL(
-      "../../midgard-fault-proofs/tests/fixtures/cardano-capability-p2-boundary-corpus-v1.json",
+      "../../midgard-fault-proofs/tests/fixtures/retained-da-boundary-corpus-v1.json",
       import.meta.url,
     );
   }

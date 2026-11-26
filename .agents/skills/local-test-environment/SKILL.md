@@ -136,5 +136,5 @@ it adds nothing. `--print-env` shows the values.
   (`demo/midgard-node/scripts/operator-compose.test.mjs`) proves the values,
   not that anyone used it. [review]
 
-The phase 4 process devnet derives its own names and ports the same way; see
+The process devnet derives its own names and ports the same way; see
 [running-the-devnet](../running-the-devnet/SKILL.md).

@@ -284,12 +284,9 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     0,
     // A stage-0 phase-A native scan control MUST carry `result == -1`:
     // `phase_a_native_control_is_bound` rejects any other value at stage 0, and
-    // `reset_phase_a_native_control` produces -1. Production
-    // `verify_signatures_handoff` used to emit 0 here, which was a defect --
-    // `result == 0` at a completed stage MEANS "native script evaluated false
-    // -> reject", so the handoff asserted a verdict the machine had not
-    // computed and produced an unusable successor. The emitter has been fixed;
-    // do NOT "fix" this expectation to 0. See
+    // `reset_phase_a_native_control` produces -1. `result == 0` at a
+    // completed stage MEANS "native script evaluated false -> reject", so 0
+    // here would assert a verdict the machine has not computed. See
     // `signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict`.
     -1,
     signer_frontier.count,
@@ -1315,9 +1312,8 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
     observer_index: 1,
   }
   let terminal = exact_rejection_post(next, rejection_code)
-  // The duplicate is now the field's own §5.1 preimage rather than two
-  // openings over one frontier, and which of its two identical items a step
-  // reads is the `item_index` it names.
+  // The duplicate is the field's own §5.1 preimage, and which of its two
+  // identical items a step reads is the `item_index` it names.
   let observers_carriage = duplicate_observer_field_carriage()
   let first_evidence = one_step_evidence(
     work_witness_cbor,
@@ -1845,9 +1841,9 @@ test signatures_refuses_an_alternative_authentic_first_choice() {
   !signatures_cursor_row(cursor_ascending_pair(), 0, -1, 1, 1)
 }
 
-// Before the cursor this successor was accepted: the step took the least
-// (signer, bytes) key wherever it sat in field 7. It is now refused, so field
-// 7's wire order is no longer the prover's choice.
+// The step opens the item at the cursor, not the least (signer, bytes) key
+// wherever it sits in field 7, so field 7's wire order is not the prover's
+// choice.
 test signatures_refuses_the_least_key_at_a_later_physical_index() {
   let reordered = [cursor_address(zero, zero), cursor_address(h_a, zero)]
   !signatures_cursor_row(reordered, 0, -1, 1, 1)

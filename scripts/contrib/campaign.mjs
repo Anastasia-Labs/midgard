@@ -33,7 +33,7 @@ import {
 } from "./campaign-definition.mjs";
 
 // A devnet campaign runs an ordered list of devnet stages (devnet-stack
-// commands, phase4 L1 services up and down, watcher journeys) against one
+// commands, isolated-chain L1 services up and down, watcher journeys) against one
 // pinned commit: it checks the checkout is that commit, builds once, freezes
 // the blueprint, runs each stage under its own deadline and log, and keeps
 // one receipt in the campaign directory. Rerunning the same file resumes:
@@ -177,7 +177,7 @@ const attemptName = (campaign, receipt, stage) => {
 
 /** The build steps a campaign's stages need, in order. */
 export const buildSteps = (root, campaign) => {
-  if (campaign.stages.every((stage) => stage.kind === "phase4")) return [];
+  if (campaign.stages.every((stage) => stage.kind === "isolated-chain")) return [];
   const packages = [
     ...new Set(
       RUNTIME_PACKAGES.flatMap((name) =>
@@ -446,7 +446,7 @@ export const prepareJourneyRun = (root, stage) => {
   const missing = inputs.generated.filter((path) => !existsSync(path));
   if (missing.length)
     return {
-      refusal: `the journey run directory ${stage.runDir} lacks ${missing.join(", ")}; generate the run first with \`${inputs.generate}\` and start its L1 services with a phase4 up stage`,
+      refusal: `the journey run directory ${stage.runDir} lacks ${missing.join(", ")}; generate the run first with \`${inputs.generate}\` and start its L1 services with a isolated-chain up stage`,
     };
   const { source, target } = inputs.transport;
   if (!existsSync(source))

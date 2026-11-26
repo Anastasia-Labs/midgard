@@ -2,18 +2,13 @@
  * `double-spend` step-03 submitter — opens tx1's spend-input field and selects
  * the doubly-spent input.
  *
- * **Re-derived onto the §8.8 door by #604, and this step lost a whole mechanism
- * to it.** The redeemer used to carry `tx1_spend_inputs_ref_input_index`, an
- * index into a *bespoke* published witness UTxO this builder created and
- * referenced (`ensureSpendInputsReferenceWitness`). §8's carriage ladder
- * subsumes that: tier 2 is the door's own `RawUtxo` arm, carried inside the
- * opening and content-addressed by §8.7 rather than named by out-ref, and tier 1
- * needs no publication at all. So the family-specific publication is gone and
- * `tx1_spend_inputs_opening` replaces its index.
+ * The redeemer carries `tx1_spend_inputs_opening`, a §8.8 field opening. §8's
+ * carriage ladder decides how the preimage travels: tier 1 needs no
+ * publication, and tier 2 is the door's own `RawUtxo` arm, carried inside the
+ * opening and content-addressed by §8.7 rather than named by out-ref.
  *
- * The thread now carries `verified_tx1_id`/`verified_tx2_id` — the §2.5 anchors
- * — rather than the two field-0 commitments, which is why this builder takes
- * tx1's compact structure.
+ * The thread carries `verified_tx1_id`/`verified_tx2_id` — the §2.5 anchors —
+ * which is why this builder takes tx1's compact structure.
  */
 
 import {
@@ -62,7 +57,6 @@ import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.j
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 
@@ -92,8 +86,6 @@ export type Step03Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitStep03Result = OutsideWorkflowSubmission<Step03Build>;
 
 type Step03Layout = {
   readonly inputIndex: bigint;

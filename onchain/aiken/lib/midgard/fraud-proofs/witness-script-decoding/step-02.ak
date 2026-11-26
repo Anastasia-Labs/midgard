@@ -16,7 +16,7 @@ pub type Args {
   coordinate_absent: Bool,
   /// `None` reads the script by walking field 6; `Some(i)` reads it through
   /// the field grammar certificate at reference input `i`, so the step's cost
-  /// no longer grows with the field's item count.
+  /// does not grow with the field's item count.
   grammar_ref_input_index: Option<Int>,
 }
 

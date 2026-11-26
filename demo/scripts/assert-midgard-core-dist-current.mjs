@@ -2,9 +2,7 @@
 // Fail-closed preflight: refuse to run gates against a stale
 // @al-ft/midgard-core dist. Consumers resolve the package from its
 // gitignored dist/, so a fresh checkout — or a checkout that pulled a src
-// change without rebuilding — silently serves retired constants (the
-// motivating incident: the 8,273 -> 12,810 maxReliableDirectCompleteItemBytes
-// rebind, #597 ruling b / b4b6c488).
+// change without rebuilding — silently serves stale constants.
 //
 // Two independent checks, both fail-closed:
 //   1. The build-time source-digest stamp (written by

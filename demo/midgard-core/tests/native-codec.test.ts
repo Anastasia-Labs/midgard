@@ -196,9 +196,8 @@ describe("Midgard native v1 codec", () => {
   });
 
   it("wraps field 6 and field 7 items in the one §5.1 envelope", () => {
-    // §5.1: the per-item byte-string envelope applies to all nine fields. Under
-    // the retired counted scheme field 6 concatenated raw item CBOR; that form is
-    // prohibited, so the same item now appears as `bytes(enc_6)`.
+    // §5.1: the per-item byte-string envelope applies to all nine fields, so a
+    // field-6 item appears as `bytes(enc_6)`.
     const scriptItem = encodeCbor([3n, Buffer.from("010203", "hex")]);
     const scriptPreimage = encodeMidgardFieldPreimage([scriptItem]);
     const address = Buffer.from("aabbcc", "hex");
@@ -206,7 +205,7 @@ describe("Midgard native v1 codec", () => {
 
     expect(decodeMidgardFieldPreimage(scriptPreimage)).toEqual([scriptItem]);
     expect(decodeMidgardFieldPreimage(addressPreimage)).toEqual([address]);
-    // The retired raw-concatenation form for field 6 no longer decodes: `82` is
+    // The raw-concatenation form for field 6 does not decode: `82` is
     // not a §5.1 definite byte-string header.
     expect(() =>
       decodeMidgardFieldPreimage(encodeCborArrayRaw([scriptItem])),

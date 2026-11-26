@@ -37,7 +37,7 @@ export type FabricatedDepositStepContract = {
  * The already-resolved contracts a `fabricated-deposit` submission needs.
  *
  * Passed in explicitly after canonical deployment resolution. This keeps the
- * #609 arity guard in `applyBlueprintParams` the single place where scripts are
+ * arity guard in `applyBlueprintParams` the single place where scripts are
  * parameterized.
  */
 export type FabricatedDepositContracts = {

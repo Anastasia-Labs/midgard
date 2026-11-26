@@ -9,7 +9,6 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
-import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
 import { emptyRootHexProgram } from "../../mpf/store.empty-root-hex-program.js";
 import { Database } from "../../services/database.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
@@ -378,9 +377,6 @@ export const submitTxBackedCommit = ({
                   );
                 if (prepared.kind === "held")
                   return yield* awaitNextCommitWindow(prepared.heldHeaderHash);
-                yield* reachCommitCrashCheckpoint(
-                  "journal_prepared_before_submit",
-                );
                 return yield* Effect.matchEffect(
                   revalidateStateQueueLease(workerInput).pipe(
                     Effect.andThen(

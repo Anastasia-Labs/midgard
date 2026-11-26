@@ -4,9 +4,9 @@
 //
 // A deletion or rename that misses a registry leaves it pointing at nothing,
 // and the failure comes late or never: a contrib gate's "missing owner" only
-// when that gate runs (it once blocked a push), a preflight trigger or a
-// traced-refusal input that silently never matches again, a duration table
-// that keeps sharding by a file CI no longer runs. This is the one check for
+// when that gate runs, a preflight trigger or a traced-refusal input that
+// silently never matches again, a duration table that keeps sharding by a file
+// CI does not run. This is the one check for
 // all of them; preflight runs it on every push and Repo Tools CI on every
 // pull request.
 //

@@ -147,7 +147,7 @@ describe("missing-signature compiled envelope", () => {
     };
     expect(
       bytes(Data.to(redeemer, MissingSignatureStep01SpendRedeemer)) + overhead,
-      "ESCALATE: the bare step-01 subject/inclusion no longer fits L1",
+      "the bare step-01 subject/inclusion does not fit L1",
     ).toBeLessThanOrEqual(MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxBytes);
   });
 

@@ -1,10 +1,8 @@
 //// The phase-A native chunk window admits exactly one successor.
 ////
-//// Two kinds of pre-state used to admit none. A late continuation whose
+//// Two kinds of pre-state are the edge cases: a late continuation whose
 //// source is not field 6 item 0 (a reference output, or inline item 1 or
-//// later) could never open a chunk, because the window checked the chunk's
-//// coordinates against field 6 and `script_seen`. An end of item on a
-//// 4095-aligned item could never open a chunk, because the chunk at
+//// later), and an end of item on a 4095-aligned item, where the chunk at
 //// `cursor / 4095` does not exist. Each test below takes one pre-state and
 //// offers several successors, and exactly the derived one is accepted.
 
@@ -553,8 +551,8 @@ fn last_chunk_proof_at(
   }
 }
 
-/// The chunk the old window demanded at an aligned end: index `chunk_count`,
-/// which no proof can open.
+/// The chunk at index `chunk_count` at an aligned end, which no proof can
+/// open.
 fn past_the_end_chunk(item: ByteArray) -> bounded_item_v1.ChunkProofV1 {
   bounded_item_v1.ChunkProofV1 {
     ..last_chunk_proof(item),
@@ -673,7 +671,7 @@ fn end_of_item_has_exactly_one_successor(payload: ByteArray, stage: Int) -> Bool
 }
 
 /// The split validators for `stage` each admit exactly the reject from the
-/// end-of-item state, with the chunk the old window demanded.
+/// end-of-item state, with the chunk at index `chunk_count`.
 fn split_end_of_item_has_exactly_one_successor(
   payload: ByteArray,
   stage: Int,

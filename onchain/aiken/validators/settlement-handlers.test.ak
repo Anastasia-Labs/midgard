@@ -15,7 +15,7 @@
 //// line for a crashed test), and the mutation is minimal so that exactly one
 //// conjunct of the handler flips.
 ////
-//// GUARD -> TEST MAP (see the report in #536 for the same table):
+//// GUARD -> TEST MAP:
 ////
 //// spend / prologue
 ////   `expect Some(datum) = m_datum`

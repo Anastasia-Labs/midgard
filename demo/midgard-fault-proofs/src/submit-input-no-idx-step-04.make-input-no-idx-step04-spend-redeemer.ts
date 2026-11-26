@@ -79,7 +79,7 @@ export type SubmitInputNoIdxStep04CliConfig = SubmitProviderConfig & {
   readonly outputsPreimagePath: string;
   /**
    * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the **producing** transaction's
-   * compact structure. New in #604: the door authenticates its field 2 against
+   * compact structure. The door authenticates its field 2 against
    * the `producing_tx_id` the thread anchored.
    */
   readonly nativeTxCompactPath: string;

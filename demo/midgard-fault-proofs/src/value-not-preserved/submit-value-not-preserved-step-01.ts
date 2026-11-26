@@ -65,10 +65,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
   type ClaimedAsset,
@@ -102,9 +99,6 @@ export type ValueNotPreservedStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitValueNotPreservedStep01Result =
-  OutsideWorkflowSubmission<ValueNotPreservedStep01Build>;
 
 export const buildValueNotPreservedStep01 = async ({
   lucid,

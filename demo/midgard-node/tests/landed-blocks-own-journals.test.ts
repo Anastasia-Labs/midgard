@@ -14,7 +14,7 @@
  *   chain (every event it includes lies below its anchor).
  * - A commit on a base a correction (or a rollback) removed is dead, and
  *   no live journal is left.
- * - L7: a rollback deeper than cd takes an applied own block off the
+ * - A rollback deeper than cd takes an applied own block off the
  *   landed chain: it derives unlanded with no halt, its effects are
  *   disposed of once it is dead, and it derives landed when it lands again.
  * - The SQL readers take the dead set they are passed: a header missing
@@ -296,7 +296,7 @@ describe("own block journals under whichever-lands-wins", () => {
       }),
     ));
 
-  it("L7: a deep rollback takes an applied own block off the landed chain with no halt, its effects are disposed of once it is dead, and it derives landed when it lands again", () =>
+  it("a deep rollback takes an applied own block off the landed chain with no halt, its effects are disposed of once it is dead, and it derives landed when it lands again", () =>
     inNode(
       Effect.gen(function* () {
         const anchor = followerBlock(10);

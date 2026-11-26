@@ -36,9 +36,9 @@ vi.mock("@al-ft/midgard-sdk/core", async () => {
 
 const HEADER_HASH = "11".repeat(28);
 const DA_ATTESTATION_POLICY_ID = "22".repeat(28);
-// The state-correction wave made the availability-challenge policy part of the
-// contract set, and `reconcileDaAttestedProgram` now records its policy id in
-// the `canonical_l1_da_attestation` evidence entry. The stub below has to carry
+// The availability-challenge policy is part of the contract set, and
+// `reconcileDaAttestedProgram` records its policy id in the
+// `canonical_l1_da_attestation` evidence entry. The stub below has to carry
 // it for the same reason the real contract set does.
 const AVAILABILITY_CHALLENGE_POLICY_ID = "33".repeat(28);
 const ATTESTED = {

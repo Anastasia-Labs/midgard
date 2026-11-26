@@ -29,7 +29,7 @@ import {
 } from "./store-retention.header-record.js";
 
 describe("retentionDeadlineReportV1", () => {
-  // Opt-in alert (owner ruling 2026-09-26): only an operator threshold
+  // Opt-in alert: only an operator threshold
   // (DA_RETENTION_ALERT_THRESHOLD_MS) turns the deadline into an alert.
   const THRESHOLD_MS = 60_000;
 

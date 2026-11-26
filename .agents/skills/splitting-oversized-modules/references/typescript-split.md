@@ -28,9 +28,7 @@ module stays in the package whose concern it is.
 
 ## What must move with the code
 
-Each of these was missed or re-pointed by hand in an earlier split (see
-[oversized-files.md](oversized-files.md)). Find them all before moving
-anything:
+Each of these needs a hand edit. Find them all before moving anything:
 
 ```bash
 git grep -n -F -e '<package>/src/<old-path-without-.ts>' -e '<old-basename>'
@@ -39,34 +37,26 @@ git grep -n -F -e '<package>/src/<old-path-without-.ts>' -e '<old-basename>'
 - **Subpath exports.** If the file is a subpath in the package's `exports`
   map, move every condition (`midgard-source`, `types`, `import`,
   `require`).
-- **Build entries.** Packages list `tsup` entries in their `build` script
-  (`d7368bc37` changed `src/validation-machine.ts` to
-  `src/validation-machine/index.ts`). <!-- doc-links:historical -->
+- **Build entries.** Packages list `tsup` entries in their `build` script;
+  a moved entry file moves there too.
 - **Tests and scripts that read source as text.**
   `demo/midgard-node/tests/da-payload-libp2p-producer.test.ts` reads every
   module under `demo/midgard-node/src/commands/http/` and asserts what they do
   _not_ contain; `demo/da-committee-node/scripts/check-no-http-da-transport.mjs`
   lists its source files and directories by path. When the named file is deleted they fail loudly;
   when it survives holding less code, they pass while checking less. Point
-  them at every module that now holds the code (`2547227ea`). Tests that load
+  them at every module that now holds the code. Tests that load
   a module by path, such as
   `demo/midgard-core/tests/availability-operation-journal.test.ts`, fail
   loudly when it moves.
 - **Path-pinned guards**, such as a test that pins the only file allowed to
-  call a function (`72e2ef761`).
+  call a function.
 - **Code that computes paths from its own location**
   (`new URL("..", import.meta.url)`, `resolve(moduleDir, "../..")`). Its
   depth changes when it moves; `verify-pure-move.mjs` reports it as changed,
   correctly. Name each such edit in the commit message.
-- **CI path filters and docs** that name the file (`bfebc4f92` updated
-  `.github/workflows/docs-site-ci.yml`).
-
-## Keeping the old surface
-
-The three clean splits (`d7368bc37`, `bfebc4f92`, `72e2ef761`) all turned the
-old file into a directory with an `index.ts` that re-exports the previous
-public surface, so importers change only their path. Private helpers that a
-new module needs become exports of the module that owns them.
+- **CI path filters and docs** that name the file, such as the path filters
+  in `.github/workflows/docs-site-ci.yml`.
 
 ## The verifier
 

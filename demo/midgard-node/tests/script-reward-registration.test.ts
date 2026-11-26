@@ -87,7 +87,7 @@ it("registers all four real availability credentials (open, settle, close and ti
     ),
   );
   expect(first).toHaveLength(4);
-  // The per-header bond yield is retired: the pooled bond needs no credential.
+  // The pooled bond needs no credential.
   expect(first.map(({ action }) => action).sort()).toEqual([
     "close",
     "open",

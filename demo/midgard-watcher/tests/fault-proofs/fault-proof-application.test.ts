@@ -384,27 +384,6 @@ describe("watcher production fault-proof application V1", () => {
       ).toThrow("unknown or missing fields");
     }
 
-    // The retired historical native-script history overlay is an unknown
-    // field: a configuration still carrying it is refused, not ignored.
-    expect(() =>
-      unsafeCreateWatcherFaultProofApplicationForTest(
-        {
-          l1: testFaultProofL1(),
-          watcherConfig: admittedWatcherConfig(),
-          deploymentIdentity: AUTHORITY.result,
-          infrastructure: {
-            ...infrastructure(),
-            historicalNativeScriptHistory: {
-              sourceMode: "external_provider_quorum",
-              consistencyPolicy: "exact_bytes_all_providers_v1",
-              providers: [],
-            },
-          } as never,
-        },
-        dependencies(),
-      ),
-    ).toThrow("unknown or missing fields");
-
     const admitted = unsafeCreateWatcherFaultProofApplicationForTest(
       {
         l1: testFaultProofL1(),

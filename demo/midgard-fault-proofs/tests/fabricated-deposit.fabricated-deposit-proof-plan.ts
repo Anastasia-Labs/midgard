@@ -56,7 +56,7 @@ describe("fabricated-deposit proof plan", () => {
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
       daProvenance: DA_PROVENANCE,
     });
-    const outputDir = await mkdtemp(join(tmpdir(), "q39-fabricated-deposit-"));
+    const outputDir = await mkdtemp(join(tmpdir(), "fabricated-deposit-"));
     const plan = await prepareFabricatedDepositFromCommittedLeaves({
       headerHash: evidence.headerHash,
       committedDepositsRoot: evidence.committedDepositsRoot,

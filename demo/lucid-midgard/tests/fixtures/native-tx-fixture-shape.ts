@@ -9,9 +9,8 @@
  * preimages, the nine field commitments, the witness-set hash, the byte counts,
  * the mint policy order, the redeemer pointer list.
  *
- * That sameness used to be spelled three times, which is how a fixture ends up
- * advertising a hash its own `fullTxCborHex` no longer implies. Here it is
- * spelled once: a construction decides the bytes, and
+ * That sameness is spelled once, so no fixture can advertise a hash its own
+ * `fullTxCborHex` does not imply: a construction decides the bytes, and
  * `deriveNativeTxFixtureFacets` decides everything a reader is allowed to
  * believe about them.
  *
@@ -92,10 +91,7 @@ export type NativeTxFixtureFacets = {
  * construction *declares* — its name, its producer command, and whatever
  * parameters that construction is stated in terms of (`counts`, a target byte
  * band, …).
- *
- * The three fixture modules used to restate the facet half key by key, which put
- * the shape back in three places for a reader to keep in sync by eye. Here each
- * one names only what makes it different.
+ * Each fixture module names only what makes it different.
  */
 export type NativeTxFixtureEnvelope<Declared> = NativeTxFixtureFacets &
   Declared;

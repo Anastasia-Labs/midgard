@@ -222,8 +222,7 @@ test invalid_signature_step_02_rejects_mismatched_witness_preimage() fail {
 
 /// The witness set itself is authenticated: a forged one does not re-derive to
 /// the `witness_set_hash` the transaction id commits, so the door refuses
-/// before any witness is read. This is the guard step-01 used to run a step
-/// early, against a redeemer-supplied preimage nothing downstream re-checked.
+/// before any witness is read.
 test invalid_signature_step_02_rejects_a_forged_witness_set() fail {
   let block = fixture.challenged_block_v1()
   let forged = NativeTxWitnessSetCompact {
@@ -235,7 +234,7 @@ test invalid_signature_step_02_rejects_a_forged_witness_set() fail {
 
 /// **Both sides forged.** The previous selector only forges the witness set,
 /// which the door catches because the honest compact structure's
-/// `witness_set_hash` no longer re-derives. The real attack forges *both*: §3's
+/// `witness_set_hash` does not match it. The real attack forges *both*: §3's
 /// transaction id commits the body and nothing else, so a prover can append its
 /// own `witness_set_hash` to the genuine body — the bytes still re-derive to
 /// this very `bad_tx_id` — and then present the witness set that hash commits.

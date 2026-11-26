@@ -1,5 +1,5 @@
 /** One durable per-event input artifact for both transaction source roots and
- * both verdict polarities. Block-initial and creator-transaction proofs are retired. */
+ * both verdict polarities. */
 import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
@@ -171,7 +171,7 @@ export const prepareLedgerAbsenceArtifact = async ({
   ).artifact;
 };
 
-/** Exactly the physical step's one proof; no creator/root compatibility path. */
+/** Exactly the physical step's one proof. */
 export const inputExistenceProofForStage = (
   prepared: PreparedInputExistence,
   stage: string,

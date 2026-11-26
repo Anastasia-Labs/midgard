@@ -442,7 +442,7 @@ describe("compiled production workflow boundary", () => {
     });
   });
 
-  it("parses run/resume workflow identity flags in the compiled CLI, refusing the retired journal directory", () => {
+  it("parses run/resume workflow identity flags in the compiled CLI", () => {
     const argv = [
       "node",
       "midgard-fault-proofs",
@@ -463,9 +463,6 @@ describe("compiled production workflow boundary", () => {
       headerHash: "f8".repeat(28),
       workflowRuntimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
     });
-    expect(() =>
-      parseArgs([...argv, "--workflow-journal-dir", "/tmp/midgard-workflow"]),
-    ).toThrow("Unknown argument: --workflow-journal-dir");
   });
 
   it("fails closed on a missing adapter before accepting evidence", async () => {

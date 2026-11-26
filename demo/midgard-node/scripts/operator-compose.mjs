@@ -20,7 +20,7 @@
 //   reads (`.env`, or each `--env-file`), and `-p`/`--project-name`, always
 //   win over the derived value.
 //
-// A per-service port block, not phase 4's single offset: these defaults
+// A per-service port block, not the process devnet's single offset: these defaults
 // differ by multiples of 10 (12788 and 12798, 3100 and 3200), so one offset
 // per worktree lands one worktree's port on another's. Blocks from 20000 to
 // 29999 sit below every default here and below the Linux ephemeral range.

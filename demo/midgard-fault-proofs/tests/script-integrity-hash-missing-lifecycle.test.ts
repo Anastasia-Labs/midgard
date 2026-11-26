@@ -838,13 +838,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
   }, 600_000);
 
   it("splits 224+224 certified items across resumable ledger transactions", async () => {
-    // This journey evaluates ~60 transactions in one worker. It used to hand
-    // each evaluation to a fresh subprocess (tests/support/
-    // isolated-uplc-evaluator-v1.cjs) purely to dodge the @lucid-evolution/uplc
-    // linear-memory leak, at ~2.5 s of process spawn and module load per
-    // evaluation — 150 s for a journey that runs in 19 s in-process. With the
-    // allocator fix (lucid-evolution PR #728) the in-process evaluator is the
-    // same pinned Aiken UPLC evaluator with no leak to dodge.
+    // This journey evaluates ~60 transactions in one worker, in process: the
+    // pinned Aiken UPLC evaluator does not leak per evaluation, and a
+    // subprocess per evaluation would cost ~2.5 s each.
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: { realScriptIntegrityHashMissing: true },
     });

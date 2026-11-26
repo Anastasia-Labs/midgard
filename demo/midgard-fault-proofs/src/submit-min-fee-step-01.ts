@@ -50,10 +50,7 @@ import {
 } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "./workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(0);
 
@@ -69,9 +66,6 @@ export type MinFeeStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitMinFeeStep01Result =
-  OutsideWorkflowSubmission<MinFeeStep01Build>;
 
 export const buildMinFeeStep01 = async ({
   lucid,

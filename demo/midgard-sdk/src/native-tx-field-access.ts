@@ -245,8 +245,7 @@ export const EMPTY_FIELD_COMMITMENT_HEX: string =
 /**
  * §8.6's constant certificate asset name, as
  * the hex string an `Assets` key needs. One constant for every certificate of
- * the policy — the retired `blake2b_256(field_index ‖ tx_id)` derivation's
- * information lives in the datum, and discovery is by enumerating the single
+ * the policy — a certificate's field identity lives in the datum, and discovery is by enumerating the single
  * certificate address and filtering by datum.
  */
 export const FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX: string =

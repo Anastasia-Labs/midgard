@@ -79,40 +79,31 @@ concurrency:
 permissions:
   contents: read
 
-# THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
-# the patched fork is the SOLE compiler, and it is what defines deployed script
-# identity. Stock v1.1.22 is retired from every role and is no longer installed
-# by this workflow.
+# THE COMPILER PIN. The patched fork is the only compiler, and it defines
+# deployed script identity. Stock aiken is not installed by this workflow.
 #
-# The jobs below are not bystanders to that ruling. The `blueprint` job's
-# `aiken build --env testnet` produces the testnet blueprint the node, SDK,
-# validation and fault-proof suites resolve script hashes from, so the compiler
-# chosen here is the compiler whose identity those suites assert; and the
-# golden-vector channels shell out to `aiken fmt` through
-# `demo/midgard-core/scripts/golden-channel.mjs` — in `--check` mode as well as
-# `:sync` — so it is also the formatting authority whose output those
-# cross-language claims are compared against.
-# Under stock v1.1.22 both were measured against the wrong artifact: stock keys
-# generated expect-decoders by LOCAL type name with no module path (issue
-# #521), so two same-named types in different modules share one decoder, and
-# the retirement snapshot recorded in `aiken-ci.yml` measured the consequence
-# on this tree — `user_events/tx_order_v1.mint` diverges (stock 81fa79f4…,
-# 9,851 bytes; fork b5541807…, 10,071 bytes).
+# The `blueprint` job's `aiken build --env testnet` produces the testnet
+# blueprint the node, SDK, validation and fault-proof suites resolve script
+# hashes from, so the compiler chosen here is the compiler whose identity those
+# suites assert; and the golden-vector channels shell out to `aiken fmt`
+# through `demo/midgard-core/scripts/golden-channel.mjs` (in `--check` mode as
+# well as `:sync`), so it is also the formatting authority those
+# cross-language claims are compared against. Stock v1.1.22 keys generated
+# expect-decoders by local type name with no module path, so two same-named
+# types in different modules share one decoder and it builds the wrong
+# `user_events/tx_order_v1.mint`.
 #
 # The pin is the `aiken` input of `demo/flake.nix`, locked in
 # `demo/flake.lock`. Every script reaches the compiler through `scripts/aiken`,
-# which builds exactly that commit with nix, so nothing can run another aiken;
-# `aiken-ci.yml`'s header records each move of the pin (now midgard-c08fcece)
-# and its measured blueprint invariance.
+# which builds exactly that commit with nix, so nothing can run another aiken.
 #
-# JOB LAYOUT. Every independent gate is its own job, so the first red no longer
-# hides the rest: the fork is built once into the nix cache the other jobs
-# restore (`.github/actions/aiken`), the blueprint is built once from it and shared together with its build record,
-# and each package job starts from the workspace state its checks had in the
-# old serial job (`prebuild` rebuilds the packages that were built before them
-# there). The `gate` job at the bottom is the one check branch protection
-# should require; `scripts/ci/lint-workflows.mjs` holds it to the fail-closed
-# shape.
+# JOB LAYOUT. Every independent gate is its own job, so one red does not hide
+# the rest: the fork is built once into the nix cache the other jobs restore
+# (`.github/actions/aiken`), the blueprint is built once from it and shared
+# together with its build record, and each package job's `prebuild` rebuilds
+# the packages its checks read. The `gate` job at the bottom is the one check
+# branch protection should require; `scripts/ci/lint-workflows.mjs` holds it to
+# the fail-closed shape.
 env:
   L1_BLOCKFROST_API_URL: https://blockfrost.invalid
   L1_BLOCKFROST_KEY: test-key
@@ -256,9 +247,9 @@ jobs:
 
   # The launch surface. Every compose stack an operator can be told to run
   # must render from `.env.example` alone, and the node image must build from
-  # a fresh checkout plus the blueprint the `blueprint` job produced; none of
-  # that was exercised by CI before, so a gitignored COPY source or a mistyped
-  # overlay reached operators first.
+  # a fresh checkout plus the blueprint the `blueprint` job produced, so a
+  # gitignored COPY source or a mistyped overlay fails here before it reaches
+  # operators.
   compose-render:
     name: Operator compose stacks
     runs-on: ubuntu-latest
@@ -298,14 +289,14 @@ jobs:
       - name: Serve the public ingress through nginx to a socket node
         if: ${{ !cancelled() }}
         run: node --test demo/midgard-node/scripts/public-ingress.test.mjs
-      - name: Render the phase4 devnet compose
+      - name: Render the isolated-chain devnet compose
         if: ${{ !cancelled() }}
-        working-directory: demo/midgard-node-tools/devnet/phase4-process
+        working-directory: demo/midgard-node-tools/devnet/isolated-chain
         env:
-          MIDGARD_PHASE4_COMPOSE_PROJECT: ci
-          MIDGARD_PHASE4_POSTGRES_DATABASE: midgard_phase4
-          MIDGARD_PHASE4_POSTGRES_PASSWORD: ci
-          MIDGARD_PHASE4_RUN_DIR: ${{ runner.temp }}/phase4
+          MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT: ci
+          MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE: midgard_isolated_chain
+          MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD: ci
+          MIDGARD_ISOLATED_CHAIN_RUN_DIR: ${{ runner.temp }}/isolated-chain
         run: docker compose -f compose.yaml config --quiet
 
   node-image:
@@ -338,9 +329,9 @@ jobs:
   # Every cross-language golden channel, one step each. Each generator
   # regenerates its artifacts from the TypeScript twins in `--check` mode and
   # fails on any difference, so a hand-edited vector, or an edited producer
-  # plus a `:sync`, cannot re-green both language suites unnoticed
-  # (#519/#523). Each step runs even when an earlier one failed, so one stale
-  # channel no longer hides the state of the others.
+  # plus a `:sync`, cannot re-green both language suites unnoticed. Each step
+  # runs even when an earlier one failed, so one stale channel does not hide
+  # the state of the others.
   golden-channels:
     name: Golden channels
     needs: [aiken-fork, blueprint]
@@ -362,22 +353,22 @@ jobs:
       # fixture and the generated Aiken module — are regenerated from the
       # TypeScript twin, never hand-edited. Without this gate an edited
       # `native-tx-field-access-v1-golden.test.ak` passes the Aiken suite and
-      # the vitest suite while no longer being what the twin produces, which is
+      # the vitest suite while differing from what the twin produces, which is
       # exactly the cross-language drift the channel exists to catch. The step
       # runs `aiken fmt` on a temp file, so it needs the pinned fork on PATH.
       - name: Check native V1 field-access golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:native-tx-field-access-v1
-      # The per-field half of the same channel (#569): for every field index
+      # The per-field half of the same channel: for every field index
       # 0..8, what §5.3's `enc_i` actually is. It gates on the identical
       # footing and for the identical reason — the JSON fixture and the
       # generated Aiken module are produced from the TypeScript twins and are
       # never hand-edited, so without this step a hand-edited vector passes
-      # both language suites while no longer being what the producers emit.
+      # both language suites while differing from what the producers emit.
       - name: Check native V1 per-field item golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:native-tx-field-items-v1
-      # The §8.6/§8.8 **wire** channel (#574). It lives in the SDK rather than
+      # The §8.6/§8.8 **wire** channel. It lives in the SDK rather than
       # midgard-core because what it pins is Plutus Data encoding and the
       # producer of that is `Data.to` against the SDK schemas, but it gates on
       # exactly the footing of the two above, and it needs the gate more than
@@ -388,7 +379,7 @@ jobs:
       - name: Check native V1 carriage wire golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:native-tx-carriage-wire-v1
-      # The `n01`-`n09` transaction vectors (#588). Same footing as the three
+      # The `n01`-`n09` transaction vectors. Same footing as the three
       # channels above, with one difference worth naming: the eleven Aiken
       # constants this gates live inside a hand-written 1,700-line test module, so
       # the generator rebinds them in place rather than emitting the module. That
@@ -416,7 +407,7 @@ jobs:
       # The withdrawal-mistag node-agreement verdicts: one JSON vector file the
       # fault-proofs twins load and the generator renders into the step-03 and
       # step-04 Aiken tests. Without this step an edited Aiken vector passes
-      # both suites while the node and the chain no longer judge the same case.
+      # both suites while the node and the chain judge the case differently.
       - name: Check withdrawal-mistag node-agreement vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:withdrawal-mistag-agreement
@@ -428,16 +419,14 @@ jobs:
       - name: Check canonical Data corpus golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-data-canonical-corpus-v1
-      # The §12.7 canonical-decodability channel (#596). It emits both artifacts
-      # from one generator run on exactly the footing of the four above, and it
-      # was left unwired when it landed — so an edited producer plus a `:sync`
-      # re-greened the vitest suite and the Aiken suite in the same stroke with
-      # nothing to notice. Wired here by #601 rather than left for #579, because
-      # a golden channel no step runs is a gate that cannot fail (#519/#523).
+      # The §12.7 canonical-decodability channel. It emits both artifacts from
+      # one generator run on exactly the footing of the four above, so without
+      # this step an edited producer plus a `:sync` re-greens the vitest suite
+      # and the Aiken suite in the same stroke with nothing to notice.
       - name: Check canonical-decodability golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:canonical-decodability-v1
-      # The §12.8 committed-field-shape channel (#601). Same footing as the five
+      # The §12.8 committed-field-shape channel. Same footing as the five
       # above, with the difference that makes it matter more: its verdict takes
       # **two** arguments, so a twin that transposed the slot or read §5.3's
       # stride table one row differently would agree with its partner on most
@@ -481,13 +470,9 @@ jobs:
         run: node scripts/preflight.mjs --run golden:ordered-collection-boundary-aiken
       # The three nested-maximum families — the balanced constructor/list/map
       # datum, the nested redeemer `Data` and the exact 5,000-byte `Value` — on
-      # the same footing. Their Aiken terminals used to be retyped out of a
-      # `MIDGARD_PRINT_AIKEN_VECTOR=1` terminal dump, and that same variable
-      # switched off the suites' own terminal comparison, so the one command
-      # that refreshed the on-chain constants also removed the oracle that made
-      # them trustworthy. The suites now assert unconditionally and publish on
-      # the machine channel; this job is what makes a stale on-chain terminal a
-      # red build rather than a silent cross-language drift.
+      # the same footing. The suites assert unconditionally and publish on the
+      # machine channel; this step makes a stale on-chain terminal a red build
+      # rather than a silent cross-language drift.
       - name: Check nested boundary Aiken constants
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:nested-boundary-aiken
@@ -573,9 +558,9 @@ jobs:
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
       # decodes with the SDK's second implementation of the same ABI — and the
       # on-chain `validation-auxiliary-witness-v1-abi-generated.ak` that pins
-      # the corpus hash and per-tag arities. It supported `--check` but no job
-      # ran it, so an edited encoder plus a re-run of the generator re-greened
-      # both language suites with nothing to notice (#519/#523).
+      # the corpus hash and per-tag arities. Without this step an edited
+      # encoder plus a re-run of the generator re-greens both language suites
+      # with nothing to notice.
       - name: Check validation-auxiliary-witness ABI golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:validation-auxiliary-witness-v1
@@ -622,7 +607,7 @@ jobs:
         run: node scripts/preflight.mjs --run golden:rejection-reason-v1
       # The Aiken constants rebound from the three native-transaction
       # conformance fixtures: an edited constant would otherwise pass the
-      # Aiken suite while no longer being the fixture's bytes. lucid-midgard's
+      # Aiken suite while differing from the fixture's bytes. lucid-midgard's
       # suite runs the same `--check` (tests/native-compact-goldens.test.ts);
       # this step names the channel, so preflight sees CI gating it.
       - name: Check native-transaction compact golden constants
@@ -744,7 +729,7 @@ jobs:
       # three field groups against BOTH real projections — the blueprint the
       # compiler just generated and the Data schema the SDK build above exports.
       # It runs after the SDK build because it imports that dist. The self-test
-      # follows it because a gate nothing can redden is not a gate (#519/#523):
+      # follows it because a gate nothing can redden is not a gate:
       # it seeds fourteen hostile mutations into one input at a time and requires
       # each to be rejected, bracketed by clean control runs.
       - name: Verify HeaderV1 ABI against the blueprint and the built SDK
@@ -1108,8 +1093,7 @@ jobs:
 
   # The L1 follower fact store: its Postgres and SQLite adapters and the
   # property replays over both. It reads no blueprint and imports no other
-  # package's dist. The B3/B8 benchmarks (`bench`, vitest.bench.config.ts)
-  # are not part of `test` and do not run here.
+  # package's dist.
   midgard-l1-follower:
     name: midgard-l1-follower
     runs-on: ubuntu-latest

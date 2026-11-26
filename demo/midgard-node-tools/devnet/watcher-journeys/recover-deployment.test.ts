@@ -26,8 +26,8 @@ it.skipIf(process.env.MIDGARD_WATCHER_RECOVER_DEPLOYMENT !== "1")(
           return [line.slice(0, at), line.slice(at + 1)];
         }),
     );
-    const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`;
-    const kupoUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`;
+    const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT}`;
+    const kupoUrl = `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_KUPO_PORT}`;
     const provider = new JourneyLocalKupmios(kupoUrl, ogmiosUrl, native);
     const lucid = await journeyLucid(provider, {
       kupoUrl,
@@ -57,7 +57,7 @@ it.skipIf(process.env.MIDGARD_WATCHER_RECOVER_DEPLOYMENT !== "1")(
     );
     const matches = await (
       await fetch(
-        `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}/matches/${accounts.operator.address}`,
+        `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_KUPO_PORT}/matches/${accounts.operator.address}`,
       )
     ).json();
     const candidates = matches.filter(

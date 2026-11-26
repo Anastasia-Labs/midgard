@@ -108,7 +108,7 @@ export type MissingSignatureProverDeps = {
     event: MissingSignatureProverEvent,
   ) => void | Promise<void>;
   readonly policy: MissingSignatureProverPolicy;
-  /** Owner ruling: all four steps are sourced by reference, never inline. */
+  /** All four steps are sourced by reference, never inline. */
   readonly referenceScriptUtxos: MissingSignatureReferenceScripts;
   /** Published shared minting and PHAS witnesses used across the journey. */
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;

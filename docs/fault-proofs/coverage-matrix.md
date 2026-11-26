@@ -71,8 +71,8 @@ These are intentionally not additional catalogue entries:
 
 Release acceptance (emulator catalogue closure under the shared Van Rossem
 limits, valid-block negatives, correction, economics, and data lifetime) is
-tracked in the [release acceptance plan](execution-plan.md); protocol statements
-that are impossible or only partially provable are tracked in
+planned in the [release acceptance plan](execution-plan.md); protocol statements
+that are impossible or only partially provable are listed in
 [remaining gaps](remaining-gaps.md), including forced-order evidence lifetime
 ([NIFP-03](remaining-gaps.md#nifp-03--event-proof-lifetime)). The user escape
 hatch is not implemented; [public-testnet readiness](../public_testnet_readiness.md)

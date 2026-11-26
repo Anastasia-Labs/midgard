@@ -8,7 +8,6 @@ import {
 import { Effect } from "effect";
 
 import { requireUniqueOutputIndex } from "../tx-context-redeemer.js";
-import { resolveFieldPreimageCertificationReferenceLayout } from "./field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.js";
 import { resolveProtocolParameters } from "./field-preimage-carriage.build-unsigned-field-preimage-publication-program.js";
 import {
   certifyFieldPreimageRedeemer,
@@ -16,18 +15,17 @@ import {
   minimumLovelaceForFieldPreimageCertificate,
   resolveChunkReferenceIndices,
 } from "./field-preimage-carriage.resolve-certificate-reference-index.js";
+import { resolveFieldPreimageCertificationReferenceLayout } from "./field-preimage-carriage.resolve-midgard-field-carriage-against-reference-inputs.js";
 
 /**
  * Certifies a tier-3 plan: one mint of the policy's constant-name token, one
  * certificate output at the validator's own address carrying the manifest as an
  * inline datum, and the plan's chunks as reference inputs.
  *
- * **The token is not content-addressed.** It
- * used to be — its name was `blake2b_256(field_index ‖ tx_id)` — and the
- * derivation is retired: every certificate of the policy now wears the same
- * fixed name, which carries no content and no security weight. What is
- * content-bound is the *datum*, whose `field_hash` the mint welds to the
- * verified `chunk_digests` and which the §8.8 door then holds against the
+ * **The token is not content-addressed.** Every certificate of the policy
+ * wears the same fixed name, which carries no content and no security weight.
+ * What is content-bound is the *datum*, whose `field_hash` the mint welds to
+ * the verified `chunk_digests` and which the §8.8 door then holds against the
  * commitment it anchored itself. So a consumer of a certificate reads the
  * datum; the token only says which policy minted it (see
  * {@link resolveCertificateReferenceIndex}).

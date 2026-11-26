@@ -56,11 +56,11 @@ validator exclusion {
 // by `expect`: ignoring a Boolean result would let optimization erase the check.
 // Compressed-path vectors below pin agreement with the off-chain trie.
 //
-// Since #606 the surface has two arms, and **both** carry a positive, because
+// The surface has two arms, and **both** carry a positive, because
 // a positive on only one of them leaves the other free to be mutated silently:
 //
 //   * `exclusion_accepts_genuine_non_membership` — the sentinel arm, an empty
-//     Midgard ledger, which is the first-block path #608 found dead.
+//     Midgard ledger, which is the first-block path.
 //   * `exclusion_accepts_non_membership_over_a_populated_trie` — the
 //     `mpf.from_root` arm with a real multi-step proof, which is the arm every
 //     block after the first takes.
@@ -138,8 +138,8 @@ fn run(redeemer: Data) -> Bool {
 /// carries: `env.empty_merkle_tree_root` is the canonical empty-trie sentinel
 /// (`blake2b_256("")`), forced onto a first block over a genesis confirmed
 /// state by `state-queue.ak`, and the empty proof is the only witness an empty
-/// ledger can produce. This is the first-block empty-ledger path #608 found
-/// dead; it also guards the sentinel translation against over-rejecting.
+/// ledger can produce. This is the first-block empty-ledger path; it also
+/// guards the sentinel translation against over-rejecting.
 test exclusion_accepts_genuine_non_membership() {
   run(redeemer_of(env.empty_merkle_tree_root, test_key, []))
 }
@@ -149,11 +149,10 @@ test exclusion_accepts_genuine_non_membership() {
 ///
 /// Every block after a genesis one carries a non-empty `prev_utxos_root`, so
 /// this is the arm a real conviction walks; the sentinel arm above is the
-/// first-block corner. Without this selector the `else` branch had no positive
-/// at all after #606 re-pointed the acceptance test at the sentinel, and a
-/// mutation that broke every production non-membership proof — collapsing
-/// `mpf.from_root(root)` to `mpf.empty`, say — would have been silent under
-/// `aiken check` while both remaining selectors stayed green.
+/// first-block corner. Without this selector the `else` branch has no
+/// positive, and a mutation that broke every production non-membership proof
+/// — collapsing `mpf.from_root(root)` to `mpf.empty`, say — would be silent
+/// under `aiken check` while both other selectors stayed green.
 test exclusion_accepts_non_membership_over_a_populated_trie() {
   run(redeemer_of(populated_root, absent_key, populated_absence_proof))
 }
@@ -228,10 +227,8 @@ test exclusion_accepts_the_no_input_step_03_populated_claim() {
   }
 }
 
-/// The retired fixture shape: an empty proof against a non-empty root
-/// is not a non-membership witness, and the step fixtures carried exactly
-/// this before the re-pin. It must stay rejected, so the suite catches a
-/// regression in either direction.
+/// An empty proof against a non-empty root is not a non-membership witness. It
+/// must stay rejected, so the suite catches a regression in either direction.
 test exclusion_rejects_the_retired_empty_proof_fixture_shape() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
   run_entry(

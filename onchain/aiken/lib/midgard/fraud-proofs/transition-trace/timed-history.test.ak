@@ -305,7 +305,7 @@ test capture_before_header_end_rejects() fail {
 
 // Capture checks coverage only; the merge deadline runs from the node's
 // block_time at the terminal (state_queue.require_completed_fraud_witness), so
-// a capture at or past end_time + maturity is no longer refused here.
+// a capture at or past end_time + maturity is not refused here.
 test capture_past_end_time_maturity_is_accepted() {
   let tx = transaction(order_facts.Withdrawal, 20)
   let end = base_header().end_time + ledger_state.block_maturity_duration_v1
@@ -536,15 +536,15 @@ test history_nft_quantity_must_be_exactly_one() fail {
   )
 }
 
-test short_legacy_nft_name_cannot_authenticate_history() fail {
+test short_nft_name_cannot_authenticate_history() fail {
   let tx = transaction(order_facts.Deposit, 20)
   expect [order] = tx.reference_inputs
-  let legacy = assets.from_lovelace(3000000) |> assets.add(h28_a, #"01", 1)
+  let short_name = assets.from_lovelace(3000000) |> assets.add(h28_a, #"01", 1)
   omitted(
     Transaction {
       ..tx,
       reference_inputs: [
-        Input { ..order, output: Output { ..order.output, value: legacy } },
+        Input { ..order, output: Output { ..order.output, value: short_name } },
       ],
     },
     order_facts.Deposit,

@@ -60,7 +60,7 @@ import type {
 
 /**
  * §5.6: `82 \u2016 58 1C policy_id \u2016 map(k) \u2016 asset entries` per policy item, inside
- * the §5.1 envelope. The retired raw-map form is prohibited.
+ * the §5.1 envelope. A raw map is prohibited.
  *
  * The flat asset list is grouped by policy here — that grouping and its
  * duplicate check are this module's own invariant about `MidgardLedgerMint`'s

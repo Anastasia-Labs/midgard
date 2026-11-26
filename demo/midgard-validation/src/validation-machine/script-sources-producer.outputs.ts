@@ -93,8 +93,8 @@ const produceOutputCommitments = (
       // authenticated preimage. The item bytes are not revealed: that re-proves
       // only that an authenticated commitment has a preimage (canonicalDecode and
       // the stage-5 output traversal establish it) while growing the one-step
-      // evidence past the L1 envelope for legal 16,384-byte outputs
-      // (C21-STAGE4-GAP, Option A). The carriage keeps this redeemer O(1) in
+      // evidence past the L1 envelope for legal 16,384-byte outputs. The
+      // carriage keeps this redeemer O(1) in
       // output size only under tiers 2-3, where the preimage rides reference
       // inputs. The step carries the *plan input* (field and bytes); the tier is
       // resolved at evidence commitment, where a transaction exists to index

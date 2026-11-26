@@ -21,15 +21,16 @@ message.
 
 - **Separate concerns.** The file holds several things that change for
   different reasons, and you can name the seam (a group of declarations that
-  import each other more than the rest). Size alone is not a reason: no lint
-  rule or CI step limits file length.
+  import each other more than the rest). A TypeScript or JavaScript file over
+  ESLint's 500-line `max-lines` cap (`demo/eslint.config.mjs`) must be split
+  or recorded in `demo/module-size-exceptions.json`; under the cap, size
+  alone is not a reason. [eslint: max-lines]
 - **It is changing.** `git log --since=<a month ago> --oneline -- <file>`
   shows real churn. A big file nobody edits costs nothing; splitting it
   costs every open branch that touches it a conflict.
 - **The seam is a pure move.** If reaching the seam means rewriting a
-  function body (the trace-builder generator in `d7368bc37` is one 6,400-line
-  function), it is a behavioural refactor, not a split. Stop here and plan it
-  as a change of its own; for consensus code use
+  function body, it is a behavioural refactor, not a split. Stop here and
+  plan it as a change of its own; for consensus code use
   [reviewing-consensus-changes](../reviewing-consensus-changes/SKILL.md).
 - **Nobody else is editing it.** `git status --short -- <file>` is empty in
   your tree, and no open branch or other session is mid-change in it. A split
@@ -53,7 +54,7 @@ git grep -n -F -e '<old path without extension>' -e '<old basename>'
 
 Done when: every hit is on a list with what it needs (re-point, keep, or
 nothing). [references/typescript-split.md](references/typescript-split.md)
-lists the kinds found in earlier splits (subpath exports, `tsup` entries,
+lists the kinds (subpath exports, `tsup` entries,
 tests that read source as text, path-pinned guards, self-relative paths, CI
 filters, evidence); read it when the hits include anything beyond ordinary
 imports.
@@ -161,8 +162,8 @@ the rest. Both scripts need their inputs; the TypeScript verifier also needs
 ## References
 
 - [references/oversized-files.md](references/oversized-files.md): read this
-  when choosing what to split, or before splitting a file next to an earlier
-  split. The size limits and the lessons of seven earlier splits.
+  when choosing what to split. The size limits and how to list the largest
+  files.
 - [references/typescript-split.md](references/typescript-split.md): read this
   for any TypeScript split. Package boundaries, what moves with the code,
   the verifier's options, output and blind spots.

@@ -1,7 +1,7 @@
 /** How a step's resolution reads one item of a field of the disputed
  * transaction: by walking the field, or through the field's grammar
  * certificate, which reads the item without walking the field, so the
- * step's cost no longer grows with the field's item count. A stage that
+ * step's cost does not grow with the field's item count. A stage that
  * keeps both routes takes the route beside its committed evidence, never in
  * it: in its own redeemer, or in the withdraw redeemer of the item yield
  * that opens the item. The paths that read only through the certificate

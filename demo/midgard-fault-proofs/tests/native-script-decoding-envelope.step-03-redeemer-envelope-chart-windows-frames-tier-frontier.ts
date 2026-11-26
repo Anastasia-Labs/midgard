@@ -98,7 +98,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     );
     expect(
       scanBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "worst two-chunk Scan window no longer fits the L1 envelope; the §5.2 planner's window geometry has no smaller legal cut to fall back to",
+      "worst two-chunk Scan window does not fit the L1 envelope; the §5.2 planner's window geometry has no smaller legal cut to fall back to",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
     const verdictRedeemer: NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer =
@@ -203,7 +203,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     );
     expect(
       bindBytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "BindDescriptor at adversarial ledger depth no longer fits the L1 envelope",
+      "BindDescriptor at adversarial ledger depth does not fit the L1 envelope",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
     // Tier 2 (RawUtxo): the production-default carriage for large subject
@@ -214,7 +214,7 @@ describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () 
     });
     expect(
       tier2Bytes + STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
-      "tier-2 OpenSubject no longer fits the L1 envelope",
+      "tier-2 OpenSubject does not fit the L1 envelope",
     ).toBeLessThanOrEqual(L1_ENVELOPE_BYTES);
 
     // Tier-1 frontier: the largest inline subject-field preimage BindOutpoint

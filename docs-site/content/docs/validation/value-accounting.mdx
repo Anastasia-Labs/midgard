@@ -103,7 +103,7 @@ const MidgardRedeemerTag = {
 
 `decodeMidgardRedeemers(preimageCbor)` accepts the canonical V1 field-8
 enveloped list through `decodeMidgardRedeemerWitnessFieldPreimage`. Raw Cardano
-arrays and pointer-keyed maps are retired encodings and are rejected. It returns
+arrays and pointer-keyed maps are rejected. It returns
 a normalized `DecodedMidgardRedeemer[]`. During decoding it:
 
 - rejects any tag outside the supported set (`ensureSupportedTag`);

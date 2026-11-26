@@ -52,6 +52,7 @@ import {
   runBothPhases,
 } from "./native-transaction-integration.build-native-tx.js";
 import {
+  EMPTY_MINT_MAP_CBOR,
   makeDatumHashScriptOutput,
   makeMalformedMintPolicyItemPreimage,
   makeMintPreimage,
@@ -62,7 +63,6 @@ import {
   makeProtectedScriptOutput,
   makeRedeemersPreimageCbor,
   makeScriptOutput,
-  RETIRED_MINT_MAP_CBOR,
 } from "./native-transaction-integration.make-mint-preimage.js";
 import {
   makeBaseLedger,
@@ -811,9 +811,8 @@ describe("native transaction integration", () => {
 
   it("rejects malformed native mint preimages", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
-    // §5.1-valid envelope, §5.6-invalid interior: a 27-byte policy id. Under the
-    // retired raw-map form the same 27 bytes were caught by the map reader; now
-    // the §5.6 item decoder catches them, and the reject code is unchanged.
+    // §5.1-valid envelope, §5.6-invalid interior: a 27-byte policy id, which
+    // the §5.6 item decoder catches.
     const malformedMintPreimageCbor = makeMalformedMintPolicyItemPreimage(
       Buffer.alloc(27, 0x11),
       new Map([[Buffer.from("05", "hex"), 1n]]),
@@ -839,7 +838,7 @@ describe("native transaction integration", () => {
   it("rejects empty top-level mint maps instead of treating them as no mint", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: RETIRED_MINT_MAP_CBOR,
+      mintPreimageCbor: EMPTY_MINT_MAP_CBOR,
       witnessMode: "valid",
       witnessSignerPrivateKey: signerKey,
     });
@@ -848,10 +847,9 @@ describe("native transaction integration", () => {
       runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
     );
 
-    // The §5.1 gate now subsumes the retired "empty array or non-empty map"
-    // check: `a0` is not a field preimage at all, so admission stops at the
-    // canonical decode rather than in the mint reader. The empty mint has exactly
-    // one spelling, `80`.
+    // `a0` is not a field preimage at all, so admission stops at the canonical
+    // decode rather than in the mint reader. The empty mint has exactly one
+    // spelling, `80`.
     expect(phaseA.accepted).toHaveLength(0);
     expect(phaseA.rejected).toHaveLength(1);
     expect(phaseA.rejected[0].code).toBe(RejectCodes.CborDeserialization);
@@ -2713,7 +2711,7 @@ describe("native transaction integration", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
   });
 
-  it("rejects legacy Cardano payloads in native-only phase A", async () => {
+  it("rejects Cardano payloads in native-only phase A", async () => {
     const cardanoTx = txFixtures[0];
     const result = await Effect.runPromise(
       runPhaseAValidation(
@@ -2732,7 +2730,7 @@ describe("native transaction integration", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.CborDeserialization);
   });
 
-  it("rejects legacy Cardano payloads in native-only utility decoders", async () => {
+  it("rejects Cardano payloads in native-only utility decoders", async () => {
     const cardanoTxBytes = Buffer.from(txFixtures[0].cborHex, "hex");
     const cardanoTxId = Buffer.from(txFixtures[0].txId, "hex");
 

@@ -199,7 +199,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       awaitConfirmation: true,
     });
     expect(step01Result.badTxId).toBe(fixture.badTxId);
-    // #604: the thread carries the §2.5 anchor, not field 0's commitment.
+    // The thread carries the §2.5 anchor, not field 0's commitment.
     expect(step01Result.verifiedTxId).toBe(fixture.badTxId);
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
@@ -382,11 +382,8 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
   }, 240_000);
 
   it("carries field 0 as §8.5 raw carriage and consumes it through the door", async () => {
-    // The §8 replacement for the retired `CompletePublished` route. That route
-    // referenced a bespoke `PublishedSpendInputsV1` datum bound to one
-    // computation thread and one prover; this one references a
-    // nothing-but-bytes §8.5 publication located by content, which is what makes
-    // it healable by anyone (§8.7).
+    // Step 02 references a nothing-but-bytes §8.5 publication located by
+    // content, which is what makes it healable by anyone (§8.7).
     //
     // 365 spend inputs put the §5.1 field-0 preimage at 14,603 bytes — past
     // §8.4's 14,336-byte tier-1 redeemer bound, inside the single-publication
@@ -750,7 +747,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
         nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
         awaitConfirmation: true,
       }),
-      // #604: the refusal now names the slot as well as the mismatch. Stripping
+      // The refusal names the slot as well as the mismatch. Stripping
       // the producer's outputs to fake an empty list produces a §5.1 preimage
       // that commits to the empty-field constant, which is not what that
       // transaction commits *at field 2* — and under §4 that constant is the

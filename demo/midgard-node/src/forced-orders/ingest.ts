@@ -32,7 +32,7 @@
  * `forced_order_ingestion_failed`.
  *
  * A rollback that removes an order removes its follower key and its order
- * row (N10b). In the same transaction, while the follower is caught up, the
+ * row. In the same transaction, while the follower is caught up, the
  * hook deletes each node row without a header whose order is gone and that
  * no block journal neither applied, folded nor dead holds. A row such a
  * journal holds is an orphan for the event-history recovery

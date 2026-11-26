@@ -4,8 +4,7 @@ use aiken/fuzz
 // The size-balanced (~15.5 kB) conformance fixture's Aiken twin.
 //
 // The constants below are GENERATED and every other line here is written by
-// hand. Until #588 this module's seed was an opaque checked-in blob with no
-// producer anywhere in the repo; it is now a construction stated in parameters.
+// hand. The seed is a construction stated in parameters.
 //
 //   seed:     demo/lucid-midgard/tests/fixtures/native-size-balanced.ts
 //   writer:   pnpm --dir demo/lucid-midgard run fixtures:native-size-balanced:sync

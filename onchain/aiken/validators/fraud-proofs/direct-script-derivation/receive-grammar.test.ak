@@ -185,7 +185,7 @@ test grammar_completion_routes_to_the_output_semantic_door() {
   grammar_step(3, True, False, 0)
 }
 
-test grammar_completion_cannot_stay_at_the_old_door() {
+test grammar_completion_cannot_stay_at_the_grammar_door() {
   !grammar_step(3, False, False, 0)
 }
 

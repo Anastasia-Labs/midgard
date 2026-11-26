@@ -1,7 +1,7 @@
 /**
  * A simulated chain followed into the node database with the event and
  * forced-order projections, and the node's forced rows read back, for the
- * forced-order hook tests (N10b).
+ * forced-order hook tests.
  */
 import { type FactStore } from "@al-ft/midgard-l1-follower";
 import { eventProjection } from "@al-ft/midgard-l1-follower/events";

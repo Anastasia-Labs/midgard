@@ -131,7 +131,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
 
-  // #604: thread state carries the §2.5 anchor — the transaction id — not the
+  // Thread state carries the §2.5 anchor — the transaction id — not the
   // field-0 commitment. Step-02 re-opens field 0 through the §8.8 door from it.
   const step02State = SDKFraudProof.inputNoIdxStep02StateFromBadTx(
     candidate.badTx.nodeTxId,

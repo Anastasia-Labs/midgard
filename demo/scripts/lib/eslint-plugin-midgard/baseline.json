@@ -1,17 +1,10 @@
 {
   "midgard/depth-through-heads": {
     "midgard-core/src/availability-operation-journal.ts": {
-      "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule; I1 takes D-N8 (derived status for the SDK availability challenge).",
+      "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule.",
       "sites": [
         "confirmationDepth > recoveryDepth",
         "const prune = depth > recoveryDepth && !live;"
-      ]
-    },
-    "midgard-node-tools/devnet/phase4-process/scripts/check-recovery-window.mjs": {
-      "reason": "Devnet harness: a slot forecast window derived from k, not a depth decision; no role reads it.",
-      "sites": [
-        "forecastSlots <= 0 ||",
-        "if (currentSlot >= tip.slot + forecastSlots)"
       ]
     },
     "midgard-node-tools/devnet/watcher-journeys/journey-timing.journey-timing-for-plan.ts": {
@@ -27,17 +20,17 @@
       "sites": ["evidence.canonicalDepth >= config.confirmationDepth,"]
     },
     "midgard-watcher/src/availability/observation.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "reason": "Watcher finality and observation depth against cd or k.",
       "sites": [
         "BigInt(observation.nativePoint.finalityDepth) < BigInt(confirmationDepth)"
       ]
     },
     "midgard-watcher/src/availability/published-payload.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "reason": "Watcher finality and observation depth against cd or k.",
       "sites": ["BigInt(observation.nativePoint.finalityDepth) <"]
     },
     "midgard-watcher/src/indexers/authenticated-state-queue-observation.parse-persisted-header.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
+      "reason": "Watcher finality and observation depth against cd or k.",
       "sites": ["BigInt(record.finalityDepth) < BigInt(RELEASE_FINALITY_DEPTH)"]
     }
   },
@@ -67,131 +60,137 @@
       "sites": [".setMinFee(config.slashingPenaltyLovelace);"]
     },
     "midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts": {
-      "reason": "Genuine finding, recorded for the owner: disproveResolutionClaim sets the slashing penalty as the minimum fee and completes through completeTxWithLocalUPLCEvalProgram with coin selection on, so the fee can exceed the penalty. Only the event ABI test builds it today.",
+      "reason": "disproveResolutionClaim sets the slashing penalty as the minimum fee and completes through completeTxWithLocalUPLCEvalProgram with coin selection on, so the fee can exceed the penalty. Only the event ABI test builds it.",
       "sites": [".setMinFee(params.slashingPenaltyLovelace);"]
     }
   },
   "midgard/locale-compare-explicit-locale": {
     "da-committee-node/src/availability/factory.availability-responder-operations.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["`${a.txHash}#${a.outputIndex}`.localeCompare("]
     },
     "da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "? left.commitment.header_hash.localeCompare(right.commitment.header_hash)"
       ]
     },
     "da-committee-node/src/committee-service.committee-service.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.headerHash.localeCompare(right.headerHash));",
         "].sort((left, right) => left.headerHash.localeCompare(right.headerHash));"
       ]
     },
     "da-committee-node/src/coordinator/on-chain.on-chain-lifecycle-coordinator-deps.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "left.digest.localeCompare(right.digest) ||",
         "left.id.localeCompare(right.id),"
       ]
     },
     "da-committee-node/src/domain.parse-da-stored-conflict-evidence-record.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["`${headerHash}${commitmentDigest}`.localeCompare("]
     },
     "da-committee-node/src/l1/da-attestation-reader.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.outRef.localeCompare(right.outRef),"]
     },
     "da-committee-node/src/l1/submitter.classify-l1-submitter-utxos.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["outRefKey(left).localeCompare(outRefKey(right)),"]
     },
     "da-committee-node/src/peer/signatures.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["firstIdentity.localeCompare(secondIdentity) < 0"]
     },
     "da-committee-node/src/store.persisted-decision-transition.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.headerHash.localeCompare(right.headerHash),"]
     },
     "da-committee-node/tests/conflict-evidence.conflict-fixture.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "].sort((left, right) => left.digest.localeCompare(right.digest));"
       ]
     },
     "da-committee-node/tests/helpers.make-payload-fixture.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [").sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
     "da-committee-node/tests/payload.payload-with-script-witnesses.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here. Existing sorting site moved unchanged when the fixture was renamed for stored Flat witnesses.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort((left, right) => left.txId.localeCompare(right.txId));"]
     },
     "midgard-core/src/codec/native.decode-midgard-native-mint.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [").sort((a, b) => a.localeCompare(b));"]
     },
+    "midgard-fault-proofs/scripts/generate-retained-da-boundary-corpus-v1.mjs": {
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
+      "sites": [
+        ".sort((left, right) => left.label.localeCompare(right.label));"
+      ]
+    },
     "midgard-fault-proofs/src/evidence/fraud-proof-evidence.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [": left.detectionId.localeCompare(right.detectionId),"]
     },
     "midgard-fault-proofs/src/mint-declared-asset-limit/replay.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
     "midgard-fault-proofs/src/observer-order-invalid/replay.prepare-observer-order-invalid-forced-artifact.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "? left.detectionId.localeCompare(right.detectionId)",
         "? left.detectionId.localeCompare(right.detectionId)"
       ]
     },
     "midgard-fault-proofs/src/observers-forbidden-on-untagged-network/replay.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
     "midgard-fault-proofs/src/redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
     "midgard-fault-proofs/src/remove-fraudulent-block.build-remove-fraudulent-block.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.outRef.localeCompare(right.outRef));"
       ]
     },
     "midgard-fault-proofs/src/transition-trace/l1-events.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.utxo.txHash.localeCompare(right.utxo.txHash) ||"]
     },
     "midgard-fault-proofs/src/workflow/funding-requirements.canonical-transaction.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "fundingAssets[assetIndex - 1]!.unit.localeCompare(asset.unit) >= 0,"
       ]
     },
     "midgard-fault-proofs/src/workflow/funding-requirements.funding-action.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "previous.role.localeCompare(reference.role) > 0 ||",
         "previous.outRef.localeCompare(reference.outRef) >= 0)"
       ]
     },
     "midgard-fault-proofs/src/workflow/funding-requirements.funding-controlled-input.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "identityAssets[assetIndex - 1]!.unit.localeCompare(asset.unit) >= 0,"
       ]
     },
     "midgard-fault-proofs/src/workflow/funding-requirements.normalized-requirements.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-fault-proofs/src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "[...values].sort((left, right) => left.outRef.localeCompare(right.outRef));",
         ".sort((left, right) => left.role.localeCompare(right.role)),",
@@ -200,231 +199,192 @@
       ]
     },
     "midgard-fault-proofs/src/zero-input/replay.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
-    "midgard-fault-proofs/tests/fixtures/build-cardano-capability-p2-boundary-corpus-v1.mjs": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        ".sort((left, right) => left.label.localeCompare(right.label));"
-      ]
-    },
     "midgard-fault-proofs/tests/native-script-invalid-wrongful-rejection-lifecycle.setup.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort((a, b) => a.hash.localeCompare(b.hash));"]
     },
     "midgard-fault-proofs/tests/remove-unattested-block-submit.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["].sort((a, b) => a.txHash.localeCompare(b.txHash));"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.journey.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         ").sort((a, b) => mintingPolicyToId(a).localeCompare(mintingPolicyToId(b)));"
       ]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-event-history-list.setup.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["keyedNonces.sort((a, b) => a.key.localeCompare(b.key));"]
     },
     "midgard-fault-proofs/tests/support/emulator/setup-tx.onboard-emulator-operator.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort((left, right) => left[1]!.localeCompare(right[1]!))"]
     },
     "midgard-fault-proofs/tests/support/emulator/setup-tx.submit-initial-mint-tx.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort((left, right) => left[1]!.localeCompare(right[1]!))"]
     },
     "midgard-fault-proofs/tests/support/transition-trace-retained.deposit-events-retained-block.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "Data.to(a.event.id, SDK.OutputReference).localeCompare(",
         "values.sort(([a], [b]) => a.localeCompare(b));"
       ]
     },
     "midgard-fault-proofs/tests/transition-proof-material.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["event_to_step.sort(([a], [b]) => a.localeCompare(b));"]
     },
     "midgard-fault-proofs/tests/value-conservation-replay.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["[...left, ...right].sort(([l], [r]) => l.localeCompare(r));"]
     },
     "midgard-node-tools/devnet/watcher-journeys/activate-retained-successor-live.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "assets: Object.entries(utxo.assets).sort(([a], [b]) => a.localeCompare(b)),"
       ]
     },
     "midgard-node-tools/devnet/watcher-journeys/history-cases.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["entries.sort(([left], [right]) => left.localeCompare(right));"]
     },
     "midgard-node-tools/devnet/watcher-journeys/history-events.build-journey-withdrawn-transaction.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(",
         "entries.sort(([left], [right]) => left.localeCompare(right));"
       ]
     },
     "midgard-node-tools/devnet/watcher-journeys/history-events.retain-journey-withdrawals.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(",
         "entries.sort(([left], [right]) => left.localeCompare(right));"
       ]
     },
-    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.validate-cleanup.mjs": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "left.localeCompare(right),",
-        "const wanted = [...expected].sort((left, right) => left.localeCompare(right));",
-        "JSON.stringify(left).localeCompare(JSON.stringify(right)),"
-      ]
-    },
-    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.validate-phas-registration-transaction-body.mjs": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
-      "sites": [
-        "[...value.spent].sort((left, right) => left.localeCompare(right)),"
-      ]
-    },
-    "midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.load-phase4-process-isolation.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort((left, right) => left.localeCompare(right));"]
-    },
-    "midgard-node-tools/src/commands/e2e-journal-kill-recovery-acceptance.validate-phase4-phas-registration-transaction-body.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [".sort((left, right) => left.localeCompare(right))"]
-    },
     "midgard-node-tools/src/commands/stress-corpus-generate.generate-stress-corpus.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.shardPath.localeCompare(right.shardPath))"
       ]
     },
     "midgard-node-tools/src/commands/stress-corpus/verify.parse-stress-corpus-index-line.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["sampleKey(corpusSha256, left).localeCompare("]
     },
     "midgard-node-tools/src/commands/stress-corpus/wallet-set-identity.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.walletId.localeCompare(right.walletId),"]
     },
     "midgard-node-tools/src/commands/stress-environment-fingerprint.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-node-tools/src/commands/stress-wallets/terminal-drain.terminal-snapshot-hash.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((a, b) => outRefKey(a).localeCompare(outRefKey(b)))",
         ".sort(([a], [b]) => a.localeCompare(b))"
       ]
     },
-    "midgard-node-tools/src/e2e/journal-kill-process-harness.capture-database-state.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["JSON.stringify(left).localeCompare(JSON.stringify(right)),"]
-    },
-    "midgard-node-tools/src/e2e/journal-kill-process-harness.database-state.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.txId.localeCompare(right.txId));",
-        "JSON.stringify(left).localeCompare(JSON.stringify(right)),"
-      ]
-    },
     "midgard-node/src/commands/contract-deployment-info.build-reference-script-out-ref-map.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["entries.sort(([left], [right]) => left.localeCompare(right)),"]
     },
     "midgard-node/src/commands/l1-utxos.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["unitA.localeCompare(unitB),"]
     },
     "midgard-node/src/commands/state-reconciliation.walk-merged-chain.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-node/src/e2e/env.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [".sort((left, right) => left.localeCompare(right))"]
     },
     "midgard-node/src/transactions/da-attestation.fetch-da-attestation-reference-scripts.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.txHash.localeCompare(right.txHash) ||"]
     },
     "midgard-node/src/transactions/utils.reward-registration-funding.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.txHash.localeCompare(right.txHash) ||"]
     },
     "midgard-node/tests/deposit-flow-emulator-shared.submit-with-wallet.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["return outRefLabel(left).localeCompare(outRefLabel(right));"]
     },
     "midgard-node/tests/helpers/operator-inactivity.build-deployment-snapshot.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["left.keyHash.localeCompare(right.keyHash),"]
     },
     "midgard-node/tests/mpf.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-node/tests/native-transaction-integration.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": ["(a, b) => a.localeCompare(b),"]
     },
     "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort((left, right) => left.key.localeCompare(right.key));"]
     },
     "midgard-sdk/src/state-queue-authenticated-replay-checkpoint.derive-state-queue-authenticated-replay-checkpoint.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "index > 0 && input.mintPolicyIds[index - 1]!.localeCompare(policy) >= 0,"
       ]
     },
     "midgard-sdk/src/state-queue-correction-transition.derive-state-queue-authenticated-transition.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.consumedOutRef.localeCompare(right.consumedOutRef),"]
     },
     "midgard-sdk/src/state-queue-correction-transition.derive-state-queue-correction-transition.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["left.consumedOutRef.localeCompare(right.consumedOutRef),"]
     },
     "midgard-sdk/src/state-queue-correction-transition.parse-state-queue-authenticated-transition.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         "index === 0 || values[index - 1]!.localeCompare(entry) < 0,",
         "left.consumedOutRef.localeCompare(right.consumedOutRef),"
       ]
     },
     "midgard-sdk/src/user-events/history-query.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in production source that sorts with the host's default collation. Whether the order feeds a digest, hash or on-chain datum is unchecked; moving it to \"en\" (the canonical-JSON collation) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [": left.key.localeCompare(right.key),"]
     },
     "midgard-sdk/tests/state-queue-correction-transition.fraud-lock.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-validation/tests/helpers/ordered-collection/mint-candidates.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "left.policyHashHex.localeCompare(right.policyHashHex),",
         "left.txHash.localeCompare(right.txHash) ||"
       ]
     },
     "midgard-validation/tests/nested-value-boundary.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "leftName.localeCompare(rightName),",
         "leftPolicy.localeCompare(rightPolicy) ||"
       ]
     },
     "midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right));"]
     },
     "midgard-validation/tests/redeemer-collateral-schema-feasibility.mint-entries.ts": {
-      "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
+      "reason": "Call site in test, devnet or script code that sorts with the host's default collation. Some of these orders are compared against production digests, so a collation change is checked site by site, not rewritten here.",
       "sites": [
         "left.rewardAccountHex.localeCompare(right.rewardAccountHex),",
         "left.assetNameHex.localeCompare(right.assetNameHex),",
@@ -432,19 +392,19 @@
       ]
     },
     "midgard-watcher/src/availability/runtime.select-watcher-availability-funding.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Whether this order feeds a digest, hash or datum is unchecked; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": ["? `${left.txHash}#${left.outputIndex}`.localeCompare("]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-supervisor.compare-jobs.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Whether this order feeds a digest, hash or datum is unchecked; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": ["return left.headerHash.localeCompare(right.headerHash);"]
     },
     "midgard-watcher/src/runtime/deployment-identity.verify-watcher-deployment-identity.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Whether this order feeds a digest, hash or datum is unchecked; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [".sort(([left], [right]) => left.localeCompare(right))"]
     },
     "midgard-watcher/src/runtime/operations-observability.alert-book.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
+      "reason": "Call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Whether this order feeds a digest, hash or datum is unchecked; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
       "sites": [
         "left.code.localeCompare(right.code) ||",
         "left.subjectDigest.localeCompare(right.subjectDigest),"
@@ -453,19 +413,19 @@
   },
   "midgard/no-cross-package-root": {
     "da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts": {
-      "reason": "Kept on the root because da-committee-node/tests/availability-responder-lagging-tip.test.ts and da-committee-node/tests/availability-responder-wall-ahead.test.ts stub buildPublishDaAvailabilityChunkTxProgram on the root entry together with a `signingCompleted` property the SDK does not export, and the stub reaches this module only through the root import. Narrowing waits on those tests being rewritten (the layering change split or retargeted mocks only by specifier).",
+      "reason": "Kept on the root because da-committee-node/tests/availability-responder-lagging-tip.test.ts and da-committee-node/tests/availability-responder-wall-ahead.test.ts stub buildPublishDaAvailabilityChunkTxProgram on the root entry together with a `signingCompleted` property the SDK does not export, and the stub reaches this module only through the root import. Narrowing waits on those tests being rewritten.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/src/availability/factory.ts": {
-      "reason": "Evaluation-order preamble: da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/availability-responder-lagging-tip.test.ts": {
-      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten (the layering change split or retargeted mocks only by specifier).",
+      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/availability-responder-wall-ahead.test.ts": {
-      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten (the layering change split or retargeted mocks only by specifier).",
+      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts": {
@@ -473,7 +433,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/coordinator.test.ts": {
-      "reason": "Evaluation-order preamble: da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/peer-coordinator.test.ts": {
@@ -489,19 +449,19 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "da-committee-node/tests/tx-builders.test.ts": {
-      "reason": "Evaluation-order preamble: da-committee-node/tests/tx-builders.da-attestation-init-output.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: da-committee-node/tests/tx-builders.da-attestation-init-output.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "lucid-midgard/src/builder.complete-tx.ts": {
-      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "lucid-midgard/src/builder.ts": {
-      "reason": "Evaluation-order preamble: lucid-midgard/src/builder.complete-tx.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: lucid-midgard/src/builder.complete-tx.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
     },
     "midgard-fault-proofs/src/block-replay.ts": {
-      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [
         "import { replayValidationVerdictEvent } from \"@al-ft/midgard-validation\";"
       ]
@@ -511,11 +471,11 @@
       "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/src/remove-unattested-block.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/src/validation-trace-dispute/claim-material.ts": {
-      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-claim-build-held.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts stub openValidationTraceV1 on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-claim-build-held.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts stub openValidationTraceV1 on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-fault-proofs/src/validation-trace-dispute/one-step-core-chains.ts": {
@@ -523,7 +483,7 @@
       "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/src/validation-trace-dispute/replay.ts": {
-      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub commitValidationTraceV1, replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub commitValidationTraceV1, replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-fault-proofs/src/validation-trace-dispute/transactions.ts": {
@@ -531,7 +491,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/src/workflow/complete-replay.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/validation-trace-dispute/replay.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/validation-trace-dispute/replay.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
     },
     "midgard-fault-proofs/tests/bin.test.ts": {
@@ -539,7 +499,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/field-item-width-illegal-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/helpers/input-existence-chronology-fixture.ts": {
@@ -568,11 +528,11 @@
       ]
     },
     "midgard-fault-proofs/tests/observer-order-invalid-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/observers-forbidden-on-untagged-network-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts": {
@@ -584,27 +544,27 @@
       ]
     },
     "midgard-fault-proofs/tests/redeemer-canonicity-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/script-integrity-hash-missing-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/spend-input-signer-missing-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/step-redeemer-blueprint-conformance.test.ts": {
-      "reason": "The namespace import of the SDK root is used as a value (the test compares the whole root export set with the family schema modules), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "reason": "The namespace import of the SDK root is used as a value (the test compares the whole root export set with the family schema modules); narrowing it is a test-body change.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-double-withdraw.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-event-history-capture.test.ts": {
@@ -623,11 +583,11 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-min-fee.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts": {
@@ -646,7 +606,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-no-reference-input-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/submit-init-emulator-transition-history.test.ts": {
@@ -673,7 +633,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/canonical-decodability-emulator.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/direct-handoff-regressions.ts": {
@@ -689,15 +649,15 @@
       "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/mint-authorization-emulator.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/output-reference-script-decoding-emulator.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts": {
@@ -705,7 +665,7 @@
       "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts, midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts still import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts, midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/support/script-decode-installed-workflow.ts": {
@@ -713,11 +673,11 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/witness-script-decoding-lifecycle.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts": {
@@ -729,7 +689,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.ts": {
-      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts": {
@@ -737,31 +697,24 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.ts": {
-      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/journey-runner.ts": {
-      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/readiness-evidence.ts": {
-      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts": {
       "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
-    },
-    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
-      "sites": [
-        "import \"@al-ft/midgard-sdk\";",
-        "import * as SDK from \"@al-ft/midgard-sdk\";"
-      ]
     },
     "midgard-node-tools/src/funding-measurements.ts": {
       "reason": "Its compiled dist is loaded by tests/funding-measurements.test.ts through a run-time URL import, which the workspace bundle's routing cannot see. Through the root it shares the bundled fault-proofs instance that the test's own root import makes a bundle entry; a subpath here loads a second instance from source. It and that test narrow together once the routing sees the dist import.",
@@ -773,49 +726,45 @@
         "import { submitCapturedTransaction } from \"@al-ft/midgard-fault-proofs\";"
       ]
     },
-    "midgard-node-tools/tests/phase4-journal-kill-recovery-summary-verifier.test.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
-      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
-    },
     "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "reason": "A JavaScript script outside the consumer package's TypeScript program; it keeps the root until it is narrowed by hand.",
       "sites": [
         "import \"@al-ft/midgard-sdk\";",
         "import * as SDK from \"@al-ft/midgard-sdk\";"
       ]
     },
     "midgard-node/src/commands/reconcile.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/fibers/merge.ts, midgard-node/src/workers/commit-block-header.ts still import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/fibers/merge.ts, midgard-node/src/workers/commit-block-header.ts import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/fibers/merge.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/index.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/commands/reconcile.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/commands/reconcile.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/mpf/event-window.classify-forced-transactions.ts": {
-      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/src/mpf/event-window.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/src/mpf/process.evaluate-normal-block-candidates.ts": {
-      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [
         "import { runPhaseBValidationWithPatch } from \"@al-ft/midgard-validation\";"
       ]
     },
     "midgard-node/src/mpf/process.process-mpfs.ts": {
-      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts stub runPhaseAValidation on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts stub runPhaseAValidation on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts": {
-      "reason": "Kept on the root because midgard-node/tests/operator-lifecycle-emulator.test.ts (at its module-size cap, so kept on the root) stubs buildActivateOperatorTx on the root entry with vi.spyOn, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the layering change edited no capped test).",
+      "reason": "Kept on the root because midgard-node/tests/operator-lifecycle-emulator.test.ts (at its module-size cap, so kept on the root) stubs buildActivateOperatorTx on the root entry with vi.spyOn, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [
         "import * as SDK from \"@al-ft/midgard-sdk\";",
         "} from \"@al-ft/midgard-sdk\";"
@@ -826,11 +775,11 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/workers/commit-block-header.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.ts": {
@@ -838,7 +787,7 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/workers/utils/scheduler-refresh.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/tests/availability-challenge-command.test.ts": {
@@ -864,7 +813,7 @@
       ]
     },
     "midgard-node/tests/database.test/finalization.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/workers/commit-block-header.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/commit-block-header.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/tests/database.test/mpf.ts": {
@@ -872,29 +821,29 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/tests/deposit-flow-emulator-shared.ts": {
-      "reason": "The namespace import of the SDK root is re-exported (`export { SDK }`) to the emulator tests, which read `SDK.name` through it, so the layer codemod leaves the file alone (it rewrites only the references inside one file), and its evaluation-order preamble with it; narrowing it means changing those importers, which the layering change did not do.",
+      "reason": "The namespace import of the SDK root is re-exported (`export { SDK }`) to the emulator tests, which read `SDK.name` through it, so the file and its evaluation-order preamble keep the root; narrowing it means changing those importers.",
       "sites": [
         "import \"@al-ft/midgard-sdk\";",
         "import * as SDK from \"@al-ft/midgard-sdk\";"
       ]
     },
     "midgard-node/tests/forced-transactions.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/tests/foreign-block-import.replay-clock.test.ts": {
-      "reason": "The test stubs replayValidationVerdictEvent on the validation root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
+      "reason": "The test stubs replayValidationVerdictEvent on the validation root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/tests/operator-exit-emulator.build-operator-exit-snapshot.ts": {
-      "reason": "The namespace import of the SDK root is used as a value (`const { REGISTRATION_DURATION_MS, SHIFT_DURATION_MS } = SDK`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "reason": "The namespace import of the SDK root is used as a value (`const { REGISTRATION_DURATION_MS, SHIFT_DURATION_MS } = SDK`); narrowing it is a test-body change.",
       "sites": [
         "import * as SDK from \"@al-ft/midgard-sdk\";",
         "import { createReferenceScriptAuthPolicy } from \"@al-ft/midgard-sdk\";"
       ]
     },
     "midgard-node/tests/operator-exit-emulator.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/tests/operator-exit-emulator.build-operator-exit-snapshot.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/tests/operator-exit-emulator.build-operator-exit-snapshot.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
@@ -914,29 +863,29 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "reason": "A JavaScript script outside the consumer package's TypeScript program; it keeps the root until it is narrowed by hand.",
       "sites": [
         "import { cekCoreFailureRoute, cekCoreGroup } from \"@al-ft/midgard-sdk\";"
       ]
     },
     "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "reason": "A JavaScript script outside the consumer package's TypeScript program; it keeps the root until it is narrowed by hand.",
       "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-decision-bridge.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofTerminalDeployment, bindFraudProofWorkflowDeployment, createHeaderClassifier, createTransitionTraceEventAuthority, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). createTransitionTraceEventAuthority also has no subpath yet.",
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofTerminalDeployment, bindFraudProofWorkflowDeployment, createHeaderClassifier, createTransitionTraceEventAuthority, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub. createTransitionTraceEventAuthority also has no subpath.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-application.create-catalogue-replayer.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofWorkflowDeployment on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofWorkflowDeployment on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [
         "import { PREDECESSOR_LEDGER_PROOF_CATEGORIES } from \"@al-ft/midgard-fault-proofs\";",
         "} from \"@al-ft/midgard-fault-proofs\";",
@@ -944,11 +893,11 @@
       ]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-application.replayed-ledger.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs classifyHeader, createHeaderClassifier, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs classifyHeader, createHeaderClassifier, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-application.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-execution.ts": {
@@ -956,37 +905,37 @@
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts": {
-      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-recovery-bound.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-retention.test.ts stub createWorkflowReconciliationPermitController, validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-recovery-bound.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-retention.test.ts stub createWorkflowReconciliationPermitController, validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-proof-supervisor.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/src/runtime/watcher-runtime.prepare-authority.ts": {
-      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [
         "import { resolveProverSigner } from \"@al-ft/midgard-fault-proofs\";"
       ]
     },
     "midgard-watcher/src/runtime/watcher-runtime.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-execution.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-execution.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/availability/completion-refresh.fixture.ts": {
-      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`); narrowing it is a test-body change.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/availability/refreshed-limits.test.ts": {
-      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`); narrowing it is a test-body change.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/fault-proofs/fault-proof-execution.test.ts": {
@@ -998,15 +947,15 @@
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/published-da-target-consumption.test.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/published-header-submission.test.ts": {
-      "reason": "The namespace import of the SDK root is used as a type (`importOriginal<typeof SDK>()` in its `/state-queue` mock), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "reason": "The namespace import of the SDK root is used as a type (`importOriginal<typeof SDK>()` in its `/state-queue` mock); narrowing it is a test-body change.",
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/runtime/secret-distinctness.test.ts": {
-      "reason": "The test stubs resolveProverSigner on the fault-proofs root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
+      "reason": "The test stubs resolveProverSigner on the fault-proofs root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change.",
       "sites": ["import * as FaultProofs from \"@al-ft/midgard-fault-proofs\";"]
     },
     "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts": {
@@ -1014,11 +963,11 @@
       "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/support/published-block-actor.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/tests/support/published-deposit-trace.ts": {
-      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     }
   },
@@ -1031,7 +980,7 @@
       "reason": "Evaluation-order preamble of a split suite whose part asserts the names the package root publishes; that part imports the root barrel on purpose.",
       "sites": ["import \"../src/index.js\";"]
     },
-    "midgard-fault-proofs/tests/legacy-submission-boundary.test.ts": {
+    "midgard-fault-proofs/tests/submission-route-admission.test.ts": {
       "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
       "sites": ["const exports = await import(\"../src/index.js\");"]
     },
@@ -1097,7 +1046,7 @@
       "sites": ["proof = Data.from(", "const canonicalProofCbor = Data.to("]
     },
     "midgard-validation/src/plutus-data.ts": {
-      "reason": "Test-support encoder: its only callers are validation and node tests encoding fixed-shape fixtures. Moving it into test support is a separate change.",
+      "reason": "Test-support encoder: its only callers are validation and node tests encoding fixed-shape fixtures.",
       "sites": [
         "): string => Data.to(toLocalPlutusData(value) as never, undefined, options);"
       ]

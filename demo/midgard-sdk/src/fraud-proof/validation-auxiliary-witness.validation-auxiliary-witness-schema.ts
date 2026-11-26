@@ -293,8 +293,8 @@ export const buildValidationAuxiliaryWitnessSchema = <
       /**
        * `CanonicalDecode`'s complete-item step: one item read whole rather than
        * chunk by chunk. Field index and item index come from the phase's control,
-       * so the carriage is the entire wire surface. The item bytes that used to
-       * ride here as `item_cbor` are read out of the authenticated preimage now.
+       * so the carriage is the entire wire surface. The item bytes are read out
+       * of the authenticated preimage.
        */
       TransactionFieldItemWitness: Data.Object({
         carriage: fieldSourceSchema,

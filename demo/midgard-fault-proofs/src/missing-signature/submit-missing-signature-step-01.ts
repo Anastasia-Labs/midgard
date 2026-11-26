@@ -68,10 +68,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
   type MissingSignatureContracts,
@@ -106,9 +103,6 @@ export type MissingSignatureStep01Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitMissingSignatureStep01Result =
-  OutsideWorkflowSubmission<MissingSignatureStep01Build>;
 
 type MissingSignatureStep01Layout = {
   readonly inputIndex: bigint;

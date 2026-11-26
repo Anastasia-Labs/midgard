@@ -129,7 +129,7 @@ pub fn computation_thread_token_asset_name_v1(
 /// transactions-root leaf. Only the root that gets opened afterwards differs,
 /// because `deposits_root` is a header **event** root: it has no raw-CBOR
 /// carriage seam and is not reachable through the published-chunk transactions
-/// carriage of issue #545.
+/// carriage.
 pub fn verify_challenged_header_v1(
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,

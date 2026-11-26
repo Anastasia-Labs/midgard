@@ -741,7 +741,7 @@ describe("transition-trace challenger tooling", () => {
     });
   });
 
-  // The hole this arm used to have, from the challenger side. `utxos_root` is
+  // The challenger side of this arm. `utxos_root` is
   // descriptor-valued everywhere it is produced, so a witness carrying the full
   // output bytes describes an insert the ledger never performed. It must be
   // refused here rather than replayed into a post-root no honest block can

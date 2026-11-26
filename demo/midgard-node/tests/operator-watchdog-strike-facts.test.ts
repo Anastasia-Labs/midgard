@@ -1,5 +1,5 @@
 /**
- * The landed-queue facts the operator watchdog holds a takeover on (B7): the
+ * The landed-queue facts the operator watchdog holds a takeover on: the
  * tail's commit time and when the queue stops accepting appends.
  */
 import * as SDK from "@al-ft/midgard-sdk/core";

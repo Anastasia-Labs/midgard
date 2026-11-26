@@ -1,8 +1,8 @@
 /**
- * `POST /submit` as a raw Node request handler, outside the Effect router
- * (design D3). It runs the ingress checks every route runs
+ * `POST /submit` as a raw Node request handler, outside the Effect router.
+ * It runs the ingress checks every route runs
  * (`admitHttpRequest`), reserves a slot in the submit check pool, reads the
- * body, has a pool worker check it (design D4) and hands the checked tx to
+ * body, has a pool worker check it and hands the checked tx to
  * the admitter (`makeCheckedTransactionsAdmitter`), a plain call that
  * answers from memory. The main thread neither decodes nor hashes the
  * body. Every other route stays on the Effect stack.
@@ -94,7 +94,7 @@ const admissionRefusal = (
           },
         },
       };
-    // First seen wins (design D6): the tx is never queued behind the
+    // First seen wins: the tx is never queued behind the
     // claim. The client's own tx may be the one that holds it, so the
     // answer sends it to `/tx-status` before it treats the tx as failed.
     case "AdmissionInputSpentError":

@@ -116,8 +116,8 @@ describe("Midgard local script evaluation primitives", () => {
 
   it("decodes the Midgard receiving redeemer tag and purpose constructor", () => {
     // §5.1/§5.3: field 8 is the enveloped list of `enc_8` items, built here
-    // through the production encoder rather than hand-spelled — the retired
-    // counted scheme concatenated bare four-element arrays, which §5.1 refuses.
+    // through the production encoder rather than hand-spelled: §5.1 refuses
+    // bare concatenated four-element arrays.
     const redeemers = decodeMidgardRedeemers(
       encodeMidgardFieldPreimageForField({
         fieldIndex: 8,

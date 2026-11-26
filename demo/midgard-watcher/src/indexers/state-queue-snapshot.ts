@@ -2,8 +2,7 @@
  * Structural state-queue header and snapshot records.
  *
  * These are the canonical JSON shapes the watcher uses to carry an
- * L1-authenticated state-queue header (W22 header-root reconstruction, W24
- * Phase A) and a queue snapshot (attestation-timeout observation). `make*`
+ * L1-authenticated state-queue header (header-root reconstruction, Phase A) and a queue snapshot (attestation-timeout observation). `make*`
  * builds a digest-bound record; `parse*` admits one only when it is exactly
  * structural and its header hash or snapshot digest recomputes. Neither
  * performs chain observation:

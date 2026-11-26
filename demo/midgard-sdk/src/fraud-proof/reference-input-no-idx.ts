@@ -87,9 +87,8 @@ export const isReferenceInputNoIdxViolation = ({
  *
  * Reference inputs and spend inputs share the per-item encoder, and under §4 they
  * also share the commitment — the field index is not in the hash input, so an
- * identical spend-inputs list commits to exactly this value. The retired counted
- * scheme salted each item with its field index and so separated them. What keeps
- * the two apart now is positional: the caller reads
+ * identical spend-inputs list commits to exactly this value. What keeps the two
+ * apart is positional: the caller reads
  * `body.reference_inputs_hash` out of the committed compact structure.
  */
 export const referenceInputNoIdxReferenceInputsCommitment = (
@@ -248,8 +247,7 @@ export const ReferenceInputNoIdxStep03SpendRedeemer =
 //
 // `outputs_preimage` is the producing transaction's complete outputs list as
 // structured `MidgardTxOutput` PlutusData. On-chain it is re-encoded with
-// `encode_midgard_tx_output` and re-committed with
-// `bounded_collection_v1.from_items(2, ...)`; matching the committed
+// `encode_midgard_tx_output` and hashed as its §5.1 preimage; matching the committed
 // `outputs_hash` therefore also fixes the exact output count, which is what
 // makes the out-of-range check sound.
 

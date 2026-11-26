@@ -133,10 +133,6 @@ export const signerIndex = (value: string): number => {
 export const optionalSignerConfig = (
   env: Env,
 ): Pick<CommitteeConfig, "signerIndex" | "signerKeySource"> => {
-  const configuredMode = optionalNonEmpty(env.DA_MODE);
-  if (configuredMode !== undefined) {
-    throw new Error("DA_MODE has been removed and must be omitted");
-  }
   const index = optionalNonEmpty(env.DA_SIGNER_INDEX);
   const indexedSources = Object.keys(env).filter((name) =>
     name.startsWith("DA_SIGNER_KEY_SOURCE_"),
@@ -188,33 +184,7 @@ export const optionalSignerConfig = (
   };
 };
 
-const RETIRED_WATCHER_ENV_NAMES: Readonly<Record<string, string>> = {
-  WATCHER_API_HOST: "DA_COMMITTEE_API_HOST",
-  WATCHER_API_PORT: "DA_COMMITTEE_API_PORT",
-  WATCHER_POLL_INTERVAL_MS: "DA_COMMITTEE_POLL_INTERVAL_MS",
-  WATCHER_DATABASE_URL: "DA_COMMITTEE_DATABASE_URL",
-};
-
-/**
- * The committee node read `WATCHER_*` variables before the DA committee role
- * was split out of the watcher.  Refuse them rather than silently ignoring a
- * setting the operator believes is in effect.
- */
-export const rejectRetiredWatcherEnvNames = (env: Env): void => {
-  const present = Object.keys(RETIRED_WATCHER_ENV_NAMES).filter(
-    (name) => env[name] !== undefined,
-  );
-  if (present.length > 0) {
-    throw new Error(
-      `retired environment variable(s) ${present.join(", ")}: the DA committee node is not the watcher; use ${present
-        .map((name) => RETIRED_WATCHER_ENV_NAMES[name])
-        .join(", ")}`,
-    );
-  }
-};
-
 export const localState = (env: Env): LocalStateConfig => {
-  rejectRetiredWatcherEnvNames(env);
   const databaseUrl = optionalNonEmpty(env.DA_COMMITTEE_DATABASE_URL);
   if (databaseUrl === undefined) {
     throw new Error("DA_COMMITTEE_DATABASE_URL is required");

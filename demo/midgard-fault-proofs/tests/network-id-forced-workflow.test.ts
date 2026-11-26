@@ -195,7 +195,7 @@ describe("network-id forced (§5.2) production workflow", () => {
       },
     });
 
-    // Step 02 no longer opens the field in this direction, so the thread that
+    // Step 02 does not open the field in this direction, so the thread that
     // reaches it is finalised directly: the scan already certified field 2.
     const atStep02 = await forcedHarness({
       prepared,

@@ -296,7 +296,7 @@ pub fn declaration_is_complete_v1(state: DeclarationStateV1) -> Bool {
 }
 
 /// Empty output fields finish through the same authenticated exhaustion check;
-/// they never need a fabricated item or a compatibility default.
+/// they never need a fabricated item or a default.
 pub fn finish_outputs_v1(
   state: OutputStateV1,
   field_opening: FieldOpeningV1,

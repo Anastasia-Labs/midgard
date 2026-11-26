@@ -1303,7 +1303,7 @@ describe("V1 CEK commitments", () => {
     expect(verified.constants[0]!.memory).toBe(4n);
   });
 
-  it("rejects the retired split payload/semantic-root representation", () => {
+  it("rejects a bytes value whose payload blob root conflicts with its semantic root", () => {
     const typeBlob = commitMidgardCekBlob(Buffer.from("9f01ff", "hex"));
     const payloadValue = Buffer.alloc(65, 0x5a);
     const payloadBytes = Buffer.concat([
@@ -1313,8 +1313,8 @@ describe("V1 CEK commitments", () => {
     ]);
     const payloadBlob = commitMidgardCekBlob(payloadBytes);
 
-    // Canonical V1 has one semantic payload root. A value that retains the
-    // retired split whole-payload blob root must fail before graph traversal.
+    // Canonical V1 has one semantic payload root. A value that also carries a
+    // separate whole-payload blob root must fail before graph traversal.
     const conflictingValue = Buffer.alloc(65, 0x5b);
     const conflictingBlob = commitMidgardCekBlob(conflictingValue);
     const conflictingSemanticNode = {
@@ -1461,7 +1461,7 @@ describe("V1 CEK commitments", () => {
     ).toThrow(/runtime-only context constant/u);
   });
 
-  it("authenticates a semantic payload beyond the retired proof-envelope limit", () => {
+  it("authenticates a 9,000-byte semantic payload", () => {
     const large = makeBytesConstantProgramMaterial(9_000);
     expect(large.payloadCbor.length).toBeGreaterThan(9_215);
 

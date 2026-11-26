@@ -658,11 +658,6 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       emulatorReturnedExactDatum: true,
       returnedDatumBytes: cardanoSignedCapacityCandidate.acceptedDatumCborBytes,
     });
-    if (process.env.MIDGARD_PRINT_C26_ADMISSION === "1") {
-      console.info(
-        JSON.stringify({ maximumDepthEmulatorAdmissionV1: admission }),
-      );
-    }
   }, 300_000);
 
   /**
@@ -872,7 +867,7 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     const shallowNative =
       decodeMidgardNativeTxFullFromCanonicalCbor(shallowCanonical);
     // §5.1/§5.3: one enveloped `enc_8` item, the same form the production bridge
-    // emits — the retired counted scheme spelled this as a bare array of arrays.
+    // emits.
     const redeemerPreimageFor = (redeemerDataCbor: Buffer): Buffer =>
       encodeMidgardFieldPreimageForField({
         fieldIndex: 8,

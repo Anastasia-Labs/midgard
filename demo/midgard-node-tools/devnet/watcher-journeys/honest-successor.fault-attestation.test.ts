@@ -207,7 +207,7 @@ describe("stack successor and the fault's DA attestation", () => {
     /**
      * The fault is committed at slot 10, operator-2's shift holds it from
      * slot 9, and our node first reports it invalid at slot 13. With
-     * `attested`, its DA apply lands at slot 12 first, as #925 has it: the
+     * `attested`, its DA apply lands at slot 12 first: the
      * apply spends the commit's output and the watcher's removal later spends
      * the attested one.
      */

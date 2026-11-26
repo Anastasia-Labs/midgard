@@ -187,6 +187,11 @@ export const submitWithWallet = async (
   return result.right;
 };
 
+/**
+ * The emulator refuses a transaction whose witness set carries a Plutus V3
+ * script it counts as extraneous ("Extraneous plutus script"). This drops
+ * exactly that one script witness so the emulator accepts the transaction.
+ */
 export const stripPlutusV3WitnessByHash = ({
   txCbor,
   witnessHash,
@@ -199,7 +204,7 @@ export const stripPlutusV3WitnessByHash = ({
   const scripts = witnessSet.plutus_v3_scripts();
   if (scripts === undefined) {
     throw new Error(
-      `Failed to strip emulator-only witness workaround; tx has no Plutus V3 witnesses for hash=${witnessHash}`,
+      `Cannot drop the extraneous script witness; tx has no Plutus V3 witnesses for hash=${witnessHash}`,
     );
   }
 
@@ -215,7 +220,7 @@ export const stripPlutusV3WitnessByHash = ({
   }
   if (removed !== 1) {
     throw new Error(
-      `Expected to remove exactly one emulator-only cert witness for hash=${witnessHash}, removed=${removed.toString()}`,
+      `Expected to drop exactly one extraneous script witness for hash=${witnessHash}, removed=${removed.toString()}`,
     );
   }
 

@@ -246,11 +246,9 @@ export const runDoubleSpendCardinalityJourney = async (
       awaitConfirmation: true,
     }),
   );
-  // **#580 re-take, 2 -> 1.** Under the counted scheme this step published the
-  // spend-inputs witness in its own transaction and then spent the thread, so
-  // the capture held two submissions. Under flat, publication follows the §8
-  // tier the ladder records — by size, or by the #612 demotion when a caller
-  // asks: inline, the preimage rides the step redeemer and the capture holds
+  // Publication follows the §8 tier the ladder records — by size, or by the
+  // `publish` demotion when a caller asks: inline, the preimage rides the
+  // step redeemer and the capture holds
   // exactly one; routed, the §8.7 publication precedes the step and it holds
   // exactly two. Asserted rather than relaxed to `>= 1`, because an
   // unexpected extra submission would mean the builder had started

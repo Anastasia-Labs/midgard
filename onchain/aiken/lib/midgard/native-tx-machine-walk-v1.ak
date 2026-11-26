@@ -587,8 +587,7 @@ fn walk_at_start_with_count(
 /// replayed across disputes. This transaction pays its own single
 /// authenticate-once hash — it holds different bytes in a different script
 /// context and has no way not to — but it re-pays none of the *items* the
-/// earlier transaction walked, which is what AC2's "without re-paying completed
-/// work" means here.
+/// earlier transaction walked.
 ///
 /// **Deliberately private.** §10.6 is normative — "Dispute entry points MUST
 /// resume through the commitment, never from a redeemer-supplied checkpoint" —

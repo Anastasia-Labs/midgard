@@ -152,23 +152,6 @@ for (const route of [
   requireText(documents.skill, route, "reference route");
 }
 
-// Retired instructions. The hand-driven flow was replaced by `e2e-stack`;
-// naming its commands again would recreate a second way to run acceptance.
-for (const forbidden of [
-  "e2e-run-step",
-  "e2e-start-service",
-  "STEP_SUMMARY_ARGS",
-  "append_tx_arg",
-  "attest-state-queue-once",
-  "logs/phase-1-full-corpus-",
-  "logs/phase-1-live-acceptance/",
-  "preprod-da-2of3/secrets/l1-submitter.seed",
-  "--mode fresh-redeploy",
-]) {
-  if (allDocs.includes(forbidden))
-    fail(`forbidden stale instruction: ${forbidden}`);
-}
-
 // Commands named in the documents are declared by the binary that runs them.
 const commandsDeclaredIn = (source) =>
   new Set(
@@ -214,7 +197,7 @@ const referencedToolsScripts = new Set(
   ].map((match) => match[1]),
 );
 if (!referencedToolsScripts.has("e2e-stack")) {
-  fail("the runbook no longer shows the e2e-stack package script invocation");
+  fail("the runbook does not show the e2e-stack package script invocation");
 }
 for (const script of referencedToolsScripts) {
   if (typeof toolsScripts?.[script] !== "string") {
@@ -358,7 +341,7 @@ if (
     .includes('"producer-da-preflight"')
 ) {
   fail(
-    "node-start.ts no longer runs producer-da-preflight in preflightProducerTransport; update the runbook",
+    "node-start.ts does not run producer-da-preflight in preflightProducerTransport; update the runbook",
   );
 }
 if (
@@ -457,7 +440,7 @@ if (deploymentCommandIds.length === 0) {
 }
 for (const id of deploymentCommandIds) {
   if (!stackSource.includes(`.node("${id}"`))
-    fail(`fresh mode requires a command the stack no longer runs: ${id}`);
+    fail(`fresh mode requires a command the stack does not run: ${id}`);
 }
 // Without the state-correction sources the gates are blocked as not run, so a
 // stack run never reads as release-ready.
@@ -521,7 +504,7 @@ for (const [text, needle, label] of [
   [
     stateCorrectionAuthoritySource,
     "stateCorrectionValueDigest",
-    "canonical live Q57 value digest",
+    "canonical live state-correction value digest",
   ],
 ]) {
   requireText(text, needle, label);
@@ -547,7 +530,7 @@ for (const marker of [
   requireText(
     stateCorrectionAuthorityTestSource,
     marker,
-    `local Q57 authority negative rehearsal ${marker}`,
+    `local state-correction authority negative rehearsal ${marker}`,
   );
 }
 

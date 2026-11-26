@@ -922,9 +922,9 @@ describe("stress wallet commands", () => {
       expect(() =>
         parseStressWalletConsolidationJournal({
           ...journal,
-          legacyVerification: {},
+          unknownVerification: {},
         }),
-      ).toThrow("extra=[legacyVerification]");
+      ).toThrow("extra=[unknownVerification]");
       const { scope: _scope, ...journalWithoutScope } = journal;
       expect(() =>
         parseStressWalletConsolidationJournal(journalWithoutScope),
@@ -1723,9 +1723,9 @@ describe("stress wallet commands", () => {
       expect(() =>
         parseStressWalletTerminalDrainJournal({
           ...canonicalPreparedDocument,
-          legacyResult: true,
+          unknownResult: true,
         }),
-      ).toThrow("extra=[legacyResult]");
+      ).toThrow("extra=[unknownResult]");
       const { entries: _entries, ...terminalWithoutEntries } =
         canonicalPreparedDocument;
       expect(() =>

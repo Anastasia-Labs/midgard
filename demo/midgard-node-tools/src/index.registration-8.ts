@@ -10,7 +10,6 @@ import {
 } from "midgard-node/commands/cli-runtime";
 import { parseEnvOverrides } from "midgard-node/e2e/env";
 
-import { runJournalKillRecoveryAcceptance } from "./commands/e2e-journal-kill-recovery-acceptance.js";
 import * as E2EProcessCleanupCommand from "./commands/e2e-process-cleanup.js";
 import * as E2EServiceCommand from "./commands/e2e-service.js";
 import { program } from "./index.registration.js";
@@ -43,21 +42,6 @@ program
       }
     },
   );
-
-program
-  .command("e2e-journal-kill-recovery-acceptance")
-  .description(
-    "Run the operator-enabled Phase 4 journal-before-submit SIGKILL recovery acceptance (two nodes, default commit path) against a matched local-devnet snapshot",
-  )
-  .action(async () => {
-    try {
-      console.log(
-        JSON.stringify(await runJournalKillRecoveryAcceptance(), null, 2),
-      );
-    } catch (error) {
-      failCli("e2e-journal-kill-recovery-acceptance", error);
-    }
-  });
 
 program
   .command("e2e-start-service")

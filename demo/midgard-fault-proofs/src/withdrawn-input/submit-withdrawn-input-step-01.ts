@@ -43,10 +43,7 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,
@@ -67,9 +64,6 @@ export type WithdrawnInputStep01Build = {
   readonly withdrawalCount: bigint;
   readonly computationThreadUnit: string;
 };
-
-export type SubmitWithdrawnInputStep01Result =
-  OutsideWorkflowSubmission<WithdrawnInputStep01Build>;
 
 export const buildWithdrawnInputStep01 = async ({
   lucid,

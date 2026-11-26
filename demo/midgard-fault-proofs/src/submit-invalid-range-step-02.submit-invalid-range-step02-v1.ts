@@ -10,23 +10,18 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   fetchUtxoByOutRef,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  readJsonFile,
   type ResolvedProverSigner,
   resolveInvalidRangeDeploymentContracts,
-  resolveProverSigner,
 } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./step-support.js";
-import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import type { InvalidRangeStep02Build } from "./submit-invalid-range-step-02.make-invalid-range-step02-spend-redeemer.js";
 import {
   type InvalidRangeStep02ResolvedLayout,
@@ -35,8 +30,6 @@ import {
   makeFraudProofMintRedeemer,
   makeInvalidRangeStep02SpendRedeemer,
   requireStep02Datum,
-  type SubmitInvalidRangeStep02CliConfig,
-  type SubmitInvalidRangeStep02Result,
 } from "./submit-invalid-range-step-02.make-invalid-range-step02-spend-redeemer.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -257,33 +250,4 @@ export const buildInvalidRangeStep02V1 = async ({
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
   };
-};
-
-export const submitInvalidRangeStep02FromFiles = async (
-  config: SubmitInvalidRangeStep02CliConfig,
-): Promise<SubmitInvalidRangeStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-invalid-range-step-02",
-  });
-  const [blueprint, deploymentInfo, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    makeLucidForSubmit(config),
-  ]);
-  const signer = resolveProverSigner(config);
-  return await submitFaultProofTurns(
-    buildInvalidRangeStep02V1,
-    {
-      lucid,
-      blueprint,
-      deploymentInfo,
-      network: config.network,
-      signer,
-      threadOutRef: config.threadOutRef,
-    },
-    {
-      label: "invalid-range-step02-v1",
-      awaitConfirmation: config.awaitConfirmation ?? true,
-    },
-  );
 };

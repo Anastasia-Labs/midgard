@@ -131,9 +131,8 @@ export const makeMissingSignatureEmulatorHarness = async ({
 }: {
   /**
    * The default Aiken/WASM evaluator is the faster of the two by a wide
-   * margin on the multi-scan frontier and, since `@lucid-evolution/uplc`
-   * 0.2.23, no longer leaks its arena per evaluation. Scalus remains
-   * available for measurements that want a second evaluator's reading.
+   * margin on the multi-scan frontier. Scalus remains available for
+   * measurements that want a second evaluator's reading.
    */
   readonly useScalusEvaluator?: boolean;
 } = {}) => {

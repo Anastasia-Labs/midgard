@@ -5,21 +5,18 @@
  * fields of the transaction its computation thread is disputing
  * (`docs/spec/midgard-tx.md` §4, §8.8, §10).
  *
- * Every rebound Q1x family step speaks exactly two shapes, and they are the
- * whole of what #575 changed off-chain:
+ * Every such step speaks exactly two shapes:
  *
  *   * **thread state carries an anchor** ({@link NativeTxAnchorSchema}) — the
  *     §2.5 transaction id, plus the `witness_set_hash` for a family whose later
- *     step reads a witness-set field. It is *not* the retired per-field
- *     collection commitment (`..._spend_inputs_hash` and its siblings), which no
- *     validator reads any more.
+ *     step reads a witness-set field. It is *not* a per-field collection
+ *     commitment (`..._spend_inputs_hash` and its siblings), which no
+ *     validator reads.
  *   * **the step redeemer carries an opening** ({@link FieldOpeningSchema}) —
  *     the compact transaction bytes plus one §8 carriage tier. It is *not* a
- *     reproduced `..._preimage: List<…>` argument; that argument is gone from
- *     every rebound step, and a builder still emitting one produces a redeemer
- *     whose constructor arity the validator cannot decode. That is exactly the
- *     `Spend[0] the validator crashed / exited prematurely` signature the
- *     fault-proofs suite showed while the builders were stale.
+ *     reproduced `..._preimage: List<…>` argument; a builder emitting one
+ *     produces a redeemer whose constructor arity the validator cannot decode,
+ *     and fails with `Spend[0] the validator crashed / exited prematurely`.
  *
  * **Constructor order is frozen consensus wire format.** `Data.Enum` pins the
  * Constr index positionally, so the array order below *is* the on-chain tag
@@ -107,9 +104,8 @@ export type BodyAnchorV1 = Data.Static<typeof BodyAnchorSchema>;
 export const BodyAnchorV1 = asDataType<BodyAnchorV1>(BodyAnchorSchema);
 
 /**
- * Fields 6–8. 64 bytes of thread state — the same width the retired
- * per-collection-hash idiom cost, spent on a value that covers all three
- * witness-set fields instead of one.
+ * Fields 6–8. 64 bytes of thread state, covering all three witness-set
+ * fields.
  */
 export const WitnessAnchorSchema = Data.Object({
   tx_id: H32Schema,
@@ -277,16 +273,13 @@ export const nativeTxAnchorForField = ({
  * it were the transaction's) and a witness opening read at a body index (where
  * it would be silently ignored).
  *
- * **Tier 3 is admissible at every field, including 6–8**, since
- * [#606](https://github.com/Anastasia-Labs/midgard/issues/606)'s repair (owner
- * ruling 2026-08-16, resolving §8.3 erratum E2 limit 3). The §8.6 certificate
+ * **Tier 3 is admissible at every field, including 6–8** (§8.3, witness-set
+ * authentication). The §8.6 certificate
  * datum carries a mint-welded `field_hash`, and the on-chain door requires it
  * to equal the commitment derived from the **anchored** structures — for a
  * witness-set field, the chain that reaches the anchored `witness_set_hash` —
  * so a certificate minted against a fabricated witness set fails at the door.
- * The former builder-side refusal here (the #604 hardening that duplicated
- * `carriage_reaches_the_anchor`) lifted with the repair, keeping door parity:
- * this module emits exactly what the door accepts.
+ * This module emits exactly what the door accepts.
  */
 export const fieldOpeningForField = ({
   fieldIndex,

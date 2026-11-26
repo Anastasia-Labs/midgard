@@ -2,10 +2,9 @@
  * `double-spend` step-02 submitter — binds the second transaction to the same
  * block and forwards both §2.5 anchors to step-03.
  *
- * **Re-derived onto the flat field commitments by #604.** The thread carries
- * `verified_tx1_id`/`verified_tx2_id`; the two field-0 collection commitments it
- * used to forward are gone, because step-03 and step-04 open field 0 through the
- * §8.8 door from the anchors instead.
+ * The thread carries `verified_tx1_id`/`verified_tx2_id` and no field-0
+ * commitment: step-03 and step-04 open field 0 through the §8.8 door from the
+ * anchors.
  */
 
 import {
@@ -67,10 +66,7 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 
 export type Step02Build = {
   readonly transaction: LocallyEvaluatedTransaction;
@@ -102,8 +98,6 @@ export type Step02Build = {
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
 };
-
-export type SubmitStep02Result = OutsideWorkflowSubmission<Step02Build>;
 
 type Step02Layout = {
   readonly inputIndex: bigint;

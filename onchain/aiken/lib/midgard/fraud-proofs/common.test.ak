@@ -675,18 +675,14 @@ test common_native_binding_rejects_malformed_source_data() fail {
 
 // ## 6. Witness-set binding at the shared layer
 //
-// Retired by #575. The two selectors that lived here exercised
-// `common.verify_native_tx_witness_set`, which is gone: the derivation it ran is
-// now a precondition inside `authenticated_field_view`, against a
-// `witness_set_hash` the *thread* anchored rather than one the redeemer's own
-// compact bytes carried. The equivalent assertions live where the guard does —
+// The witness-set derivation is a precondition inside
+// `authenticated_field_view`, against a `witness_set_hash` the *thread*
+// anchored. Its assertions live where the guard does:
 // `midgard/fraud_proofs/field_opening_v1.test`'s
 // `forged_witness_set_and_compact_is_refused_under_the_anchor` and the
-// per-family both-sides forgery selectors — and they are strictly stronger,
-// because the helper here could only ever catch a witness set forged on one
-// side.
+// per-family both-sides forgery selectors.
 
-// ## Validation-trace value rule (pd-design 3.5, 6.5)
+// ## Validation-trace value rule
 //
 // `continue_validation_trace` lets a lone thread input pay its own fee, up to
 // `env.max_dispute_move_fee_lovelace`; `finalize_validation_trace` bounds the

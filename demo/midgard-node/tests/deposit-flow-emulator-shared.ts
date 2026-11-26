@@ -1,10 +1,9 @@
 // Shared harness for the `deposit-flow-emulator-*.test.ts` files.
 //
 // This module holds everything the deposit-flow emulator suites had at module
-// scope before the file was split: fixtures, helpers, and the suite-wide
+// scope: fixtures, helpers, and the suite-wide
 // `beforeAll`/`afterAll`/`afterEach` hooks. Importing it from a test file
-// registers those hooks for that file, exactly as the single monolithic file
-// used to register them once.
+// registers those hooks for that file.
 import "node:crypto";
 import "node:fs/promises";
 import "node:os";
@@ -256,7 +255,7 @@ import {
 import { resetApplicationTables } from "./utils.js";
 
 // `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
-// manifest, so the wave's availability script derivation takes the
+// manifest, so the availability script derivation takes the
 // `availabilityParametersFromExplicitEnvironment()` branch
 // (`src/transactions/da-attestation.ts`), which fails closed unless the whole
 // availability block is present in the environment. These are the same values

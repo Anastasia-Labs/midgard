@@ -1,20 +1,10 @@
 /**
  * The tools CLI's typed environment edge.
  *
- * Almost everything in this package already takes the environment as an
- * injected `env` parameter defaulting to `process.env` — `stress-wallets`,
- * `stress-open-loop`, `e2e-process-cleanup` and the
- * rest — which is the shape to keep: it is what makes their parsing testable
- * without mutating the real process. The exceptions were a handful of reads
- * inlined into `src/index.ts` where the command wiring is assembled, far from
- * anything that could validate them. Those live here now, in the same
- * injectable shape.
- *
- * The per-command gates in `commands/e2e-journal-kill-recovery-acceptance.ts`
- * are deliberately not moved: they are that one command's authorization
- * preconditions, they are already parsed through local `requiredEnv` and
- * `positiveIntegerEnv` helpers, and hoisting them here would put a destructive
- * devnet run's arming switches somewhere unrelated code could reach.
+ * Commands in this package take the environment as an injected `env`
+ * parameter defaulting to `process.env`, so their parsing is testable without
+ * mutating the real process. The reads the command wiring in `src/index.ts`
+ * needs live here, in the same injectable shape.
  */
 
 export type L1KupmiosEnvironment = {

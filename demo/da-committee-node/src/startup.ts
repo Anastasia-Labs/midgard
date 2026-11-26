@@ -160,7 +160,7 @@ export const retryStartup = async <T>(args: {
 export const COMMITTEE_STARTUP_FAILED = "committee_startup_failed";
 
 /**
- * What the process does on a failed startup (owner ruling 2026-10-09):
+ * What the process does on a failed startup:
  * - `exit`: transient failures outlasted the startup budget
  *   (`committee_startup_dependency_unavailable`), a system error a restart
  *   may clear, such as a port in use (`committee_startup_system_error`), or

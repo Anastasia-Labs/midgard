@@ -216,7 +216,7 @@ describe("DA libp2p transport protocol freeze", () => {
     }
   });
 
-  it("matches frozen CBOR vectors for the Phase 0/1 message schemas", () => {
+  it("matches frozen CBOR vectors for the DA transport message schemas", () => {
     assertVector(
       "PayloadChunkManifestV1",
       encodeDaPayloadChunkManifestCbor,

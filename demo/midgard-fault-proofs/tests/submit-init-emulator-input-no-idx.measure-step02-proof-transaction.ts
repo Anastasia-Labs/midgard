@@ -20,19 +20,10 @@ import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmit } from "./support/submit-steps.js";
 
 /*
- * The byte-exact `CompletePublished` proof-fit pin that stood here is **gone,
- * not relaxed.** It measured a transaction shape that no longer exists: the
- * retired route referenced a bespoke `PublishedSpendInputsV1` datum, and #604
- * replaced it with §8.5 raw carriage under a different redeemer. Every measured
- * quantity — signed bytes, fee, execution units, the CBOR sha256 — moves with
- * that change, so re-pinning here would mean inventing numbers rather than
- * measuring them.
- *
- * Re-measurement is **#580**, which this ticket blocks by owner order precisely
- * so it runs against working builders. Until then the structural fit assertions
- * (`expectStep02ProofFit`, the release memory/cpu margins, the reference-input
- * shape) are what hold, and they are the ones that would catch a regression in
- * kind rather than in degree.
+ * The step-02 proof transaction has no byte-exact pin. The structural fit
+ * assertions (`expectStep02ProofFit`, the release memory/cpu margins, the
+ * reference-input shape) hold it, and they catch a regression in kind rather
+ * than in degree.
  */
 
 export const measureStep02ProofTransaction = ({

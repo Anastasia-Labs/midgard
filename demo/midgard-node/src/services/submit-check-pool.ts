@@ -1,5 +1,5 @@
 /**
- * The submit check pool (design D4): `worker_threads` that run the
+ * The submit check pool: `worker_threads` that run the
  * `/submit` body check, and the same check of a peer's bare transactions
  * (`commands/http/submission-check.ts`), off the main thread, separate from
  * the block-validation pool.

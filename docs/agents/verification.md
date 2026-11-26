@@ -67,9 +67,9 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
   [local-test-environment](../../.agents/skills/local-test-environment/SKILL.md)
   skill before running a Postgres-backed or blueprint-reading suite in a fresh
   checkout or worktree, or when `node scripts/doctor.mjs` fails.
-- **Devnet names and ports.** A linked worktree's phase 4 process devnet
+- **Devnet names and ports.** A linked worktree's process devnet
   derives its compose project name and host ports from the worktree path (see
-  `demo/midgard-node-tools/devnet/phase4-process/README.md`). So does the
+  `demo/midgard-node-tools/devnet/isolated-chain/README.md`). So does the
   operator stack in `demo/midgard-node` when it is run through
   `demo/midgard-node/scripts/operator-compose.sh`; the main checkout keeps
   project `midgard-node` and today's ports, and bare `docker compose` in a

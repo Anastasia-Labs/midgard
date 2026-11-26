@@ -934,10 +934,9 @@ test tier_three_certified_carriage_reads_a_straddling_item() {
   let view = straddle_view()
   // Item 504 is the one whose 28-byte payload crosses chunk 0's end at
   // `chunk_bytes_k`: at stride 30 behind a 3-byte header its payload begins at
-  // 5 + 30·504 = 15,125 and ends at 15,153. The index is a function of `K` and
-  // moved with §8.3 erratum E1's repair (it was item 529 at 15,900); the two
-  // inequalities below are what make that a checked property rather than a
-  // comment.
+  // 5 + 30·504 = 15,125 and ends at 15,153. The index is a function of `K`
+  // (§8.3); the two inequalities below are what make that a checked
+  // property rather than a comment.
   let Pair(offset, length) = field_item_extent(view, 504)
   and {
     field_item_count(view) == straddle_item_count,
@@ -981,7 +980,7 @@ test tier_three_corrupt_chunk_is_refused_on_touch() fail {
 }
 
 /// A certificate for a different field cannot be borrowed. Selection is by
-/// datum under #606's constant asset name, so what refuses the borrowed
+/// datum under the constant asset name, so what refuses the borrowed
 /// manifest is the door's `certificate.field_index == field_index` — checked
 /// against the authenticated index, never the redeemer's say-so.
 test tier_three_certificate_for_another_field_is_refused() fail {
@@ -1143,7 +1142,7 @@ test tier_three_non_last_chunk_one_byte_long_is_refused() fail {
 // Watcher recompute (§4)
 // ---------------------------------------------------------------------------
 
-/// The property the whole reversion exists for: a watcher recomputes any of
+/// The property the flat field hash exists for: a watcher recomputes any of
 /// the nine commitments from raw canonical bytes and `blake2b_256` alone — no
 /// leaves, no frontier, no per-item witnesses, no field index mixed in.
 test watcher_recomputes_every_commitment_from_bytes_alone() {
@@ -1878,7 +1877,7 @@ test witness_door_refuses_another_fields_commitment() fail {
 }
 
 /// The supplied witness set keeps the commitment in the redeemer slot but
-/// changes another slot, so it no longer hashes to the compact structure's
+/// changes another slot, so it does not hash to the compact structure's
 /// `witness_set_hash`. Only the witness-set hash check refuses it.
 test witness_door_refuses_a_witness_set_that_does_not_hash_to_the_compact() fail {
   let preimage = field_preimage(8)

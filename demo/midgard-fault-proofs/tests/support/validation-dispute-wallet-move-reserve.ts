@@ -13,7 +13,7 @@ import { workflowRuntimeFundingMinimumFee } from "../../src/workflow/runtime-fun
  * The reference-script bytes of the largest thread move of a validation-trace
  * dispute measured so far: a script-sources output proof finalize's hop
  * that attaches two descriptor yields
- * (tests/validation-trace-dispute-one-step-script-sources-68.test.ts).
+ * (tests/validation-trace-dispute-one-step-script-sources-output-proof-finalize-datum-value.test.ts).
  * Whether a move's thread or our wallet pays for it turns on the live
  * prices, so this bounds every measured move, not only those over the
  * per-move cap at today's prices.

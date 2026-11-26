@@ -53,8 +53,8 @@ it.skipIf(runDirectory === undefined)(
           return [line.slice(0, i), line.slice(i + 1)];
         }),
     );
-    const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_OGMIOS_PORT}`;
-    const kupoUrl = `http://127.0.0.1:${env.MIDGARD_PHASE4_KUPO_PORT}`;
+    const ogmiosUrl = `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT}`;
+    const kupoUrl = `http://127.0.0.1:${env.MIDGARD_ISOLATED_CHAIN_KUPO_PORT}`;
     const provider = new Kupmios(kupoUrl, ogmiosUrl);
     const lucid = await Lucid(provider, "Custom", {
       slotConfig: {

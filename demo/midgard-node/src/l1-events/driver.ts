@@ -174,7 +174,7 @@ const refusalDetail = (refusal: EventRefusal): string =>
   `${refusal.kind} ${refusal.key} (id ${refusal.idCbor}): ${refusal.detail}`;
 
 /**
- * One hook per ticket that recomputes from a follower change, named by what
+ * One hook per projection that recomputes from a follower change, named by what
  * it recomputes. Each runs after the sink applied the change, in
  * `DRIVER_HOOK_ORDER`; a hook returns a hold to keep the node unready.
  */

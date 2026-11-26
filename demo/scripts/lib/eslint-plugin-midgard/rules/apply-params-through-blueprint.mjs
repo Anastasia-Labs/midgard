@@ -1,4 +1,4 @@
-// W4.5: parameters reach a validator only through `applyBlueprintParams`.
+// Parameters reach a validator only through `applyBlueprintParams`.
 //
 // Parameter application applies whatever list it is handed. Too few terms
 // leave `validator main(...)` parameters as lambdas, and the ledger's single

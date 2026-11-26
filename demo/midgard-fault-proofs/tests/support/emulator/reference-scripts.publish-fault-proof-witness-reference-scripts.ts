@@ -11,8 +11,8 @@ import { publishStateQueueYieldReferenceScript } from "./reference-scripts.publi
 import { publishPlainReferenceScriptUtxo } from "./reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /**
- * Publishes the shared witness scripts (owner ruling 2026-08-26: fault proofs
- * and their supporting scripts deploy as reference scripts) once per emulator
+ * Publishes the shared witness scripts (fault proofs and their supporting
+ * scripts deploy as reference scripts) once per emulator
  * scenario: the computation-thread and fraud-proof minting policies plus the
  * `phas.membership.withdraw` verifier always, and the chunked-verify /
  * `pexcludes.exclusion.withdraw` verifiers when the scenario's transactions

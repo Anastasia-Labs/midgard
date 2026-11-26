@@ -10,7 +10,7 @@ import type { ResolvedProverSigner } from "./runtime.js";
 /**
  * The item count up to which a step reads a field's item by walking the
  * field in its own transaction. Past it the step reads the field's item
- * through the field grammar certificate, so its cost no longer grows with the
+ * through the field grammar certificate, so its cost does not grow with the
  * field's item count. Every step that reads an item by either route holds a
  * budget row for its walked route at this count, under tier 3 near the field
  * maximum to the last item (`script-budgets.json`, the

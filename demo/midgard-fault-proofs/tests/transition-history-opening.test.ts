@@ -341,7 +341,7 @@ describe("transition deposit retained opening", () => {
       reopenTransitionDeposit(later, policy, source, retained.commitmentCbor),
     ).toThrow(/commitment/);
   });
-  it("rejects legacy live-outref receipts and malformed deferred data", () => {
+  it("rejects live-outref receipts and malformed deferred data", () => {
     expect(() =>
       reopenTransitionDeposit(
         {

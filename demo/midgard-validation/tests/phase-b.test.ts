@@ -109,7 +109,7 @@ describe("phase B validation", () => {
       expect(actual).toStrictEqual(expected);
     }
   });
-  // #618 ruling 1 / R8 of decision 0005. The fixtures in this file produce
+  // The fixtures in this file produce
   // outputs funded at `FUNDED_OUTPUT_LOVELACE` so that the minimum-Ada floor
   // is never what they measure. That is a claim about a number, so it is
   // measured here rather than assumed: if a rate, intercept or codec change

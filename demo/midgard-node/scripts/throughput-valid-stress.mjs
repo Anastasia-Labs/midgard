@@ -16,7 +16,7 @@ import "./throughput-valid-stress-corpus.mjs";
 import "./lib/benchmark-http-client.mjs";
 import "./lib/deadline-batched-schedule.mjs";
 import "./throughput-valid-stress.create-runtime-sampler.mjs";
-import "./throughput-valid-stress.summarize-cursor-continuity.mjs";
+import "./throughput-valid-stress.run-activity.mjs";
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -51,9 +51,6 @@ import {
   summarizeCounterWindow,
   summarizeL1Observation,
   summarizeLatency,
-  summarizeOpenLoopCheckpointProgress,
-  summarizePhase1StageAWindowGate,
-  summarizePhase1StarvationGate,
   summarizeRollingRates,
   summarizeSubmitSuccessStatuses,
   terminalStatuses,
@@ -80,8 +77,7 @@ import {
   activeCursorCount,
   hasCounterActivity,
   readRuntimeMetadata,
-  summarizeCursorContinuity,
-} from "./throughput-valid-stress.summarize-cursor-continuity.mjs";
+} from "./throughput-valid-stress.run-activity.mjs";
 import {
   corpusRowsForEntries,
   defaultCorpusIndexPath,
@@ -421,46 +417,6 @@ const missedStartMaxRatio = Number.parseFloat(
 
 const backlogSlopeMaxPerSec = Number.parseFloat(
   envValue("STRESS_BACKLOG_SLOPE_MAX_PER_SEC", "0.1"),
-);
-
-const phase1StarvationGateEnabled =
-  String(envValue("STRESS_PHASE1_STARVATION_GATE", "false"))
-    .trim()
-    .toLowerCase() === "true";
-
-const phase1StarvationMinDurationSec = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STARVATION_MIN_DURATION_SEC",
-  "600",
-);
-
-const phase1StarvationMaxAgeMultiplier = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STARVATION_MAX_AGE_MULTIPLIER",
-  "3",
-);
-
-const phase1StarvationMinOverloadRatio = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STARVATION_MIN_OVERLOAD_RATIO",
-  "2",
-);
-
-const phase1StarvationBaselineTps = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STARVATION_BASELINE_TPS",
-  "2500",
-);
-
-const phase1StageAWindowGateEnabled =
-  String(envValue("STRESS_PHASE1_STAGE_A_WINDOW_GATE", "false"))
-    .trim()
-    .toLowerCase() === "true";
-
-const phase1StageAWindowSec = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STAGE_A_WINDOW_SEC",
-  "300",
-);
-
-const phase1StageACheckpointMaxJitterMs = parsePositiveFloatSetting(
-  "STRESS_PHASE1_STAGE_A_CHECKPOINT_MAX_JITTER_MS",
-  "1000",
 );
 
 const candidateCleanTimeoutSec = Number.parseFloat(
@@ -1139,93 +1095,6 @@ const ensureFanoutCandidates = async ({ candidates, minFeeA, minFeeB }) => {
   };
 };
 
-const schedulePhase1StageACheckpoint = ({ stage, cursors }) => {
-  if (!phase1StageAWindowGateEnabled) {
-    return null;
-  }
-  const deadlineMs = stage.startedAtMs + phase1StageAWindowSec * 1_000;
-  let settled = false;
-  let resolveCheckpoint;
-  const promise = new Promise((resolve) => {
-    resolveCheckpoint = resolve;
-  });
-  const settle = (value) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    resolveCheckpoint(value);
-  };
-  const timeout = setTimeout(
-    () => {
-      void (async () => {
-        const checkpointRequestedAtMs = Date.now();
-        const scheduleProgress = summarizeOpenLoopCheckpointProgress({
-          targetRateTps: stage.targetRateTps,
-          durationSec: phase1StageAWindowSec,
-          dispatchedStarts: stage.scheduledStarts,
-        });
-        const observedStageState = {
-          logicalSubmitAttempts: stage.logicalSubmitAttempts,
-          physicalSubmitAttempts: stage.physicalSubmitAttempts,
-          submitted: stage.submitted,
-          submitErrors: stage.submitErrors,
-          submitStatusCounts: { ...stage.submitStatusCounts },
-          physicalSubmitStatusCounts: {
-            ...stage.physicalSubmitStatusCounts,
-          },
-          queueFullResponses: stage.queueFullResponses,
-          expectedStarts: scheduleProgress.expectedStarts,
-          scheduledStarts: scheduleProgress.scheduledStarts,
-          sentStarts: stage.sentStarts,
-          missedStarts: scheduleProgress.missedStarts,
-          submitLatencySampleCount: stage.submitLatencyMs.length,
-          submitAttemptLatencySampleCount: stage.submitAttemptLatencyMs.length,
-          scheduleLagSampleCount: stage.scheduleLagMs.length,
-          cursorPositions: snapshotCursorPositions(cursors),
-        };
-        try {
-          const counters = await readCounters();
-          const observedAtMs = Date.now();
-          settle({
-            checkpointDeadlineMs: deadlineMs,
-            checkpointRequestedAtMs,
-            observedAtMs,
-            counters,
-            ...observedStageState,
-            error: null,
-          });
-        } catch (error) {
-          settle({
-            checkpointDeadlineMs: deadlineMs,
-            checkpointRequestedAtMs,
-            observedAtMs: Date.now(),
-            counters: null,
-            ...observedStageState,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      })();
-    },
-    Math.max(0, deadlineMs - Date.now()),
-  );
-
-  return {
-    finish: async (stageEndedAtMs) => {
-      if (!settled && stageEndedAtMs < deadlineMs) {
-        clearTimeout(timeout);
-        settle({
-          checkpointDeadlineMs: deadlineMs,
-          observedAtMs: stageEndedAtMs,
-          counters: null,
-          error: `stage ended before ${phase1StageAWindowSec}-second checkpoint`,
-        });
-      }
-      return await promise;
-    },
-  };
-};
-
 const recordSubmitResult = (stage, tx, result) => {
   stage.logicalSubmitAttempts += 1;
   stage.physicalSubmitAttempts += result.physicalAttemptCount ?? 1;
@@ -1376,10 +1245,6 @@ const runOpenLoopStage = async ({
   stage.counterStart = await readCounters();
   stage.startedAtMs = Date.now();
   stage.cursorPositionsAtStart = snapshotCursorPositions(cursors);
-  const phase1StageACheckpoint = schedulePhase1StageACheckpoint({
-    stage,
-    cursors,
-  });
   const startedAt = performance.now();
   const deadline = startedAt + durationSec * 1000;
   const intervalMs = 1000 / rateTps;
@@ -1419,10 +1284,6 @@ const runOpenLoopStage = async ({
   );
   stage.endedAtMs = Date.now();
   stage.cursorPositionsAtEnd = snapshotCursorPositions(cursors);
-  stage.phase1StageACheckpoint =
-    phase1StageACheckpoint === null
-      ? null
-      : await phase1StageACheckpoint.finish(stage.endedAtMs);
   stage.counterEnd = await readCounters();
   const exhausted =
     remainingTxCount(cursors) <= 0 && performance.now() < deadline;
@@ -2050,95 +1911,6 @@ const runClientSelfCheck = async () => {
   return result;
 };
 
-const buildPhase1StageAWindowGate = (stage) => {
-  if (!phase1StageAWindowGateEnabled) {
-    return { enabled: false };
-  }
-  const checkpoint = stage.phase1StageACheckpoint;
-  const checkpointAvailable =
-    checkpoint?.counters !== null && checkpoint?.counters !== undefined;
-  const measuredDurationSec =
-    checkpoint?.observedAtMs === undefined
-      ? Number.NaN
-      : (checkpoint.observedAtMs - stage.startedAtMs) / 1_000;
-  const submitLatencySampleCount = checkpoint?.submitLatencySampleCount ?? 0;
-  const scheduleLagSampleCount = checkpoint?.scheduleLagSampleCount ?? 0;
-  const statusCounts = checkpoint?.submitStatusCounts ?? {};
-  const { durablyAdmitted, duplicateSuccesses, otherSuccesses } =
-    summarizeSubmitSuccessStatuses(statusCounts);
-  const acceptedDelta = checkpointAvailable
-    ? counterDelta(stage.counterStart, checkpoint.counters, "accept")
-    : 0;
-  const rejectedDelta = checkpointAvailable
-    ? counterDelta(stage.counterStart, checkpoint.counters, "reject")
-    : 0;
-  const missingRequiredMetrics = checkpointAvailable
-    ? metricMissingKeys(checkpoint.counters)
-    : [];
-  const gate = summarizePhase1StageAWindowGate({
-    checkpointAvailable,
-    checkpointError: checkpoint?.error ?? null,
-    checkpointRequestedAfterMs:
-      checkpoint?.checkpointRequestedAtMs === undefined
-        ? Number.NaN
-        : checkpoint.checkpointRequestedAtMs - stage.startedAtMs,
-    checkpointObservedAfterMs:
-      checkpoint?.observedAtMs === undefined
-        ? Number.NaN
-        : checkpoint.observedAtMs - stage.startedAtMs,
-    checkpointMaxJitterMs: phase1StageACheckpointMaxJitterMs,
-    measuredDurationSec,
-    minDurationSec: phase1StageAWindowSec,
-    targetRateTps: Number(stage.targetRateTps ?? 0),
-    durablyAdmitted,
-    acceptedDelta,
-    rejectedDelta,
-    duplicateSuccesses,
-    otherSuccesses,
-    submitErrors: checkpoint?.submitErrors ?? 0,
-    queueFullResponses: checkpoint?.queueFullResponses ?? 0,
-    submitLatencyMs: summarizeLatency(
-      stage.submitLatencyMs.slice(0, submitLatencySampleCount),
-    ),
-    scheduleLagMs: summarizeLatency(
-      stage.scheduleLagMs.slice(0, scheduleLagSampleCount),
-    ),
-    scheduledStarts: checkpoint?.scheduledStarts ?? 0,
-    missedStarts: checkpoint?.missedStarts ?? 0,
-    offeredRateMinRatio,
-    acceptedRateMinRatio,
-    submitLatencyP99MaxMs,
-    scheduleLagP95MaxMs,
-    scheduleLagP99MaxMs,
-    missedStartMaxRatio,
-    missingRequiredMetrics,
-    streamContinuity: summarizeCursorContinuity(stage, checkpoint),
-  });
-  return {
-    ...gate,
-    stageName: stage.name,
-    stageStartedAtIso: new Date(stage.startedAtMs).toISOString(),
-    checkpointRequestedAtIso:
-      checkpoint?.checkpointRequestedAtMs === undefined
-        ? null
-        : new Date(checkpoint.checkpointRequestedAtMs).toISOString(),
-    checkpointObservedAtIso:
-      checkpoint?.observedAtMs === undefined
-        ? null
-        : new Date(checkpoint.observedAtMs).toISOString(),
-    stageEndedAtIso:
-      stage.endedAtMs === null ? null : new Date(stage.endedAtMs).toISOString(),
-    submitStatusCounts: statusCounts,
-    physicalSubmitStatusCounts: checkpoint?.physicalSubmitStatusCounts ?? {},
-    logicalSubmitAttempts: checkpoint?.logicalSubmitAttempts ?? 0,
-    physicalSubmitAttempts: checkpoint?.physicalSubmitAttempts ?? 0,
-    submittedSuccesses: checkpoint?.submitted ?? 0,
-    sentStarts: checkpoint?.sentStarts ?? 0,
-    checkpointSource:
-      "pre-request client/cursor snapshot plus asynchronous Prometheus counter snapshot inside one continuous open-loop stage; elapsed denominator ends at counter response for conservative rates",
-  };
-};
-
 const buildStageReport = (stage) => {
   const measuredElapsedMs = Math.max(1, stage.endedAtMs - stage.startedAtMs);
   const endCounters = stage.counterEnd ?? stage.counterStart;
@@ -2239,7 +2011,6 @@ const buildStageReport = (stage) => {
     scheduleLagSamplesMs: stage.scheduleLagMs,
     statusLatencyMs: summarizeLatency(stage.statusLatencyMs),
     abortedCorpusExhausted: stage.abortedCorpusExhausted === true,
-    phase1StageAWindowGate: buildPhase1StageAWindowGate(stage),
   };
 };
 
@@ -2434,37 +2205,6 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
       `validation_queue_slope_per_sec ${backlogSlope.toFixed(4)} > ${backlogSlopeMaxPerSec}`,
     );
   }
-  const phase1StarvationGate = phase1StarvationGateEnabled
-    ? summarizePhase1StarvationGate({
-        samples: monitorSamples,
-        stageStartedAtMs: stage.startedAtMs,
-        stageEndedAtMs: stage.endedAtMs,
-        targetRateTps: Number(stageReport.targetRateTps ?? 0),
-        overloadBaselineTps: phase1StarvationBaselineTps,
-        commitTxDelta: stageReport.commitTxDelta,
-        commitBlockDelta: stageReport.commitBlockDelta,
-        maxAgeMultiplier: phase1StarvationMaxAgeMultiplier,
-        minOverloadRatio: phase1StarvationMinOverloadRatio,
-        minDurationSec: phase1StarvationMinDurationSec,
-      })
-    : { enabled: false };
-  if (phase1StarvationGate.enabled && !phase1StarvationGate.passed) {
-    reasons.push(
-      ...phase1StarvationGate.reasons.map(
-        (reason) => `phase1_starvation_gate: ${reason}`,
-      ),
-    );
-  }
-  const phase1StageAWindowGate = stageReport.phase1StageAWindowGate ?? {
-    enabled: false,
-  };
-  if (phase1StageAWindowGate.enabled && !phase1StageAWindowGate.passed) {
-    reasons.push(
-      ...phase1StageAWindowGate.reasons.map(
-        (reason) => `phase1_stage_a_window_gate: ${reason}`,
-      ),
-    );
-  }
   const l1Observation = summarizeL1Observation(measuredSamples);
   if (scenarioClass === "B") {
     if (
@@ -2518,8 +2258,6 @@ const evaluateStagePass = ({ stage, stageReport, monitorSamples }) => {
         nodeSaturationRatio >= nodeSaturationMinRatio,
     },
     submitSuccessGate,
-    phase1StageAWindowGate,
-    phase1StarvationGate,
     l1Observation,
     bottleneck,
   };
@@ -2650,14 +2388,6 @@ const main = async () => {
       submitLatencyP99MaxMs,
       missedStartMaxRatio,
       backlogSlopeMaxPerSec,
-      phase1StageAWindowGateEnabled,
-      phase1StageAWindowSec,
-      phase1StageACheckpointMaxJitterMs,
-      phase1StarvationGateEnabled,
-      phase1StarvationMinDurationSec,
-      phase1StarvationMaxAgeMultiplier,
-      phase1StarvationMinOverloadRatio,
-      phase1StarvationBaselineTps,
       candidateCleanTimeoutSec,
       requireIdleNode,
       idleProbeSec,
@@ -3406,14 +3136,6 @@ const main = async () => {
       missingRequiredMetrics,
       measuredBacklogSlopePerSec: measuredBacklogSlope,
       l1Observation,
-      phase1StageAWindowGates: primaryMeasuredStages.map((stage) => ({
-        stageName: stage.name,
-        ...stage.evaluation?.phase1StageAWindowGate,
-      })),
-      phase1StarvationGates: primaryMeasuredStages.map((stage) => ({
-        stageName: stage.name,
-        ...stage.evaluation?.phase1StarvationGate,
-      })),
       reportPath,
       firstErrors: primaryMeasuredStages
         .flatMap((stage) => stage.firstErrors)

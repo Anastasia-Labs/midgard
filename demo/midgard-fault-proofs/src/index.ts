@@ -32,9 +32,9 @@ export * from "./observers-forbidden-on-untagged-network/index.js";
 export * from "./output-reference-script-decoding/index.js";
 export * from "./own-thread-cancel.js";
 export * from "./proven-correction-removal.js";
-// Legacy diagnostic submit-init/submit-step APIs are intentionally not
-// part of the production package surface.  The CLI and file entrypoints retain
-// the same retirement guard until an authenticated canonical submitter exists.
+// The diagnostic submit-init/submit-step APIs are intentionally not part of
+// the production package surface. The CLI and file entrypoints refuse them
+// until an authenticated canonical submitter exists.
 export * from "./invalid-signature/artifact.js";
 export * from "./invalid-signature/contracts.js";
 export * from "./invalid-signature/submit.js";

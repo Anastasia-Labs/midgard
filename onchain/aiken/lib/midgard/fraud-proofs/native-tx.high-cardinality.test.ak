@@ -11,7 +11,7 @@
 //
 // Which constants are generated is stated exactly once, in the rebinder's
 // `FIXTURE_FAMILIES` table; `fixtures:native-compact:check` fails if any of them
-// is no longer what the fixture implies.
+// is not what the fixture implies.
 
 use aiken/builtin
 use aiken/collection/list

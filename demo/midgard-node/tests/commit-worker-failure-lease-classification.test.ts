@@ -82,9 +82,6 @@ vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
 }));
-vi.mock("../src/e2e/commit-crash-checkpoint.js", () => ({
-  reachCommitCrashCheckpoint: vi.fn(() => Effect.void),
-}));
 vi.mock(
   "../src/workers/commit-block-header/build-unsigned-tx.js",
   async (importOriginal) => ({

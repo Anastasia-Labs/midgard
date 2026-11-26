@@ -241,16 +241,14 @@ const corpus = JSON.parse(
   readFileSync(
     resolve(
       process.cwd(),
-      "../midgard-fault-proofs/tests/fixtures/cardano-capability-p2-boundary-corpus-v1.json",
+      "../midgard-fault-proofs/tests/fixtures/retained-da-boundary-corpus-v1.json",
     ),
     "utf8",
   ),
 ) as BoundaryCorpus;
 
 const boundaryEntry = (label: string): Buffer => {
-  expect(corpus.schema).toBe(
-    "midgard-cardano-capability-p2-boundary-corpus-v1",
-  );
+  expect(corpus.schema).toBe("midgard-retained-da-boundary-corpus-v1");
   const entry = corpus.entries.find((candidate) => candidate.label === label);
   expect(entry, `missing checked boundary corpus entry ${label}`).toBeDefined();
   return Buffer.from(entry!.canonicalCborHex, "hex");

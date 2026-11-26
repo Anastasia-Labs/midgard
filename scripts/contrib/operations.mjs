@@ -31,12 +31,12 @@ export const devnetPlan = (root, runId) => {
     runId,
     identity,
     env: {
-      MIDGARD_PHASE4_RUN_ID: `${identity}-${runId}`,
-      MIDGARD_PHASE4_OGMIOS_PORT: String(base),
-      MIDGARD_PHASE4_KUPO_PORT: String(base + 1),
-      MIDGARD_PHASE4_POSTGRES_PORT: String(base + 2),
+      MIDGARD_ISOLATED_CHAIN_RUN_ID: `${identity}-${runId}`,
+      MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: String(base),
+      MIDGARD_ISOLATED_CHAIN_KUPO_PORT: String(base + 1),
+      MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT: String(base + 2),
     },
-    scope: "isolated phase4 generator only; no reset, deployment or bootstrap",
+    scope: "isolated-chain generator only; no deployment or bootstrap",
   };
 };
 
@@ -103,7 +103,7 @@ export const generateDevnet = async (
         ...plan,
         env: {
           ...plan.env,
-          MIDGARD_PHASE4_RUN_DIR: resolve(directory, "devnet"),
+          MIDGARD_ISOLATED_CHAIN_RUN_DIR: resolve(directory, "devnet"),
         },
       };
       const allocationPath = resolve(directory, "allocation.json");
@@ -112,7 +112,7 @@ export const generateDevnet = async (
       const step = await runProcess({
         argv: [
           "bash",
-          "demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh",
+          "demo/midgard-node-tools/devnet/isolated-chain/scripts/generate.sh",
         ],
         cwd: root,
         env: { ...ownedEnv, ...allocation.env },

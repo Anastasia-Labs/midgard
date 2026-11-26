@@ -1110,15 +1110,15 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 /// `NativeScriptStructureDepthLimit`, which `ledger_output_proof_v1`'s
 /// `map_native_result` (`ledger-output-proof-v1.ak:609-614`) carries as three
 /// separate step results -- into a single `False`, per decision 0005 A3's
-/// "refusal, not error render" for the one-shot arm; whether the follow-up must
-/// preserve the distinction is an open question for the re-ruling.
+/// "refusal, not error render" for the one-shot arm; whether wiring it must
+/// preserve the distinction is open on #633.
 ///
 /// **DO NOT WIRE.** This function is deliberately dead code, reachable from no
 /// validator, and wiring it into `ledger_output_v1.parse_script_ref`'s tag-0
-/// arm is blocked on a re-ruling of issue #633 / decision 0005 amendment A3.
+/// arm is blocked on issue #633 and decision 0005 amendment A3.
 ///
-/// *Cause.* A3 gates wave item 9 on an R3-style ExUnits precondition measured
-/// before any on-chain commitment. That precondition FAILED. Against the frozen
+/// *Cause.* A3 gates the wiring on an ExUnits precondition measured before any
+/// on-chain commitment, and the predicate fails it. Against the frozen
 /// execution basis of 13,200,000 memory units
 /// (`SCRIPT_BUDGET_BASIS` in midgard-core):
 ///

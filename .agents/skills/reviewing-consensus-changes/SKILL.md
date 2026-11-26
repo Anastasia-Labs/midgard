@@ -6,13 +6,10 @@ description: Two-pass adversarial review of Midgard consensus-critical code, for
 # Reviewing consensus changes
 
 Consensus defects in Midgard survive ordinary review because each part looks
-correct on its own. Ten fraud-proof resolvers shipped as `always-succeeds`
-scripts while every Aiken guard in them was right: the SDK applied one
-parameter too few (fixed in `ac54d01a1`). One evidence sweep found 24 gates
-that could not fail. And a finding can look real and be wrong: "`tx_id`
-does not commit `witness_set_hash`" is not a defect, because the split
-between the two commitments is deliberate (see the anchoring lens). This skill
-is the process that catches the first two kinds without fixing the third.
+correct on its own: a validator whose every guard is right still succeeds on
+anything when the SDK applies too few parameters, and a gate can pass without
+being able to fail. A finding can also look real and be wrong. The lenses
+catch the first two kinds; their calibration rules stop the third.
 
 Argue from structure, not odds. A path an adversary can reach is a finding
 however unlikely an honest run is to take it; an adversary chooses the
@@ -206,9 +203,9 @@ Done when: the register is in the report, or the report says there is none.
 | Hub oracle, watcher                  | None yet; review against the lenses and the relevant spec section.  |
 
 Read the invariants file for every subtree the diff touches. Each invariant
-names the finding that earned it and is marked VERIFIED or PARTIAL; a PARTIAL
-entry names what is unproven, which is where to look first. Do not relax an
-invariant without understanding what it closes. [review]
+is marked VERIFIED or PARTIAL; a PARTIAL entry names what is unproven, which
+is where to look first. Do not relax an invariant without understanding what
+it closes. [review]
 
 ## Finding format
 

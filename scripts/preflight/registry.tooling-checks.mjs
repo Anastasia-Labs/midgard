@@ -220,21 +220,19 @@ export const independentChecks = () => [
   },
   {
     id: "devnet-assets",
-    title: "Phase 4 devnet generator and shell asset tests (no running devnet)",
-    triggers: ["demo/midgard-node-tools/devnet/phase4-process/**"],
-    capabilities: ["node-modules", "blueprint"],
+    title: "Isolated-chain devnet generator and shell asset tests (no running devnet)",
+    triggers: ["demo/midgard-node-tools/devnet/isolated-chain/**"],
+    capabilities: ["node-modules"],
     requiresFiles: [
-      "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
+      "demo/midgard-node-tools/devnet/isolated-chain/tests/assets.test.mjs",
     ],
     display:
-      "node --test demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
+      "node --test demo/midgard-node-tools/devnet/isolated-chain/tests/assets.test.mjs",
     plan: () => [
       step(
         node(
           "--test",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/l1-follower-inputs.test.mjs",
-          "demo/midgard-node-tools/devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs",
+          "demo/midgard-node-tools/devnet/isolated-chain/tests/assets.test.mjs",
         ),
       ),
     ],
@@ -457,7 +455,7 @@ export const toolingChecks = (root) => [
       "demo/midgard-node/.env.example",
       "demo/l1-node-transport/native/go.mod",
       "demo/midgard-node-tools/src/full-stack/prerequisites.ts",
-      "demo/midgard-node-tools/devnet/phase4-process/**",
+      "demo/midgard-node-tools/devnet/isolated-chain/**",
       ".github/workflows/**",
       "scripts/release/toolchain.mjs",
     ],

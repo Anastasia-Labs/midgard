@@ -198,8 +198,8 @@ const listSource = (steps: readonly ForkStep[]): EventSource => {
 };
 
 /**
- * Runs a scenario through the sequential writer (`applyChainSyncEvent`,
- * F6 being deferred), pruning to completion after each step flagged
+ * Runs a scenario through the sequential writer (`applyChainSyncEvent`),
+ * pruning to completion after each step flagged
  * `prune`. After every event: every fact and registered temporal table
  * equals a fresh forward-only SQLite replay of the model's current chain
  * (once pruned: holds only rows of it and every row retention keeps),

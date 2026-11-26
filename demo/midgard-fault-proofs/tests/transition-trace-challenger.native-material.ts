@@ -65,8 +65,8 @@ export const withdrawalInfo = (
  * Fixture-local index from a native proof source back to the canonical CBOR the
  * fixture built it from.
  *
- * Keyed by `native_tx_proof_commitment_v1` rather than by tx id even though #584
- * retired `transaction_commitment` from the on-chain leaves. The commitment
+ * Keyed by `native_tx_proof_commitment_v1` rather than by tx id, although the
+ * on-chain leaves carry no `transaction_commitment`. The commitment
  * covers the compact body, the compact witness set and the validity code; the tx
  * id covers the body alone. Every fixture here happens to pin `TxIsValid` with
  * an empty witness set, so the two keys are injective over today's vectors — but
@@ -130,8 +130,7 @@ export const nativeMaterial = (
 };
 
 /**
- * The #640 verdict standing in for the pre-format `FailedScript` arm: a
- * forced transaction the operator rejected for a failed Plutus execution at
+ * A forced transaction the operator rejected for a failed Plutus execution at
  * purpose (spend, 0).
  */
 export const forcedTxInvalidPlutus: SDK.OperatorVerdict = {

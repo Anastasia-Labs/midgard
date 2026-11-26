@@ -4,8 +4,7 @@ import { test } from "node:test";
 import { readProfiles, validateProfile } from "./deployment-profiles.mjs";
 
 // timing.ledger_retention_ms: how long each L2 block's ledger root stays
-// readable off-chain. Its only floor is block maturity (owner ruling
-// 2026-11-21).
+// readable off-chain. Its only floor is block maturity.
 test("every profile refuses a ledger retention below block maturity, naming both values", () => {
   for (const [name, original] of Object.entries(readProfiles())) {
     const profile = structuredClone(original);

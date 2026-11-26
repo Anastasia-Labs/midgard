@@ -345,7 +345,7 @@ export const startWatcherRuntime = async (
         await headerSource.resolveMergedHeaders({ observation }),
       proverWalletAddress,
       onStatusTransition: input.onAvailabilityStatusTransition,
-      // E5: the pool readout and its alerts reach /v1/status; they never make
+      // The pool readout and its alerts reach /v1/status; they never make
       // the watcher not_ready.
       onDaBondPool: watcherDaBondPoolReporter(
         operationsSink,

@@ -7,4 +7,4 @@ Follow [AGENTS.md](AGENTS.md), the contributor guide for this repository.
 - Issues live on GitHub `Anastasia-Labs/midgard` (`gh` CLI). Read
   `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md` before
   filing or triaging one.
-- Release readiness is tracked in `docs/public_testnet_readiness.md`.
+- Release readiness is in `docs/public_testnet_readiness.md`.

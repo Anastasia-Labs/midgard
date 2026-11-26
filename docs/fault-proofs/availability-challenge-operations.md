@@ -1,9 +1,9 @@
 # Availability challenge operations
 
 Status: implemented; live release acceptance is open. The
-[size plan](size-plans/availability-challenge.md) records the contract
-decomposition. This page describes the operational boundary; it does not change
-the protocol, bonds, deadlines, or reference roles.
+[DA validators reference](../../docs-site/content/docs/onchain/da-validators.mdx)
+describes the contract decomposition. This page describes the operational
+boundary; it does not change the protocol, bonds, deadlines, or reference roles.
 
 ## Delivered behavior
 
@@ -140,6 +140,26 @@ MIDGARD_SKIP_DB_TESTS=1 NODE_ENV=emulator pnpm --dir demo/midgard-node exec vite
   tests/initialization-emulator.test.ts \
   tests/reference-script-publication-fit.test.ts
 ```
+
+The testing and emulator profiles carry response windows of at most 880 s and
+the emulator lands one transaction per 20 s block, so the lifecycle suite skips
+the complete-response scenario (301 chunks plus one settlement) and names the
+derived reason in its title. That scenario, and the settlement of a completed
+300-carrier tranche, runs only under a long-window profile (`preprod-public` or
+`mainnet`):
+
+```sh
+pnpm --dir demo deployment:build preprod-public
+# rebuild midgard-core, lucid-midgard, midgard-sdk and midgard-node, then:
+NODE_ENV=emulator MIDGARD_DEPLOYMENT_PROFILE=preprod-public \
+  MIDGARD_REAL_BLUEPRINT_PATH="$PWD/onchain/aiken/plutus.json" \
+  pnpm --dir demo/midgard-node exec vitest run \
+  tests/availability-challenge-lifecycle.test.ts
+pnpm --dir demo deployment:build preprod-testing   # restore the selection
+```
+
+Set `MIDGARD_AVAILABILITY_FIT_REPORT_DIR` to an existing directory to retain
+the lifecycle transaction measurements.
 
 These local checks establish implementation behavior, not acceptance of a live
 deployment. Release acceptance still needs independent live actors and retained

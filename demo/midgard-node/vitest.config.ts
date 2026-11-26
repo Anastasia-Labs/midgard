@@ -94,8 +94,8 @@ const config = defineConfig({
             // Declared here, not on the root, so the bundle serves the setup's
             // workspace imports too; the source project inherits it.
             globalSetup: [...runSetup],
-            // Vitest 3's filter resolution does not reliably match the
-            // eight-way extension brace used here previously, so keep the
+            // Vitest 3's filter resolution does not reliably match an
+            // eight-way extension brace, so keep the
             // overwhelmingly common TypeScript lane explicit. Otherwise a
             // focused `*.test.ts` invocation can report "No test files found"
             // and never exercise a release gate.

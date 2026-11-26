@@ -24,13 +24,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": [
-    "src",
-    "tests",
-    "bench",
-    "tsup.config.ts",
-    "vitest.config.ts",
-    "vitest.bench.config.ts"
-  ],
+  "include": ["src", "tests", "tsup.config.ts", "vitest.config.ts"],
   "exclude": ["dist", "node_modules", "src/events"]
 }

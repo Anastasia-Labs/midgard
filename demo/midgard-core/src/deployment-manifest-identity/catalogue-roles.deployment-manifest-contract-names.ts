@@ -3,12 +3,6 @@
 // not affect which manifests verify. Every roster order derives from it: the
 // manifest's members, publication (the published members only) and the
 // reference-role map. Place a new contract where it should be published.
-//
-// #579, owner rulings of 2026-08-14, removed `txOrderFieldPreimageSpend`,
-// `txOrderFieldReceiptSpend` and `txOrderFieldReceiptMint` together. Commit
-// df53dc6a7 deleted their validators on-chain and #594 replaced the
-// tx-order mint's receipt parameters with the §8.6 certificate policy id, so
-// the blueprint declares none of the three titles.
 export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
   "hubOracleMint",
@@ -47,9 +41,9 @@ export const DEPLOYMENT_MANIFEST_BASE_CONTRACT_NAMES = Object.freeze([
   "withdrawalMint",
   "txOrderSpend",
   "txOrderMint",
-  // #579. The §8.6 field-preimage certificate policy. #594 retired the
-  // receipt family and gave the tx-order mint and every field-opening step a
-  // `field_preimage_certificate_policy_id` parameter; the certificate is the
+  // The §8.6 field-preimage certificate policy. The tx-order mint and every
+  // field-opening step take a `field_preimage_certificate_policy_id`
+  // parameter; the certificate is the
   // one deployed policy those readers share (§8.6 Consumption,
   // docs/spec/midgard-tx.md), so it needs a deployment role rather than being
   // rederived independently at each load site.

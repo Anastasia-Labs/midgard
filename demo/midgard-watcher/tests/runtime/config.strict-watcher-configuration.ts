@@ -284,37 +284,20 @@ describe("strict watcher configuration", () => {
     }
   });
 
-  it("rejects unknown, legacy, and mixed L1 source-mode shapes", () => {
+  it("rejects an unknown source mode, an unknown source field and a missing chainSync", () => {
     const unknownMode = validConfig();
     (unknownMode.l1.source as Record<string, unknown>).sourceMode =
-      "local-provider";
+      "unknown_mode";
     rejected(
       () => parseWatcherConfig(unknownMode),
       "invalid_value",
       "$.l1.source.sourceMode",
     );
 
-    const externalProviders = validConfig();
-    (externalProviders.l1.source as Record<string, unknown>).sourceMode =
-      "external_providers";
+    const unknownField = validConfig();
+    Object.assign(unknownField.l1.source, { unknownField: true });
     rejected(
-      () => parseWatcherConfig(externalProviders),
-      "invalid_value",
-      "$.l1.source.sourceMode",
-    );
-
-    const queryServices = validConfig();
-    Object.assign(queryServices.l1.source, {
-      queryServices: [
-        {
-          kind: "kupo",
-          identity: "local-kupo",
-          endpoint: "http://127.0.0.1:1442",
-        },
-      ],
-    });
-    rejected(
-      () => parseWatcherConfig(queryServices),
+      () => parseWatcherConfig(unknownField),
       "unknown_field",
       "$.l1.source",
     );

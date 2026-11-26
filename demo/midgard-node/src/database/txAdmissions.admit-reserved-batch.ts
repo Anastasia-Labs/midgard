@@ -27,7 +27,7 @@ import {
  * reserved each request's backlog row and bytes in memory beforehand, so the
  * batch takes no lock and reads no backlog total: shards write in parallel.
  *
- * The transaction commits asynchronously (owner ruling 2026-11-06): a
+ * The transaction commits asynchronously: a
  * PostgreSQL crash can lose the last few hundred milliseconds of admissions,
  * which the submitter recovers by resubmitting. Terminal marks stay
  * synchronous, and their commit flushes these earlier records in WAL order.

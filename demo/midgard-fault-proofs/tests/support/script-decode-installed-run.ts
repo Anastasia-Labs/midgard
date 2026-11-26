@@ -178,7 +178,7 @@ export const runInstalled = async (
       );
     // Conviction is the proof token. Removal after it is not driven here: a
     // bond-backed slash needs the finalized manifest's slash authority, which
-    // this legacy-deployment harness lacks.
+    // this harness's deployment lacks.
     cleanup =
       (await options.beforeTurns?.({ harness, application, clock })) ??
       undefined;

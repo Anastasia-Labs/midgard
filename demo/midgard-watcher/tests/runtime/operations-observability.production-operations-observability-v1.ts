@@ -94,7 +94,7 @@ describe("production operations observability V1", () => {
     ).toMatchObject({ inclusionAtMs: "90000", updatedAtMs: "100000" });
   });
 
-  it("reports bounded secret-safe W38 status, metrics, and alerts", async () => {
+  it("reports bounded secret-safe status, metrics, and alerts", async () => {
     const proofSupervisor = supervisor();
     let now = 100_000n;
     const observability = createWatcherOperationsObservability({

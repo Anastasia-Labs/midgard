@@ -139,7 +139,7 @@ const queryTip = async ({
         body: JSON.stringify({
           jsonrpc: "2.0",
           method,
-          id: "midgard-q57-authority-tip",
+          id: "midgard-state-correction-authority-tip",
         }),
       },
     });

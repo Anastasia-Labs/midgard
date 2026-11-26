@@ -2,7 +2,7 @@
  * The reference-input-no-idx count reader past the walked count limit: a
  * producer with 334 outputs, published under tier 2, and a reader of output
  * index 334. Step 04 counts field 2 through the field grammar certificate, so
- * its cost no longer grows with the field's item count, and convicts.
+ * its cost does not grow with the field's item count, and convicts.
  *
  * Lives beside the lifecycle file so each runs in its own fresh process.
  */

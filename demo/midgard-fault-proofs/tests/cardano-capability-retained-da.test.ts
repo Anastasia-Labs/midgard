@@ -42,11 +42,9 @@ import {
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";
 import { memoryLedger } from "./support/fixture-ledger.js";
 
-describe("Cardano capability P2 production retained-DA boundary", () => {
+describe("Cardano capability production retained-DA boundary", () => {
   it("strictly authenticates every established maximum before bounded field/item chunk reconstruction", async () => {
-    expect(corpus.schema).toBe(
-      "midgard-cardano-capability-p2-boundary-corpus-v1",
-    );
+    expect(corpus.schema).toBe("midgard-retained-da-boundary-corpus-v1");
     expect(corpus.entries.map(({ label }) => label)).toEqual(expectedLabels);
 
     for (const boundary of corpus.entries) {

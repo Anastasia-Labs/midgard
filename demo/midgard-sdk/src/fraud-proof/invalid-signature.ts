@@ -67,9 +67,9 @@ export const encodeMidgardAddressWitnessCanonical = (
 };
 
 /**
- * The `addr_tx_wits_hash` a witness list produces, derived exactly as
- * `bounded_collection_v1.from_items(7, ...)` does on-chain. Because the
- * commitment fixes the item count as well as each item's content, a preimage
+ * The `addr_tx_wits_hash` a witness list produces: `blake2b_256` of its §5.1
+ * preimage, as the field-access door checks on-chain. Because the
+ * preimage fixes the item count as well as each item's content, a preimage
  * matching this hash also fixes every witness's position — which is what makes
  * the accused index unambiguous on-chain.
  */
@@ -136,10 +136,9 @@ export const decodeAddressWitnessPreimage = (
  * (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) will not read any of
  * fields 6–8 unless
  * `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` equals the
- * `witness_set_hash` the compact transaction carries. The standalone
- * `verify_native_tx_witness_set` helper this used to mirror was deleted by #575.
- * For a downstream step the hash that check runs against is the anchored one
- * from thread state — `WitnessAnchor` in
+ * `witness_set_hash` the compact transaction carries. For a downstream step
+ * the hash that check runs against is the anchored one from thread state —
+ * `WitnessAnchor` in
  * `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak` — because §3's
  * transaction-id preimage is the body alone and so does not cover it.
  */
@@ -293,8 +292,7 @@ export const InvalidSignatureStep01SpendRedeemer =
  * Field 7 lives in the **witness set**, and §3's transaction-id preimage is the
  * body alone, so the id does not commit it: a prover may hand over the genuine
  * body followed by any trailing `witness_set_hash` it likes and the bytes still
- * re-derive to the committed id. The retired `bad_addr_tx_wits_hash` (field 7's
- * own collection commitment) is therefore replaced not by nothing but by
+ * re-derive to the committed id. The state therefore carries
  * `bad_tx_witness_set_hash` — the value step-01 read off the compact structure
  * the block committed, which is what `WitnessAnchor` anchors and what the door
  * checks the supplied witness set against.
@@ -323,11 +321,10 @@ export const InvalidSignatureStep02Datum =
  *
  * `addr_tx_wits_opening` must be the `WitnessFieldOpening` arm — it carries the
  * transaction's `NativeTxWitnessSetCompact` alongside the compact bytes, and
- * the door refuses a body opening at field 7. Tier 3 is admissible here since
- * #606's repair (the certificate's mint-welded `field_hash` must equal the
- * commitment reached through the anchored `witness_set_hash`, so a fabricated
- * certificate fails at the door); §8.3 erratum E2's disposition records the
- * resolution.
+ * the door refuses a body opening at field 7. Tier 3 is admissible here: the
+ * certificate's mint-welded `field_hash` must equal the commitment reached
+ * through the anchored `witness_set_hash`, so a fabricated certificate fails at
+ * the door (§8.3, witness-set authentication).
  */
 export const InvalidSignatureStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),

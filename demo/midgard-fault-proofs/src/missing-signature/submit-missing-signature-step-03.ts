@@ -34,10 +34,7 @@ import { completeStep, fundStep } from "../step-completion.js";
 import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
   missingSignatureStepLabel,
@@ -63,9 +60,6 @@ export type MissingSignatureStep03Build = {
   readonly inputIndex: number;
   readonly outputIndex: number;
 };
-
-export type SubmitMissingSignatureStep03Result =
-  OutsideWorkflowSubmission<MissingSignatureStep03Build>;
 
 export const buildMissingSignatureStep03 = async ({
   lucid,

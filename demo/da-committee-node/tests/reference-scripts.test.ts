@@ -245,7 +245,7 @@ describe("DA attestation reference script resolver", () => {
       }),
       deployment,
     );
-    // The round no longer withdraws from a bond script, so nothing checks a
+    // The round withdraws from no bond script, so nothing checks a
     // reward registration; the pooled bond is read at apply, not here.
     expect(reads).toEqual(["utxosByOutRef"]);
   });

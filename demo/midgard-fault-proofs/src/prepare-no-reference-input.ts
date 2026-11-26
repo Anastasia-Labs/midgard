@@ -1,14 +1,10 @@
 /**
  * `no-reference-input` evidence builder.
  *
- * **Re-derived-adjacent, and checked to be unaffected by #604.** This module
- * emits *evidence* — canonical item lists, compact structures and inclusion
- * proofs — and constructs no datum or redeemer, so the #575 rebind left its
- * output shape alone. What changed is downstream: the submitters that consume
- * this evidence now also take the disputed transaction's compact CBOR, which
- * this module already emits as part of its inclusion argument. The banner it
- * used to carry is gone because the family is re-derived, not because the
- * module was skipped.
+ * This module emits *evidence* — canonical item lists, compact structures and
+ * inclusion proofs — and constructs no datum or redeemer. The submitters that
+ * consume it also take the disputed transaction's compact CBOR, which this
+ * module emits as part of its inclusion argument.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";

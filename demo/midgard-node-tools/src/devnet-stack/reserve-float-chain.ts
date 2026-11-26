@@ -246,8 +246,8 @@ export const productionFloatDeps = (
 const floatLock = (layout: Layout) => join(layout.state, "reserve-float.lock");
 const LOCK_POLL_MS = 2_000;
 
-/** Only explicit kernel/legacy-owner contention is retried; storage and other
- * failures keep their original classification and refuse immediately. */
+/** Only explicit lock contention is retried; storage and other failures
+ * keep their classification and refuse immediately. */
 const lockRetryable = (error: unknown) => error instanceof ControllerLockBusy;
 
 /**

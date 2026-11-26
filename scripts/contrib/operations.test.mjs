@@ -16,14 +16,14 @@ test("devnet generation supplies a private fresh run directory and verifies prod
   atomicJson(resolve(root, path), pkg);
   const script = resolve(
     root,
-    "demo/midgard-node-tools/devnet/phase4-process/scripts/generate.sh",
+    "demo/midgard-node-tools/devnet/isolated-chain/scripts/generate.sh",
   );
   mkdirSync(resolve(script, ".."), { recursive: true });
   // Exercise the generator's required environment and output contract without
   // launching a Cardano container or claiming live chain acceptance.
   writeFileSync(
     script,
-    '#!/bin/sh\nset -eu\n: "${MIDGARD_PHASE4_RUN_DIR:?MIDGARD_PHASE4_RUN_DIR is required}"\ntest ! -e "$MIDGARD_PHASE4_RUN_DIR"\nmkdir "$MIDGARD_PHASE4_RUN_DIR"\nprintf config > "$MIDGARD_PHASE4_RUN_DIR/config.json"\n',
+    '#!/bin/sh\nset -eu\n: "${MIDGARD_ISOLATED_CHAIN_RUN_DIR:?MIDGARD_ISOLATED_CHAIN_RUN_DIR is required}"\ntest ! -e "$MIDGARD_ISOLATED_CHAIN_RUN_DIR"\nmkdir "$MIDGARD_ISOLATED_CHAIN_RUN_DIR"\nprintf config > "$MIDGARD_ISOLATED_CHAIN_RUN_DIR/config.json"\n',
   );
   // The run id fixes the allocation's ports, which another process on this
   // machine may hold; the generator refuses those, so try another run id.
@@ -33,7 +33,7 @@ test("devnet generation supplies a private fresh run directory and verifies prod
     runId = `directory-check-${attempt.toString()}`;
     try {
       receipt = await generateDevnet(root, runId, {
-        env: { ...process.env, MIDGARD_PHASE4_RUN_DIR: root },
+        env: { ...process.env, MIDGARD_ISOLATED_CHAIN_RUN_DIR: root },
       });
     } catch (error) {
       if (attempt >= 20 || !/is unavailable: EADDRINUSE/u.test(error.message))
@@ -41,7 +41,7 @@ test("devnet generation supplies a private fresh run directory and verifies prod
     }
   }
   assert.equal(receipt.status, "passed", receipt.reason);
-  const directory = receipt.allocation.env.MIDGARD_PHASE4_RUN_DIR;
+  const directory = receipt.allocation.env.MIDGARD_ISOLATED_CHAIN_RUN_DIR;
   assert.notEqual(
     directory,
     root,
@@ -50,7 +50,7 @@ test("devnet generation supplies a private fresh run directory and verifies prod
   assert.equal(verifyReceipt(root, receipt.path).status, "passed");
   const again = await generateDevnet(root, runId);
   assert.equal(again.status, "passed", again.reason);
-  assert.notEqual(again.allocation.env.MIDGARD_PHASE4_RUN_DIR, directory);
+  assert.notEqual(again.allocation.env.MIDGARD_ISOLATED_CHAIN_RUN_DIR, directory);
   writeFileSync(resolve(directory, "config.json"), "tampered");
   assert.throws(
     () => verifyReceipt(root, receipt.path),

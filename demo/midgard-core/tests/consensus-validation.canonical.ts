@@ -57,7 +57,7 @@ export const canonical = (
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
     requiredObserversPreimageCbor: encodeCbor([Buffer.alloc(28, 7)]),
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    // §5.6: the enveloped per-policy item list, not the retired raw map.
+    // §5.6: the enveloped per-policy item list, not a raw map.
     mintPreimageCbor: encodeMidgardFieldPreimageForField({
       fieldIndex: 5,
       items: [

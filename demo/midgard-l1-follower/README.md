@@ -652,8 +652,8 @@ deterministic.
 Pruning runs inside the loop, under its error handling: after each applied
 event at the tip, and every `everyEvents` applied events while catching up
 (then after every event until a step reports `done`), one `prune(budget)`
-step. The default budget, 500 rows per table per step, is the one B8 showed
-keeps every table at its plateau with one step per block; each step is one
+step. The default budget is 500 rows per table per step, which keeps every
+table at its plateau with one step per block; each step is one
 write transaction deleting at most 500 rows from each table, so it holds the
 writer for a bounded time between two events. A failed step is logged and
 reported in `prune.lastError`, and the next one retries.
@@ -745,20 +745,17 @@ pass. Role packages plug their projections into the same runner from
 their own `test:fork-sim` script. The devnet journeys then run the follower
 against real node CBOR, with no Kupo or Ogmios.
 
-## Tests and benchmarks
+## Tests
 
 ```sh
 pnpm test          # needs the test Postgres on 127.0.0.1:5433
 pnpm test:fork-sim # fork simulator and its fresh-replay gate (also Postgres)
-pnpm bench       # B3 (rewind at N = 10^6) and B8 (retention soak)
 ```
 
 Set `MIDGARD_TEST_DATABASE_PREFIX` per worktree. `L1_FOLLOWER_PROPERTY_OPS`
 sets the property-test length (default 10^4); `L1_FORK_SIM_RUNS` and
 `L1_FORK_SIM_POSTGRES_RUNS` set the fast-check run counts (default 200 on
-SQLite, 20 on Postgres). Bench reports are written to
-`bench/output/` (or `L1_FOLLOWER_BENCH_OUTPUT`); `L1_FOLLOWER_B3_N`,
-`L1_FOLLOWER_B8_K` and `L1_FOLLOWER_B8_FULL_K=1` scale them.
+SQLite, 20 on Postgres).
 
 CI runs `test:fork-sim` in the `l1-fork-simulator` job. On a pull request it
 runs only when the change touches one of its inputs, which

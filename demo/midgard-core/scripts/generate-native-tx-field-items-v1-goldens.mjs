@@ -6,7 +6,7 @@
  * for mint), the §5.1 envelope each field wears, the §4 flat commitment each
  * field commits under, and the §8 carriage each field's preimage selects.
  *
- * This is the fan-out half of the channel #568 opened. That generator owns what
+ * This is the fan-out half of the field-access channel. Its generator owns what
  * all nine fields *share* — envelope widths, strides, chunk split, certificate
  * asset names — and deliberately carries no per-field item bytes. This one owns
  * the other half: for every field index 0..8, what `enc_i` actually is.

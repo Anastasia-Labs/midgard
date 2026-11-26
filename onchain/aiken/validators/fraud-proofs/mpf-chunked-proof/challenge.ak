@@ -506,10 +506,10 @@ test mpf_chunked_challenge_init_rejects_a_substituted_root_domain() {
   )
 }
 
-/// The datum's own  is authenticated, not advisory: a
-/// datum that names a domain other than the one whose counted commitment was
-/// reproduced is rejected, so a finalized challenge's datum always records the
-/// root it really challenged (owner-directed deviation from the #541 brief).
+/// The datum's own domain is authenticated, not advisory: a datum that names a
+/// domain other than the one whose counted commitment was reproduced is
+/// rejected, so a finalized challenge's datum always records the root it
+/// really challenged.
 test mpf_chunked_challenge_init_rejects_a_datum_domain_the_proof_was_not_bound_to() {
   !run_honest_init(
     ProofChallengeDatum {

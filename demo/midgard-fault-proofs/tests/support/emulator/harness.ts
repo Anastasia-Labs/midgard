@@ -240,7 +240,7 @@ export const submitFabricatedFamilyInit = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  // Owner ruling 2026-08-26: witness scripts resolve from published reference
+  // Witness scripts resolve from published reference
   // scripts wherever the scenario requires them; missing entries fail closed.
   const computationThreadMintCarriage = witnessMintingPolicyCarriage({
     script: family.computationThread.mintingScript,

@@ -1,5 +1,5 @@
 /**
- * What the committee process does on a failure (owner ruling 2026-10-09):
+ * What the committee process does on a failure:
  * a startup failure no restart is known to repair holds the process up,
  * unready with `committee_startup_failed`, its `/healthz` live; transient
  * failures that outlasted the startup budget exit non-zero. After startup,

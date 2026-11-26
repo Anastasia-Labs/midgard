@@ -38,7 +38,7 @@ export type CekVerdictJobRequest = {
 
 export type ValidationJobRequest = PhaseAJobRequest | CekVerdictJobRequest;
 
-export type ValidationCacheStats = {
+type ValidationCacheStats = {
   readonly size: number;
   readonly maxEntries: number;
   readonly hits: number;

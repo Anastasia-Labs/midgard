@@ -114,7 +114,7 @@ describe("fault-proof CLI argument parsing", () => {
     });
   });
 
-  it("dispatches authenticated transition-trace preparation before the legacy prepare gate", async () => {
+  it("dispatches authenticated transition-trace preparation before the diagnostic prepare gate", async () => {
     const fixture = await makeEmptyTransitionTraceEnvelope();
     const tempDir = mkdtempSync(join(tmpdir(), "transition-trace-bin-"));
     const envelopePath = join(tempDir, "payload.cbor.json");
@@ -161,7 +161,7 @@ describe("fault-proof CLI argument parsing", () => {
     expect(plan.guidance).toHaveLength(3);
   });
 
-  it("keeps legacy diagnostic inputs outside the authenticated transition-trace prepare lane", async () => {
+  it("keeps diagnostic inputs outside the authenticated transition-trace prepare lane", async () => {
     const previousArgv = process.argv;
     process.argv = [
       "node",
@@ -183,7 +183,7 @@ describe("fault-proof CLI argument parsing", () => {
     }
   });
 
-  it("dispatches transition-trace submission outside the retired legacy boundary", async () => {
+  it("dispatches transition-trace submission through the admission gate", async () => {
     const previousArgv = process.argv;
     process.argv = [
       "node",
@@ -248,7 +248,7 @@ describe("fault-proof CLI argument parsing", () => {
     }
   });
 
-  it("rejects the retired incompatible-output bypass", () => {
+  it("rejects an unknown argument", () => {
     expect(() =>
       parseArgs([
         "node",
@@ -257,9 +257,9 @@ describe("fault-proof CLI argument parsing", () => {
         "--sample-double-spend",
         "--header-hash",
         "11".repeat(28),
-        "--allow-incompatible-output",
+        "--not-a-flag",
       ]),
-    ).toThrow("Unknown argument: --allow-incompatible-output");
+    ).toThrow("Unknown argument: --not-a-flag");
   });
 
   it("maps remove-fraudulent-block flags into submission config", () => {
@@ -303,21 +303,6 @@ describe("fault-proof CLI argument parsing", () => {
       awaitConfirmation: false,
     });
     expect(Object.keys(config)).not.toContain("midgardNodeUrl");
-  });
-
-  it.each([
-    ["--midgard-node-admin-key", "secret-admin-key"],
-    ["--midgard-node-admin-key-env", "NODE_ADMIN_KEY"],
-    ["--state-queue-lease-ttl-ms", "45000"],
-  ])("rejects the deleted removal lease flag %s as unknown", (flag, value) => {
-    for (const command of [
-      "remove-fraudulent-block",
-      "remove-unattested-block",
-    ]) {
-      expect(() =>
-        parseArgs(["node", "midgard-fault-proofs", command, flag, value]),
-      ).toThrow(`Unknown argument: ${flag}`);
-    }
   });
 
   it("parses invalid-range prepare arguments and the submit-init subject", () => {
@@ -467,24 +452,6 @@ describe("fault-proof CLI argument parsing", () => {
     ]);
     expect(step02.command).toBe("submit-input-no-idx-step-02");
 
-    const fold = parseArgs([
-      "node",
-      "midgard-fault-proofs",
-      "submit-input-no-idx-fold",
-      "--blueprint",
-      "plutus.json",
-      "--deployment-info",
-      "deployment.json",
-      "--thread-out-ref",
-      "ab".repeat(32) + "#0",
-      "--inputs-preimage",
-      "inputs.json",
-      "--wallet-seed-phrase-env",
-      "MIDGARD_PROVER_SEED",
-    ]);
-    expect(fold.command).toBe("submit-input-no-idx-fold");
-    expect(fold.inputsPreimagePath).toBe("inputs.json");
-    expect(fold.walletSeedPhraseEnv).toBe("MIDGARD_PROVER_SEED");
     expect(step02.inputsPreimagePath).toBe("inputs-preimage.json");
 
     const step03 = parseArgs([

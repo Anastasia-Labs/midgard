@@ -170,25 +170,6 @@ describe("production process authority separation", () => {
     }
   });
 
-  it("rejects the retired historical native-script history overlay as an unknown field", () => {
-    const base = productionConfig();
-    expect(() =>
-      parseWatcherProcessConfig({
-        ...base,
-        faultProofInfrastructure: {
-          ...base.faultProofInfrastructure,
-          historicalNativeScriptHistory: {
-            sourceMode: "external_provider_quorum",
-            consistencyPolicy: "exact_bytes_all_providers_v1",
-            providers: [],
-          },
-        },
-      }),
-    ).toThrow(
-      "watcher fault-proof infrastructure has unknown or missing fields",
-    );
-  });
-
   it("parses the shipped watcher-process.example.json template", async () => {
     // Parsed from its bytes rather than loaded by path: the loader refuses a
     // checkout under /tmp, and the template's location is not what is tested.

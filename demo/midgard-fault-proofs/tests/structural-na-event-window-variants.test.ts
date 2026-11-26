@@ -186,30 +186,8 @@ describe("omitted / out-of-window event-window variants", () => {
     });
   });
 
-  it.each([
-    ["omitted deposit", omittedDepositFault],
-    ["omitted withdrawal", omittedWithdrawalFault],
-    ["outside deposit", outOfWindowDepositFault],
-    ["outside withdrawal", outOfWindowWithdrawalFault],
-  ] as const)(
-    "rejects obsolete pointer-bearing %s witness bytes",
-    (_name, fixture) => {
-      const raw = Data.from(Data.to(fixture(), SDKFraudProof.TransitionFault));
-      if (!(raw instanceof Constr) || !(raw.fields[0] instanceof Constr))
-        throw new Error("Expected a timed fault and its witness constructor");
-      const witness = raw.fields[0];
-      expect(witness.fields).toHaveLength(1);
-      witness.fields.unshift(999n, "00");
-      if (raw.index === 7 && witness.index === 1)
-        witness.fields.splice(2, 0, new Constr(0, []));
-      expect(() =>
-        Data.from(Data.to(raw), SDKFraudProof.TransitionFault),
-      ).toThrow();
-    },
-  );
-
   it("keeps the root domain a load-bearing discriminator off-chain", () => {
-    // Twin of the Aiken selector q47_wrong_domain_rejects: only the domain
+    // Twin of the Aiken selector wrong_domain_rejects: only the domain
     // differs, the root and count are identical, yet the difference must land
     // on the blueprint's `domain` leaf of the non-membership proof so the
     // on-chain domain equality check cannot be bypassed.
@@ -239,7 +217,7 @@ describe("omitted / out-of-window event-window variants", () => {
   });
 
   it("keeps the event id a load-bearing discriminator off-chain", () => {
-    // Twin of the Aiken selector q47_wrong_event_id_rejects.
+    // Twin of the Aiken selector wrong_event_id_rejects.
     const proofFields = (
       fault: SDKFraudProof.TransitionFault,
     ): readonly unknown[] => {

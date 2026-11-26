@@ -190,7 +190,6 @@ surprises you or a run printed nothing.
 ## Measured Limits
 
 - A single-step on-chain fold over transaction outputs fit about a hundred
-  items: about 120k memory per output under the 20% reserve, measured for the
-  networkId forced direction (commit `36546279`, 2026-09-04). Past that, use a
-  resumable checkpointed walk as that family did; re-measure for your own
-  per-item cost [review].
+  items: about 120k memory per output under the 20% reserve, measured
+  2026-09-04 for the networkId forced direction. Past that, use a resumable
+  checkpointed walk; re-measure for your own per-item cost [review].

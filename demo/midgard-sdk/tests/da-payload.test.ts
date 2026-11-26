@@ -369,26 +369,4 @@ describe("DaPayloadV1 canonical codec", () => {
       ),
     ).toThrow("must use definite framing");
   });
-
-  it("refuses the retired program-material section", () => {
-    const value = emptyPayload();
-    const encoded = encodeDaPayload(value);
-    const header = Buffer.from(Data.to(value.block_body.header, Header), "hex");
-    // The old section followed the five transaction/source entry lists.
-    const insertion = encoded.indexOf(header) + header.length + 5;
-    expect(encoded.subarray(insertion - 5, insertion)).toEqual(
-      Buffer.from("8080808080", "hex"),
-    );
-    for (const retiredSection of [
-      Buffer.from([0x80]),
-      Buffer.from("9f9f41014102ffff", "hex"),
-    ]) {
-      const obsoletePayload = Buffer.concat([
-        encoded.subarray(0, insertion),
-        retiredSection,
-        encoded.subarray(insertion),
-      ]);
-      expect(() => decodeDaPayload(obsoletePayload)).toThrow();
-    }
-  });
 });

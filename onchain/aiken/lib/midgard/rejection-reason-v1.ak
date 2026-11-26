@@ -29,9 +29,9 @@
 //// domain-separated blake2b-256 of the reason's Plutus Data CBOR.
 ////
 //// A reserved family, not populated in V1: `GuardrailExceeded { guardrail,
-//// field_index, item_index }` — kept unpopulated per the 2026-08-24 owner
-//// ruling that the L1 forced-order door (`docs/spec/midgard-tx.md` §8.11)
-//// excludes guardrail-violating preimages; enacting it would be a format
+//// field_index, item_index }` — kept unpopulated because the L1 forced-order
+//// door (`docs/spec/midgard-tx.md` §8.11) excludes guardrail-violating
+//// preimages; enacting it would be a format
 //// revision like any other arm addition.
 
 /// The operator's recorded verdict on a forced-inclusion transaction, as the

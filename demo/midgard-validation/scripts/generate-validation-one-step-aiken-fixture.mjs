@@ -80,7 +80,7 @@ const address = Buffer.from(
 // `82 ‖ 58 20 tx_id(32) ‖ 19 index_be16`, and that same value is the ledger MPF
 // trie key. This is both here — the field-0 preimage item and the ledger delete
 // key — so it must come from that one encoder, not from CML's minimal-index
-// `TransactionInput` CBOR, which is 36 bytes and no longer decodes anywhere.
+// `TransactionInput` CBOR, which is 36 bytes and decodes nowhere.
 const spent = encodeMidgardSpendInputItem({
   txId: Buffer.alloc(32, 0x11),
   outputIndex: 0,
@@ -296,8 +296,8 @@ if (lowIndex < 0) {
   throw new Error("generated trace has no canonical decode/empty transition");
 }
 const highIndex = lowIndex + 1;
-// #597 AC4. The four §8-door constructors are the half of #592's wire change no
-// blueprint gate can measure: no validator declares `ValidationAuxiliaryWitnessV1`
+// No blueprint gate can measure the four §8-door constructors: no validator
+// declares `ValidationAuxiliaryWitnessV1`
 // in its ABI, so `sdk-aiken-schema-parity` has no definition to refine it
 // against (see its `NO_BLUEPRINT_DEFINITION`). One *emitted*
 // `transactionFieldChunk` auxiliary (a native-script spend's field 6) checks
@@ -324,11 +324,11 @@ if (selectMidgardFieldCarriageTier(fieldChunkPreimage.length) !== "Inline") {
   );
 }
 
-// #600. The same emitted constructor at the two tiers §8.4 selects above the
-// tier-1 cap. This is what the trace producer could not reach before: the tier
-// is resolved at evidence commitment against a concrete transaction's
-// reference-input set, so the auxiliary carries positional indices instead of
-// the preimage, and it is those bytes the Aiken door has to decode.
+// The same emitted constructor at the two tiers §8.4 selects above the
+// tier-1 cap. The tier is resolved at evidence commitment against a concrete
+// transaction's reference-input set, so the auxiliary carries positional
+// indices instead of the preimage, and it is those bytes the Aiken door has to
+// decode.
 //
 // Everything is producer-emitted. The preimage is a real field-6 §5.1 envelope
 // out of a real trace; `planMidgardFieldCarriage` picks the tier by §8.4's
@@ -513,9 +513,9 @@ const evidenceHash = computeHash32(
 // `hash_one_step_evidence(transition, NoAuxiliaryWitness)` — whatever carriage
 // the item auxiliary names. Pin both halves of that rule cross-language: the
 // transition-only hash over this vector's transition is exactly `evidenceHash`
-// (the auxiliary hashed is the same `NoAuxiliaryWitness` constant), and the
-// retired carriage-committed preimage yields a different hash both sides agree
-// on, so the two commitments can never collide.
+// (the auxiliary hashed is the same `NoAuxiliaryWitness` constant), and a
+// preimage that commits the item auxiliary yields a different hash both sides
+// agree on, so the two commitments can never collide.
 const itemAuxiliaryData = new Constr(28, [
   new Constr(0, [fieldChunkPreimage.toString("hex")]),
 ]);
@@ -537,7 +537,7 @@ if (!transitionOnlyEvidenceHash.equals(evidenceHash)) {
     "transition-only evidence hash diverged from the NoAuxiliaryWitness vector",
   );
 }
-const retiredItemEvidenceHash = computeHash32(
+const itemAuxiliaryEvidenceHash = computeHash32(
   Buffer.concat([
     Buffer.from("MidgardValidationOneStepEvidenceV1", "ascii"),
     Buffer.from(
@@ -549,9 +549,9 @@ const retiredItemEvidenceHash = computeHash32(
     ),
   ]),
 );
-if (retiredItemEvidenceHash.equals(evidenceHash)) {
+if (itemAuxiliaryEvidenceHash.equals(evidenceHash)) {
   throw new Error(
-    "retired carriage-committed evidence hash collided with the transition-only commitment",
+    "item-auxiliary evidence hash collided with the transition-only commitment",
   );
 }
 const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCbor({
@@ -635,8 +635,8 @@ const evidence_hash =
 const item_auxiliary_cbor =
   #"${itemAuxiliaryCbor.toString("hex")}"
 
-const retired_item_evidence_hash =
-  #"${retiredItemEvidenceHash.toString("hex")}"
+const item_auxiliary_evidence_hash =
+  #"${itemAuxiliaryEvidenceHash.toString("hex")}"
 
 const script_discovery_control_cbor =
   #"${scriptDiscoveryControlCbor.toString("hex")}"
@@ -684,15 +684,15 @@ test typescript_generated_canonical_decode_step_is_exact() {
   }
 }
 
-/// #597. One \`transactionFieldChunk\` auxiliary as the TypeScript machine emits
+/// One \`transactionFieldChunk\` auxiliary as the TypeScript machine emits
 /// it, decoded here by the Aiken type it has to satisfy.
 ///
-/// This is the cross-language pin for #592's four moved door constructors. It
+/// This is the cross-language pin for the four §8-door constructors. It
 /// checks three things a blueprint comparison cannot: that the emitted bytes
 /// deserialise as \`ValidationAuxiliaryWitnessV1\` at all, that they land on
-/// \`TransactionFieldChunkWitness\` — Constr 1, whose *index* is unchanged while
-/// its shape moved, so a mis-tagged emission decodes as the wrong constructor
-/// rather than failing — and that the three fields carry exactly the values the
+/// \`TransactionFieldChunkWitness\` — Constr 1, so a mis-tagged emission decodes
+/// as the wrong constructor rather than failing — and that the three fields
+/// carry exactly the values the
 /// producer put in them, in the order Aiken names them.
 ///
 /// The carriage is tier-1 \`Inline\`: §8.4's partition admits only that tier for a
@@ -720,15 +720,14 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
   }
 }
 
-/// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
+/// The same emitted constructor at tier 2, where §8.4's partition puts a
 /// ${rawUtxoVector.preimageBytes.toString()}-byte field-6 preimage.
 ///
-/// This is the vector the trace producer could not build before: the tier is
-/// resolved at evidence commitment against a concrete transaction's
+/// The tier is resolved at evidence commitment against a concrete transaction's
 /// canonically-sorted reference-input set, so the auxiliary names a **positional
 /// reference-input index** and carries no preimage at all. That is what makes
 /// stage-4 evidence O(1) in field size — the property
-/// \`validation_machine_v1.ak:9189-9192\` states and C21-STAGE4 protects — and it
+/// \`validation_machine_v1.ak:9189-9192\` states — and it
 /// is checked here as a byte length rather than asserted: ${rawUtxoVector.auxiliaryCbor.length.toString()} bytes for a
 /// field of ${rawUtxoVector.preimageBytes.toString()}.
 ///
@@ -755,7 +754,7 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   }
 }
 
-/// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
+/// The same emitted constructor at tier 3, where §8.4's partition puts a
 /// ${certifiedVector.preimageBytes.toString()}-byte field-6 preimage — above \`chunk_bytes_k\`, so the preimage is
 /// split into ${certifiedVector.carriage.chunkRefInputIndices.length.toString()} deterministic chunks with one §8.6 digest manifest.
 ///
@@ -793,11 +792,11 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
 /// the item auxiliary names. Both halves of that rule are pinned here with
 /// TypeScript-computed hashes: the transition-only commitment over this
 /// vector's transition is byte-identical to \`evidence_hash\` on both sides, and
-/// the retired carriage-committed preimage — the same transition beside a
+/// a preimage that commits the item auxiliary — the same transition beside a
 /// \`TransactionFieldItemWitness\` — lands on a hash both languages agree on and
-/// agree is *different*, so a datum committed under the retired rule can never
-/// satisfy the narrowed recompute. The carriage reuses the field-chunk vector's
-/// §5.1 preimage; the door never runs here — this vector is about the
+/// agree is *different*, so a datum committed over the auxiliary can never
+/// satisfy the transition-only recompute. The carriage reuses the field-chunk
+/// vector's §5.1 preimage; the door never runs here — this vector is about the
 /// commitment arithmetic, not delivery.
 test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
@@ -815,8 +814,8 @@ test typescript_generated_complete_item_commitment_is_transition_only() {
     validation_resolution_v1.hash_one_step_evidence(
       transition_data,
       item_auxiliary_data,
-    ) == retired_item_evidence_hash,
-    retired_item_evidence_hash != evidence_hash,
+    ) == item_auxiliary_evidence_hash,
+    item_auxiliary_evidence_hash != evidence_hash,
   }
 }
 

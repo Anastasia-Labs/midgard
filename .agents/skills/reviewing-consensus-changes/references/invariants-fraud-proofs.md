@@ -5,10 +5,9 @@ Scope: `onchain/aiken/validators/fraud-proofs/`,
 fraud-proof policies, `demo/midgard-sdk/src/fraud-proof/`, and
 `demo/midgard-fault-proofs/`.
 
-Status, recurrence and citation conventions are as in
+Status and citation conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md): **VERIFIED** means
-code, a refusing test and provenance were all read; **PARTIAL** names what is
-missing.
+code and a refusing test were read; **PARTIAL** names what is missing.
 
 ## FP1. Every script is applied with exactly its declared parameters
 
@@ -25,13 +24,9 @@ must hash differently from the deployed script
 (`demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts`);
 `demo/midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts`.
 
-Provenance: ten semantic resolvers were deployed with two of their three
-parameters, which made them succeed for any prover; `ac54d01a1`
-applied the third parameter and added the arity guard to every application.
-
-Recurrence: 1 live instance, 10 validators. The `phas` membership loader
-deploys `compiledCode` bare and refuses a blueprint that declares a parameter
-for it (`f26292930`).
+Blind spot: a loader that deploys `compiledCode` bare never reaches the
+door. The `phas` membership loader does, and refuses a blueprint that declares
+a parameter for it.
 
 ## FP2. On chain trusts deployment parameters
 
@@ -44,9 +39,6 @@ Enforced: `assertParameterShapes`
 (`demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`)
 `[runtime: assertParameterShapes]`; policy in
 [contracts.md](../../../../docs/agents/contracts.md).
-
-Provenance: `fa52b3844` (2026-09-04) removed about 22 parameter-only checks
-from 15 validators and deleted the tests that pinned them.
 
 Review action: a new on-chain check that only inspects a parameter is a
 finding against the change, not a hardening.
@@ -64,10 +56,6 @@ Enforced: `requireWitnessReferenceScriptUtxo`
 (`demo/midgard-fault-proofs/src/linear-fault-family.ts`)
 `[runtime: requireWitnessReferenceScriptUtxo]`.
 
-Provenance: the file header records the owner ruling of 2026-08-26
-(`witness-reference-scripts.ts`); `d3df3323e` (2026-08-29) removed the
-inline fallback.
-
 Blind spot: the lint (`midgard/fault-proof-reference-scripts-only`) bans
 inline attach only in the fault-proof source trees it lists; a fault-proof
 script attached from another tree is not caught.
@@ -83,12 +71,7 @@ Enforced: every script, the pre-commit hook and CI run the compiler only
 through `scripts/aiken`, which builds the commit `demo/flake.lock` pins
 `[script: scripts/lib/aiken.mjs]`, `[hook: pre-commit]`.
 
-Provenance: stock v1.1.22 generated under-strict decoders when two
-modules declared the same type name (`ValueWitnessV1` in `cek_builtin_v1` and
-`cek_machine_v1`); `a954669fc` (2026-08-04) renamed the collision, and the
-fork carries the compiler fix.
-
-Recurrence: 2. Blind spot: the pre-commit hook skips formatting when nix
+Blind spot: the pre-commit hook skips formatting when nix
 cannot build the pinned compiler, and a hand-typed bare `aiken` runs whatever
 is on `PATH`.
 
@@ -109,15 +92,9 @@ Enforced: `expect verified.tx_compact.witness_set_hash == witness_set_hash`
 `tier_three_certificate_over_a_witness_field_binds_to_nothing_committed`,
 `certified_carriage_opens_the_address_witness_field_with_the_welded_hash`.
 
-Provenance: review found the first field-door rebind "re-derived the
-witness-set hash but dropped the MPF anchoring", reproduced end to end;
-`2fec6b0fb` restored it. `d14c3e9aa` (2026-08-16) welded `field_hash`
-into the preimage-certificate mint, so a certificate minted over a fabricated
-witness set carries the fabricated hash and fails the door equality.
-
-Recurrence: 2. The opposite error also happened: proposing to add
-`witness_set_hash` to the transaction-id preimage. That is not a finding (see
-lens 5).
+The preimage-certificate mint welds `field_hash`, so a certificate minted
+over a fabricated witness set carries the fabricated hash and fails the door
+equality.
 
 ## FP6. Every refused coordinate is decided by the shared engine
 
@@ -134,15 +111,8 @@ execution-source, output-reference and witness-script decoding rules and
 native-script-decoding step-03
 `[aiken-test: midgard/fraud-proofs/native-script-decoding/engine.test/]`.
 
-Provenance: `fa9eeb41c` (2026-08-25, the BindOutOfDomain arm), then one fix
-per family as each hand-rolled copy was found: `8788d768c`, `0c4001d77`
-(2026-09-04), `8f62cb506` and `0023bba3c` (2026-09-05).
-
-Recurrence: 5.
-
-The direct rebuilds of execution-native-script-invalid and
-execution-source-script-decoding deleted their rule modules, and with them the
-last hand-rolled header parser that had no empty-payload arm.
+Easy to miss when a family hand-rolls its own header parser: each copy needs
+its own empty-payload arm.
 
 ## FP7. The scan window is authenticated at every stage
 
@@ -161,13 +131,10 @@ Enforced: `witness-script-decoding/step-03.ak`,
 `[aiken-test: midgard/fraud-proofs/output-reference-script-decoding/rule.test/]`
 (`window_refuses_substituted_chunk_coordinate`).
 
-Provenance: `0c4001d77`, `8f62cb506`, `0023bba3c` — the same wave as FP6.
-Before it, the window was checked only on token stages, so a segment that
-opened on a frame step and ran into token steps could not be submitted,
-stalling any proof over a container with eight or more children (comment at
-`validators/fraud-proofs/witness-script-decoding/step-03.ak`).
-
-Recurrence: 3.
+Easy to miss for a segment that opens on a frame step and runs into token
+steps: with the window checked only on token stages, it cannot be submitted,
+which stalls any proof over a container with eight or more children (comment
+at `validators/fraud-proofs/witness-script-decoding/step-03.ak`).
 
 ## FP8. Gates fail when they collect nothing
 
@@ -178,12 +145,9 @@ Rule: a focused Aiken selector that collects zero tests fails the gate.
 Enforced: `onchain/aiken/scripts/guard-focused-selector.mjs`
 `[script: onchain/aiken/scripts/guard-focused-selector.mjs]`.
 
-Provenance: one sweep found 24 gates that could not fail; `8a4b87707` made
-zero collection fatal. The bare `-m native_script_decoding` selector in
-`fa9eeb41c`'s era matched no module; the selector of SQ1's bound did the same.
-
-Recurrence: at least 5. Blind spot: a selector that collects the wrong tests
-still passes.
+Easy to miss because a loose selector looks right: a bare
+`-m native_script_decoding` matches no module. Blind spot: a selector that
+collects the wrong tests still passes.
 
 ## FP9. A forced source carries no verdict
 
@@ -195,13 +159,9 @@ only in the enclosing adjudicated value.
 
 Enforced: `[aiken-test: midgard/forced-submission.test/]`
 (`forced_source_verdict_independence`,
-`forced_source_rejects_obsolete_envelope`, fail) and
+`forced_source_rejects_a_four_element_envelope`, fail) and
 `[aiken-test: midgard/forced-source-bindings.test/]`
 (`forced_source_binds_both_verdicts`).
-
-Provenance: `165db5ca6` and `11c5bf548` bound forced disputes to the
-committed leaf verdict; `742df026e` (2026-09-12) made forced submissions
-immutable with one authoritative verdict.
 
 ## FP10. On-chain and off-chain decoders agree
 
@@ -214,20 +174,22 @@ Enforced:
 `[ci: midgard-node-ci.yml/Check native V1 field-access golden vectors]` for
 the field-access channel only.
 
-Provenance: #633 (OPEN) — tag-0 native reference-script bytes are opaque on
-chain (`parse_script_ref`, `lib/midgard/ledger-output-v1.ak`) but structurally parsed off
-chain (`demo/midgard-core/src/codec/versioned-script.ts`). #635 (OPEN) — the
-reference challenger cannot prove any fraud in a transaction carrying an
-output its codec refuses.
+Open: tag-0 native reference-script bytes are opaque on chain
+(`parse_script_ref`, `lib/midgard/ledger-output-v1.ak`) but structurally
+parsed off chain (`demo/midgard-core/src/codec/versioned-script.ts`), #633;
+the reference challenger cannot prove any fraud in a transaction carrying an
+output its codec refuses, #635. Lens 10 has both.
 
 Blind spot: the transaction-root and native-compact golden checks are not in
 CI, and regenerating a golden file makes both sides green together.
 
 ## Miss patterns in this subtree
 
-- A fix applied to one family's copy and not to its twins (FP6, five rounds).
-- An ABI or parameter change that outran the builders (FP1).
-- A replacement path that drops a guard the old path had (FP5 via the first field-door rebind; SQ1
-  via `c07ac1326`; SQ5 via `3e3090aa1`).
+- A fix applied to one family's copy and not to its twins (FP6): each copy
+  is reviewed inside its own family's change.
+- An ABI or parameter change that outran the builders (FP1): the validator
+  compiles and its unit tests pass.
+- A replacement path that drops a guard the old path had (FP5, SQ1): the
+  new path reads correctly on its own.
 - Gates that pass while testing nothing (FP8).
 - Cross-language drift between a validator and its SDK twin (FP10).

@@ -430,7 +430,7 @@ fn value_and_mint_output_descriptor(
     ),
   } {
     let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-    // OutputBelowMinAda (R8 of decision 0005; decision 0003).
+    // OutputBelowMinAda (decision 0003).
     // The parameterized minimum-Ada floor, bound to a machine rejection code
     // at the first step that sees the whole output. Both operands are facts
     // of the descriptor the membership conjunct above just authenticated
@@ -449,9 +449,8 @@ fn value_and_mint_output_descriptor(
     // membership shape and is deliberately not reachable from here.
     //
     // The rate is `env.coins_per_utxo_byte`, a compiled deployment constant
-    // (owner ruling 2026-08-23 on #627, option B) rather than a header field
-    // or a context element: the rate that convicts a block is not the block
-    // producer's to declare. Its TypeScript mirror is
+    // rather than a header field or a context element: the rate that convicts a
+    // block is not the block producer's to declare. Its TypeScript mirror is
     // `MIDGARD_CONSENSUS_LIMITS.coinsPerUtxoByte`.
     if !output_meets_min_ada_v1(
       env.coins_per_utxo_byte,

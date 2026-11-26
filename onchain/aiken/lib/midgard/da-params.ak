@@ -79,14 +79,14 @@ pub fn get_da_params(
 
   expect datum: DaParamsDatum = datum_data
 
-  // Until this line the committee hash was taken on
-  // the datum's word: every consumer compared its own frozen
-  // `committee_signers_hash` against a field that nothing here re-derived, so a
-  // params datum carrying a rotated `committee` under the *pre-rotation* hash
-  // would satisfy every such comparison while signatures verified against the
-  // new keys. Re-deriving it once, here, is what makes `committee` and
-  // `committee_signers_hash` a single fact for every caller. This is the sole
-  // re-derivation site for a params read, and it is paid once per read.
+  // Without this check the committee hash is taken on the datum's word: every
+  // consumer compares its own frozen `committee_signers_hash` against an
+  // unchecked field, so a params datum carrying a rotated `committee` under the
+  // *pre-rotation* hash would satisfy every such comparison while signatures
+  // verify against the new keys. Re-deriving it once, here, is what makes
+  // `committee` and `committee_signers_hash` a single fact for every caller.
+  // This is the sole re-derivation site for a params read, and it is paid once
+  // per read.
   expect blake2b_256(datum.committee) == datum.committee_signers_hash
 
   datum

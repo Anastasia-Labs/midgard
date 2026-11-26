@@ -274,7 +274,6 @@ CREATE UNLOGGED TABLE public.mempool_tx_deltas (
 
 CREATE TABLE public.mpf_engine_state (
     store_name text NOT NULL,
-    migration_version integer NOT NULL,
     root_hex text,
     audit_diverged boolean DEFAULT false NOT NULL,
     last_audit_at timestamp with time zone,
@@ -282,7 +281,6 @@ CREATE TABLE public.mpf_engine_state (
     lease_expires_at timestamp with time zone,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     last_audit_diverged boolean DEFAULT false NOT NULL,
-    CONSTRAINT mpf_engine_state_migration_version_check CHECK ((migration_version >= 0)),
     CONSTRAINT mpf_engine_state_root_hex_check CHECK (((root_hex IS NULL) OR (root_hex ~ '^[0-9a-f]{64}$'::text)))
 );
 

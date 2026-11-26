@@ -60,10 +60,10 @@
     "src/withdrawal-value.ts"
   ],
   "./state-queue": [
-    "src/fraud-proof/field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.ts",
     "src/fraud-proof/field-preimage-carriage.build-unsigned-field-preimage-certification-program.ts",
     "src/fraud-proof/field-preimage-carriage.build-unsigned-field-preimage-publication-program.ts",
     "src/fraud-proof/field-preimage-carriage.resolve-certificate-reference-index.ts",
+    "src/fraud-proof/field-preimage-carriage.resolve-midgard-field-carriage-against-reference-inputs.ts",
     "src/fraud-proof/field-preimage-carriage.ts",
     "src/layers/state-queue.ts",
     "src/reference-scripts.create-reference-script-auth-policy.ts",

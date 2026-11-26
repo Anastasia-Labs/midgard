@@ -15,7 +15,7 @@ timing:
   # Ledger roots readable off chain for exactly block maturity: a testing
   # profile assumes no deep L1 rollback.
   ledger_retention_ms: 900000
-  # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
+  # Validation-trace chess clock. Each side's cumulative budget C,
   # the longest dispute-move validity range L_d, and the resolution allowance R.
   # PROJECTED: provisional values until the deployment checks fix them.
   dispute_side_clock_ms: 3600000
@@ -49,8 +49,8 @@ limits:
   max_bisection_rounds: 32
   max_inactivity_strikes: 5
   coins_per_utxo_byte: 4310
-  # Most a validation-trace move may take from its thread for the fee
-  # (pd-design 6.5). PROJECTED: twice the projected largest-move fee, to be
+  # Most a validation-trace move may take from its thread for the fee.
+  # PROJECTED: twice the projected largest-move fee, to be
   # re-measured on the fit rows.
   max_dispute_move_fee_lovelace: 1200000
   # Least lovelace of a validation-trace fraud-proof output. PROJECTED: above
@@ -63,8 +63,8 @@ economics:
   inactivitySlashingPenaltyLovelace: 100000000
   fraudProverRewardLovelace: 400000000
   proverCollateralFloorLovelace: 5000000
-# Forfeited validation-dispute bonds go to the protocol treasury
-# (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
+# Forfeited validation-dispute bonds go to the protocol treasury:
+# an owner-quorum native script in the cardano-cli JSON
 # form, separate from the reserve. Its hash is derived by the generator.
 # PROJECTED: "placeholder:" keys stand in until the owner quorum is supplied.
 protocol_treasury_native_script:
@@ -84,6 +84,6 @@ allow_lists:
 # execution dispute (validationTraceDispute, 00000006). Its case needs block
 # maturity of at least 2 D_case + 1 = 21,560,001 ms here (D_case = 2 * 3,600,000
 # + 2 * 67 * 20,000 + 900,000 = 10,780,000), far above fifteen minutes, so the
-# 900 s profiles leave it out (ruled 2026-10-13). The emulator profiles carry it.
+# 900 s profiles leave it out. The emulator profiles carry it.
 excluded_fraud_proof_categories:
   - validationTraceDispute

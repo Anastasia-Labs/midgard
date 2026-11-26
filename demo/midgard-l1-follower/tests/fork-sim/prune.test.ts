@@ -165,7 +165,7 @@ const E7_SCENARIO: ForkScenario = corpus.find(
   (entry) => entry.name === `reland pruned around a depth-${SIM_K} rollback`,
 )!.scenario;
 
-describe("E7: pruned rows, then a rewind that drops the prune boundary", () => {
+describe("pruned rows, then a rewind that drops the prune boundary", () => {
   it("rewinds within k over pruned rows, and every read stays safe", async () => {
     const { steps } = buildForkSteps(E7_SCENARIO, [FIXTURE_PROJECTION]);
     const store = openSqliteFactStore({

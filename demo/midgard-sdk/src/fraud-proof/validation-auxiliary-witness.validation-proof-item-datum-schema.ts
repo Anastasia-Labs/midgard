@@ -15,11 +15,9 @@ export const ValidationAuxiliaryWitness =
  * `CanonicalDecode` complete-item steps of one disputed transaction to reach by
  * reference input instead of re-carrying it in every step's redeemer.
  *
- * **It publishes the field's whole §5.1 preimage, not one item.** Under the
- * retired counted scheme it published one item's bytes beside an `ItemProofV1`
- * opening them against the field commitment — an opening §4 made unsatisfiable
- *. Under §8 the unit that authenticates is the whole preimage, so the
- * whole preimage is what a publication carries;
+ * **It publishes the field's whole §5.1 preimage, not one item.** Under §8 the
+ * unit that authenticates is the whole preimage, so the whole preimage is what
+ * a publication carries;
  * `canonical_decode_item_observe_v1`'s `ObserveReference` arm wraps it as
  * `Inline` carriage and the door hashes it once against the committed field
  * hash. `transaction_id` and `transaction_commitment` are what stop a look-alike

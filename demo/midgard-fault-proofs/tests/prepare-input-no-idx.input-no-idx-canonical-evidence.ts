@@ -65,7 +65,7 @@ describe("input-no-idx canonical evidence", () => {
       expect(inclusion.txMembershipProofCbor.length).toBeGreaterThan(0);
     }
 
-    // step-01 -> step-02. #604: the §2.5 anchor, and no `Direct`/`Folding` sum.
+    // step-01 -> step-02: the §2.5 anchor.
     expect(output.step02State).toEqual({
       verified_tx_id: output.badTxInclusion.nativeTxId,
     });
@@ -78,8 +78,7 @@ describe("input-no-idx canonical evidence", () => {
       { tx_id: block.producer.nodeTxId, output_index: 7n },
     ]);
     expect(output.step02.badInputsIndex).toBe(0);
-    // step-03 -> step-04
-    // step-03 -> step-04. #604: the producing transaction's anchor, not its
+    // step-03 -> step-04: the producing transaction's anchor, not its
     // outputs commitment — step-04 opens its field 2 through the §8.8 door.
     expect(output.step04State).toEqual({
       producing_tx_id: output.producingTxInclusion.nativeTxId,
@@ -192,11 +191,9 @@ describe("input-no-idx canonical evidence", () => {
   });
 
   it("plans one §8 carriage tier for the whole field-0 preimage", async () => {
-    // #604: the retired test here derived per-item counted fold openings
-    // (`buildInputNoIdxSpendInputFoldOpeningsV1`). §4 gives a field one flat hash
-    // and no per-item openings at all, so those functions were deleted rather
-    // than re-pointed. What the artifact reports instead is the §5.1 preimage's
-    // length and the §8.4 tier that length selects.
+    // §4 gives a field one flat hash and no per-item openings. The artifact
+    // reports the §5.1 preimage's length and the §8.4 tier that length
+    // selects.
     const block = await violatingBlock(20);
     const output = await prepareInputNoIdxFromTransactions({
       headerHash: h28(0xaa),
@@ -219,7 +216,7 @@ describe("input-no-idx canonical evidence", () => {
   });
 
   it.each([20, 296])(
-    "keeps one step-02 route at the %i-input preimage",
+    "carries the %i-input field-0 preimage inline at step 02",
     async (spendInputCount) => {
       const block = await violatingBlock(spendInputCount);
       const output = await prepareInputNoIdxFromTransactions({
@@ -230,9 +227,8 @@ describe("input-no-idx canonical evidence", () => {
 
       expect(output.step02.inputsPreimage).toHaveLength(spendInputCount);
       expect(output.step02.badInputsIndex).toBe(spendInputCount - 1);
-      // #604: there is no direct/fold boundary any more. Both sizes are one
-      // route; both fit tier 1, because §8.4's bound is 14,336 bytes and 296
-      // spend inputs are 40 bytes apiece.
+      // Both fit tier 1: §8.4's bound is 14,336 bytes and 296 spend inputs
+      // are 40 bytes apiece.
       const preimage = encodeMidgardFieldPreimage(
         output.step02.inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
       );
@@ -246,27 +242,6 @@ describe("input-no-idx canonical evidence", () => {
       });
     },
   );
-
-  it("reports the §8.4 tier at the retired 19-input release boundary", async () => {
-    // The boundary itself is retired: `INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT`
-    // bounded the direct redeemer arm against the folding one, and step-02 has
-    // one arm now. The size is kept as a case because it is a real preimage the
-    // family produced; what is asserted is the §8.4 tier, which is a function of
-    // bytes rather than of item count.
-    const block = await violatingBlock(
-      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
-    );
-    const output = await prepareInputNoIdxFromTransactions({
-      headerHash: h28(0xaa),
-      transactions: block.transactions,
-      expectedTransactionsRoot: block.expectedTransactionsRoot,
-    });
-
-    expect(output.step02.inputsPreimage).toHaveLength(
-      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT,
-    );
-    expect(output.proofFit.step02CarriageTier).toBe("Inline");
-  });
 
   it("round-trips a native-asset output through the canonical encoder", () => {
     const bytes = Buffer.concat([

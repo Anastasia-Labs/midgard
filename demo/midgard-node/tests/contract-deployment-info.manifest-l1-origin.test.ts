@@ -81,14 +81,14 @@ describe("the L1 origin a finalized manifest records", () => {
         expect(rewritten.l1Origin).toEqual(T);
         expect(rewritten).toEqual(recorded);
 
-        const legacy = buildDeploymentManifest(info, context);
-        const legacyRewritten = buildDeploymentManifest(info, {
+        const withoutOrigin = buildDeploymentManifest(info, context);
+        const withoutOriginRewritten = buildDeploymentManifest(info, {
           ...context,
-          existingManifest: legacy,
+          existingManifest: withoutOrigin,
           l1Origin: T,
         });
-        expect(Object.keys(legacyRewritten)).not.toContain("l1Origin");
-        expect(legacyRewritten).toEqual(legacy);
+        expect(Object.keys(withoutOriginRewritten)).not.toContain("l1Origin");
+        expect(withoutOriginRewritten).toEqual(withoutOrigin);
       }),
   );
 });

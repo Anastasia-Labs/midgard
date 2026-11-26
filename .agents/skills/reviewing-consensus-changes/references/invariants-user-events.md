@@ -5,7 +5,7 @@ Scope: `onchain/aiken/validators/payout.ak`, `reserve.ak`,
 withdrawal and deposit fraud-proof families, the operator-slash economics in
 `lib/midgard/operator-directory.ak`, and their SDK builders.
 
-Status, recurrence and citation conventions are as in
+Status and citation conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md).
 
 ## UE1. A payout's datum cannot change while it is being funded
@@ -19,8 +19,8 @@ Enforced: `validators/payout.ak` (input and output datum)
 `[aiken-test: payout/]` (`payout_add_funds_rejects_datum_mutation`,
 fail).
 
-Provenance: an accumulating payout had no datum restriction, so an attacker
-could inject a large datum and the payout could never complete.
+Easy to miss: without the datum equality an attacker injects a large datum
+and the payout can never complete.
 
 ## UE2. A payout starts only for a finalized, valid withdrawal
 
@@ -43,10 +43,6 @@ observer (`validators/payout.ak`)
 (`payout_mint_requires_retirement_withdrawal`,
 `payout_mint_binds_retiring_order_input`).
 
-Provenance: first prototype `b2691d77d`; rewritten in `090436fc3`.
-
-Recurrence: 2.
-
 ## UE3. The payout reaches exactly the withdrawal's value
 
 Status: VERIFIED.
@@ -61,9 +57,8 @@ pays exactly the target to the datum's address and datum)
 `[aiken-test: payout/]` (no positive contribution, overfunding, second
 reserve input, underfunded target, surplus, continuing output; all fail).
 
-Provenance: an audit found no binding between the payout and the withdrawal's
-value, datum or address: one 1 ADA withdrawal could draw any amount from the
-reserve, and the destination could be changed at mint.
+Easy to miss: without these bindings one 1 ADA withdrawal draws any amount
+from the reserve, and the mint can change the destination.
 
 ## UE4. Withdrawal bytes are the Aiken serialisation, map order preserved
 
@@ -78,11 +73,7 @@ Enforced: `withdrawal_signature_is_valid_v1`
 `withdrawalSigningMessageCbor`
 (`demo/midgard-sdk/src/withdrawal-signature.ts`) `[review]`.
 
-Provenance: `019c4eea2` and `deda00a64` (2026-09-05, admit Aiken asset-map
-encoding; preserve map order in commitments and signatures), `81cf04e14`
-(2026-09-12, sign over the Aiken serialisation).
-
-Recurrence: 3. Blind spot: no golden channel pins the SDK bytes against the
+Blind spot: no golden channel pins the SDK bytes against the
 Aiken bytes for withdrawal bodies.
 
 ## UE5. The operator owns the validity verdict
@@ -100,15 +91,9 @@ Enforced: `WithdrawalContentV1`
 (`rejects_validity_only_difference` in each, fail). Decision:
 [0007-operator-owned-event-validity.md](../../../../docs/fault-proofs/decisions/0007-operator-owned-event-validity.md).
 
-Provenance: `a97604c86` (2026-09-12, exclude the operator-owned verdict),
-`c8bb922f7` (report absent or mismatched origins as fabricated).
-
-Recurrence: 2.
-
 ## UE6. A withdrawal order is funded for both of its exits
 
-Status: PARTIAL (the predicate and its test were read; the provenance is a
-ruling on one input, not a recorded defect).
+Status: PARTIAL (the predicate and its test were read).
 
 Rule: an order's locked ADA is non-negative per asset, no more than the
 target's ADA, and enough for both the refund output and the payout output at
@@ -118,8 +103,6 @@ Enforced: `withdrawal_is_funded`
 (`lib/midgard/event-history/funding.ak`)
 `[aiken-test: midgard/event-history/funding.test/]`
 (`withdrawal_funding_checks_initial_payout_refund_and_target`).
-
-Provenance: an owner ruling on the on-chain source of `coins_per_utxo_byte`.
 
 ## UE7. Slashing transactions pay exactly the penalty as fee
 
@@ -142,7 +125,7 @@ the tolerant slash makes an equality there redundant.
 Enforced: `fraudulent_operator_slash_economics_are_exact_v1`
 (`lib/midgard/operator-directory.ak`)
 `[aiken-test: midgard/operator-directory/]`
-(`q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty`); through the whole handler in
+(`fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty`); through the whole handler in
 `validators/operator-slash-bounty.test.ak` ("Slashed node holding more than
 its tranche": active and retired, bad-state and bad-settlement,
 padded nodes accepted at the capped fee and refused one lovelace either side
@@ -158,14 +141,10 @@ bundles are refused in `validators/operator-slash-bounty.test.ak`); SDK
 exact-fee completion for operator exit in
 `demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts` `[review]`.
 
-Provenance: the exact-fee builders arrived with `32d4a2c48` (2026-09-16); the
-file header explains why a change output makes the fee inexact. The capped
-fee replaced an exact equality on the node's lovelace on 2026-10-15.
-
-Open recurrence (from reading; not executed): the bad-settlement slash
-builder, `incompleteResolveSettlementProgram` in
+Open gap (from reading; not executed): the bad-settlement slash builder,
+`incompleteResolveSettlementProgram` in
 `demo/midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts`,
-still uses a bare
+uses a bare
 `.setMinFee(params.slashingPenaltyLovelace)` with Lucid-managed change, has
 no caller in `demo/`, and has no emulator test.
 

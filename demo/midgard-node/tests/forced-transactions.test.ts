@@ -122,10 +122,9 @@ describe("V1 forced transaction material", () => {
     ).toEqual(value);
   });
 
-  it("rejects legacy versions, defaults, aliases, extra fields, and non-canonical journal CBOR", () => {
+  it("rejects other versions, defaults, aliases, extra fields, and non-canonical journal CBOR", () => {
     const source = Buffer.from("aa", "hex");
     const transaction = Buffer.from("bbcc", "hex");
-    const sidecar = Buffer.from("ddeeff", "hex");
     const canonical = ForcedTransactionsDB.encodeForcedTransactionJournalMember(
       {
         sourceValueCbor: source,
@@ -133,16 +132,12 @@ describe("V1 forced transaction material", () => {
       },
     );
     const invalidEncodings: readonly (readonly [string, Buffer])[] = [
-      ["legacy version zero", encodeCbor([0n, source, transaction])],
+      ["version zero", encodeCbor([0n, source, transaction])],
       ["successor version two", encodeCbor([2n, source, transaction])],
       ["source version five", encodeCbor([5n, source, transaction])],
       ["defaulted version", encodeCbor([source, transaction])],
       ["missing transaction", encodeCbor([1n, source])],
-      ["retired sidecar field", encodeCbor([1n, source, transaction, sidecar])],
-      [
-        "extra field",
-        encodeCbor([1n, source, transaction, sidecar, Buffer.from([0])]),
-      ],
+      ["extra field", encodeCbor([1n, source, transaction, Buffer.from([0])])],
       [
         "named-field alias",
         encodeCbor(
@@ -180,7 +175,7 @@ describe("V1 forced transaction material", () => {
       ) => Buffer;
     const symbolExtra = Object.assign(
       { sourceValueCbor, canonicalTransactionCbor },
-      { [Symbol("legacy")]: true },
+      { [Symbol("foreign")]: true },
     );
     const inheritedAlias = Object.assign(Object.create({ version: 5 }), {
       sourceValueCbor,
@@ -194,14 +189,6 @@ describe("V1 forced transaction material", () => {
         { version: 1, sourceValueCbor, canonicalTransactionCbor },
       ],
       [
-        "retired sidecar property",
-        {
-          sourceValueCbor,
-          canonicalTransactionCbor,
-          programMaterialSidecarCbor: Buffer.from([0]),
-        },
-      ],
-      [
         "snake-case aliases",
         {
           source_value_cbor: sourceValueCbor,
@@ -209,7 +196,7 @@ describe("V1 forced transaction material", () => {
         },
       ],
       ["symbol extra", symbolExtra],
-      ["inherited legacy alias", inheritedAlias],
+      ["inherited alias", inheritedAlias],
       [
         "empty source",
         { sourceValueCbor: Buffer.alloc(0), canonicalTransactionCbor },
@@ -287,7 +274,6 @@ describe("V1 forced transaction material", () => {
               ["version", 1n],
               ["source_value_cbor", Buffer.from("aa", "hex")],
               ["canonical_transaction_cbor", Buffer.from("bb", "hex")],
-              ["program_material_sidecar_cbor", Buffer.from("cc", "hex")],
             ]),
           ),
         ),

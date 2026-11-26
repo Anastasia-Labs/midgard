@@ -1,4 +1,4 @@
-// W4.8: a validity lower bound taken from the wall clock keeps a margin.
+// A validity lower bound taken from the wall clock keeps a margin.
 //
 // Cardano node submit validation can lag the local wall clock, so a
 // transaction whose `validFrom` is "now" races it and fails with

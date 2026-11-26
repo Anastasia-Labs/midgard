@@ -1,5 +1,5 @@
 /**
- * The node-ledger adapter of the L1-access port (`l1-access.ts`; option E),
+ * The node-ledger adapter of the L1-access port (`l1-access.ts`),
  * the tools' default when a local node is configured: a `LedgerProvider`
  * over the local node's transport alone. UTxOs by outref over local state
  * query at one acquired point per build step, the command's own wallets

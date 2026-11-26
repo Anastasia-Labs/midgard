@@ -1,4 +1,4 @@
-// Main-thread CPU of durable admission (design D9): the admitter `/submit`
+// Main-thread CPU of durable admission: the admitter `/submit`
 // and `/peer/txs` hand checked txs to, and the group-committing admission
 // writer behind it, on the test Postgres. `bench:submit-main-thread` stubs
 // the writer; this bench is the part it leaves out.

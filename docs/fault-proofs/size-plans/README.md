@@ -39,7 +39,6 @@ ScriptSources, Phase-A, LOP publication and transition test writers can emit
 measurement reports. They are run outputs, not repository regression inputs. Do
 not commit them.
 
-The [availability challenge](availability-challenge.md) plan records that
-contract's decomposition and long-window gates. Implemented resolver decisions live in
+Resolver decisions live in
 [ADR 0003](../decisions/0003-publishable-semantic-resolvers.md) and
 [ADR 0004](../decisions/0004-checkpointed-ledger-output-facts.md).

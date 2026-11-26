@@ -4,7 +4,6 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_224, blake2b_256}
 use aiken/merkle_patricia_forestry/helpers.{combine, suffix}
 use aiken/primitive/bytearray
-use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
 use midgard/cek_context_chain as context_chain
 use midgard/cek_context_observer as bounded_observer
@@ -138,10 +137,8 @@ pub fn inline_field_door() -> field_door.MachineFieldDoorV1 {
 
 /// A tier-1 carriage over a field whose §5.1 preimage is exactly `items`.
 ///
-/// The replacement for the retired `singleton_field_item_proofs` collection
-/// half: instead of asserting a per-item Merkle opening against the field's
-/// flat commitment, a step now carries the field's whole preimage and the door
-/// hashes it once (§4, §8.8). Built through `encode_field_preimage`, so a
+/// A step carries the field's whole preimage and the door hashes it once (§4,
+/// §8.8). Built through `encode_field_preimage`, so a
 /// fixture cannot drift away from §5.1's array header and byte-string wrappers.
 pub fn inline_field_carriage(
   items: List<ByteArray>,
@@ -153,9 +150,8 @@ pub fn inline_field_carriage(
 
 /// §5.1/§5.6 — the enveloped field-5 preimage carrying that one policy item.
 ///
-/// The item's own bytes are unchanged by the flat reversion; what changed is
-/// that field 5 is an enveloped **list** of per-policy items rather than the
-/// retired raw map, so the preimage is the item under a §5.1 wrapper. Built
+/// Field 5 is an enveloped **list** of per-policy items, so the preimage is the
+/// item under a §5.1 wrapper. Built
 /// through the canonical encoder rather than hand-spelled, so a fixture cannot
 /// drift away from §5.1's array and byte-string heads.
 pub fn maximum_mint_preimage_cbor() -> ByteArray {
@@ -431,15 +427,13 @@ pub fn next_phase_a_native_state(
 
 /// The single-chunk `bounded_item_v1` proof over item 0 of a single-item field.
 ///
-/// This is what survives of the retired `singleton_field_item_proofs`. Its
-/// collection half is gone: no step opens a per-item collection proof against a
-/// §4 flat field commitment any more, and the carriage that replaced it is
-/// `inline_field_carriage([key])`. The **chunk** half stays because four phases
-/// hand a partially-read item forward across steps and their control state
-/// carries a genuine `bounded_item_v1` root the later step opens against
-/// (`NativeScriptTokenWitness`, `NativeExecutionScanWitness.first_chunk_proof`,
-/// the redeemer item proof) — a satisfiable opening the flat reversion never
-/// touched.
+/// No step opens a per-item collection proof against a §4 flat field
+/// commitment; the carriage is `inline_field_carriage([key])`. The **chunk**
+/// proof exists because four phases hand a partially-read item forward across
+/// steps and their control state carries a genuine `bounded_item_v1` root the
+/// later step opens against (`NativeScriptTokenWitness`,
+/// `NativeExecutionScanWitness.first_chunk_proof`, the redeemer item proof) — a
+/// satisfiable opening.
 pub fn singleton_field_item_chunk_proof(
   field_index: Int,
   key: ByteArray,
@@ -635,11 +629,9 @@ pub fn phase_a_script_preconditions_fixture(
 /// The field-3 preimage of the duplicate-observer fixture: two items, both the
 /// same 28-byte observer hash.
 ///
-/// Under the retired counted scheme this had to be a pair of per-item openings
-/// with a shared collection frontier and a sibling each. Under §8's door the
-/// duplicate *is* the preimage, and which of the two items a step reads is the
-/// `item_index` it names — which is the whole point of the fixture, and is now
-/// visible in one line instead of thirty.
+/// Under §8's door the duplicate *is* the preimage, and which of the two items
+/// a step reads is the `item_index` it names — which is the whole point of the
+/// fixture.
 pub fn duplicate_observer_field_carriage() -> native_tx_field_access_v1.FieldCarriageV1 {
   inline_field_carriage([h_28_a, h_28_a])
 }
@@ -659,49 +651,10 @@ pub fn observer_hashes_from(item_index: Int, item_count: Int) -> List<ByteArray>
   }
 }
 
-pub fn observer_collection_leaves_from(
-  item_index: Int,
-  item_count: Int,
-) -> List<ByteArray> {
-  if item_index == item_count {
-    []
-  } else {
-    let observer_hash = observer_hash_at(item_index)
-    let item_commitment = bounded_item_v1.from_bytes(
-      3,
-      item_index,
-      observer_hash,
-    )
-    [
-      bounded_collection_v1.hash_item(3, item_index, 28, item_commitment),
-      ..observer_collection_leaves_from(item_index + 1, item_count)
-    ]
-  }
-}
-
-pub fn observer_collection_subtree_root(start: Int, size: Int) -> ByteArray {
-  if size == 1 {
-    let observer_hash = observer_hash_at(start)
-    bounded_collection_v1.hash_item(
-      3,
-      start,
-      28,
-      bounded_item_v1.from_bytes(3, start, observer_hash),
-    )
-  } else {
-    let half = size / 2
-    validation_merkle_v1.hash_branch(
-      observer_collection_subtree_root(start, half),
-      observer_collection_subtree_root(start + half, half),
-    )
-  }
-}
-
 /// The field-3 preimage of an `item_count`-observer fixture, as a tier-1
 /// carriage.
 ///
-/// Replaces `observer_field_item_proofs`: no per-item frontier, no siblings
-/// argument. The item a step reads is chosen by the `item_index` in its
+/// The item a step reads is chosen by the `item_index` in its
 /// evidence, and the field's §5.2 count is the authenticated header of these
 /// very bytes, so a step cannot understate it.
 pub fn observer_field_carriage(

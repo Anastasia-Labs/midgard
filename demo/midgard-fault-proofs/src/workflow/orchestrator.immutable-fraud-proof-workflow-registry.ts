@@ -91,7 +91,7 @@ const sameSafety = (
 
 /**
  * Creates a closed, versioned registry for the supplied launch scope. Missing,
- * duplicate, extra, legacy-inline-script, or non-local-evaluation adapters fail
+ * duplicate, extra, inline-script, or non-local-evaluation adapters fail
  * startup instead of becoming a runtime fallback.
  */
 export const createFraudProofWorkflowRegistry = ({

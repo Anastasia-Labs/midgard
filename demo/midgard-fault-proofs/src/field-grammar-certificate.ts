@@ -1,7 +1,7 @@
 /**
  * The builder half of the field grammar certificate. A field grammar
  * certificate lets a step read one item of a variable-width field without
- * walking the whole field, so the step's cost no longer grows with the
+ * walking the whole field, so the step's cost does not grow with the
  * field's item count.
  *
  * `@al-ft/midgard-sdk`'s `fraud-proof/field-grammar-certificate.ts` owns the

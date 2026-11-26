@@ -1,8 +1,8 @@
 //// Validator-level vectors for the cek decomposition.
 ////
-//// Index 11 of the validation-dispute machine used to be one aggregate
-//// "direct" resolver. It is now `cek_v1` (a `prepare_selected` over a group
-//// of four) plus one semantic validator per auxiliary kind:
+//// Index 11 of the validation-dispute machine is `cek_v1` (a
+//// `prepare_selected` over a group of four) plus one semantic validator per
+//// auxiliary kind:
 ////
 ////   0  `cek_finish_semantic_v1`               hand-off to ValueAndMint, no auxiliary
 ////   1  `cek_execution_selection_semantic_v1`  `NativeExecutionScanWitness` + decode record
@@ -11,10 +11,9 @@
 ////
 //// These vectors drive every one of the five validators through `main.spend`
 //// on the smallest honest step of its kind, pin the redeemer wire layouts
-//// (the 9f191e9a lesson: an ABI that moves without a golden moves again,
-//// silently), and show that each semantic validator refuses the other
-//// kinds' honest steps and that the prepare refuses the retired group
-//// cardinality. The semantic partition itself -- every wrapper against every
+//// (an ABI that moves without a golden moves again, silently), and show that
+//// each semantic validator refuses the other kinds' honest steps and that the
+//// prepare refuses a group of the wrong cardinality. The semantic partition itself -- every wrapper against every
 //// kind -- is proven at the library level in
 //// `lib/midgard/validation-machine-tests/tests-parity.test.ak` (`cek_kinds_partition_the_cek_step_space`);
 //// what these add is that the deployed validators reach those wrappers with
@@ -560,15 +559,15 @@ fn selection_fixture() -> CekStepFixtureV1 {
   )
 }
 
-/// Kind 1 again, over the case #629 turned on: a transaction whose only
-/// script execution is native. The language bitmap records Plutus languages
-/// only, so it is `0` here, yet the execution is still there to select --
-/// one selection step, exactly as the machine's trace emits it. Because it
-/// is the last (and only) execution, the selection the step makes *is* the
-/// hand-off to ValueAndMint, so its claimed successor is byte-for-byte the
-/// successor the finish branch would have to claim. That makes the pair
-/// below a clean read of the discriminator alone: the selection validator
-/// accepts this step and the finish validator must refuse it.
+/// Kind 1 again, over a transaction whose only script execution is native. The
+/// language bitmap records Plutus languages only, so it is `0` here, yet the
+/// execution is still there to select -- one selection step, exactly as the
+/// machine's trace emits it. Because it is the last (and only) execution, the
+/// selection the step makes *is* the hand-off to ValueAndMint, so its claimed
+/// successor is byte-for-byte the successor the finish branch would have to
+/// claim. That makes the pair below a clean read of the discriminator alone:
+/// the selection validator accepts this step and the finish validator must
+/// refuse it.
 fn native_only_selection_fixture() -> CekStepFixtureV1 {
   let tx = empty_v1_transaction()
   // The smallest native script: `ScriptPubkey(h_28_a)`, whose versioned
@@ -1927,8 +1926,8 @@ test core_step_validator_refuses_a_context_step() fail {
 }
 
 /// The evidence pin at the semantic boundary: a prepared state whose hash
-/// was computed over another auxiliary (here the retired aggregate shape's
-/// habit of committing the selection under `NoAuxiliaryWitness`) is refused
+/// was computed over another auxiliary (here the selection committed under
+/// `NoAuxiliaryWitness`) is refused
 /// even though the transition itself is honest.
 test finish_validator_refuses_a_foreign_evidence_commitment() fail {
   let f = finish_fixture()
@@ -2058,7 +2057,7 @@ test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
   run_finish(prepared(f), f.transition)
 }
 
-/// #629: the same guard read from the other side. A native-only transaction
+/// The same guard read from the other side. A native-only transaction
 /// (`language_bitmap == 0`) with one execution still pending is an execution
 /// selection, and the selection validator wins on it -- the language bitmap
 /// takes no part in the discrimination, only the cursor does.
@@ -2066,7 +2065,7 @@ test execution_selection_validator_wins_a_native_only_selection() {
   run_kind(1, native_only_selection_fixture())
 }
 
-/// #629, the negative twin. The very same pre-state and claimed successor
+/// The negative twin. The very same pre-state and claimed successor
 /// -- an impeccably formed ValueAndMint hand-off under `NoAuxiliaryWitness`,
 /// so the prepared evidence hash is the one the finish validator rebuilds --
 /// is refused by the finish validator, because a cursor short of the
@@ -4147,8 +4146,7 @@ test redeemer_select_authenticate_refuses_another_redeemer_item() fail {
 }
 
 // After the spend purpose (frontier 0) the bound is 0, so the mint
-// purpose above it, the retired witness-list order's second select, is
-// refused.
+// purpose above it is refused.
 test redeemer_select_authenticate_refuses_a_purpose_at_or_above_the_bound() fail {
   run_redeemer_select_authenticate(redeemer_select_after_one(0), 0, 1, 0)
 }

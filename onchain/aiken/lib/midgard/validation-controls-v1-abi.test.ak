@@ -238,14 +238,12 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
   }
 }
 
-// Both rejection tests below used to assert against
-// `auxiliary_constructor_is_exact`, a test-local reimplementation of the ABI.
-// `ValidationAuxiliaryWitnessV1` has exactly 37 constructors (tags 0..36), so
-// `auxiliary_fixture.auxiliary_arity(37)` hits the generated catch-all `_ ->
-// -1` and `list.length([]) == -1` is False — the sentinel proved a sentinel is
-// a sentinel and the production decoder was never invoked at all. They now
-// invoke the generated `ValidationAuxiliaryWitnessV1` decoder directly,
-// copying the sound sibling in validation-tail-controls-v1-abi.test.ak.
+// Both rejection tests below invoke the generated
+// `ValidationAuxiliaryWitnessV1` decoder directly, like the sibling in
+// validation-tail-controls-v1-abi.test.ak. `ValidationAuxiliaryWitnessV1` has
+// exactly 37 constructors (tags 0..36), so a test-local reimplementation of
+// the ABI would hit its catch-all for tag 37 and never invoke the production
+// decoder.
 test validation_auxiliary_v1_rejects_adjacent_tag_37() fail {
   let data <- cbor_deserialise.expect_deserialise(#"d9051e80")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data

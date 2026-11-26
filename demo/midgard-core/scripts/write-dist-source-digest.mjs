@@ -2,8 +2,7 @@
 // from so gate preflights can refuse to run against a stale dist. Consumers
 // resolve @al-ft/midgard-core from the gitignored dist/, so on a fresh
 // checkout (or after pulling a src change) a stale dist silently serves
-// retired constants — the 8,273 -> 12,810 rebind
-// is the motivating incident. The digest is verified by
+// stale constants. The digest is verified by
 // demo/scripts/assert-midgard-core-dist-current.mjs.
 import { createHash } from "node:crypto";
 import { readdir, readFile, writeFile } from "node:fs/promises";

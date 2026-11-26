@@ -308,8 +308,7 @@ fn authenticate_material_fields(
 /// verifies settlement `forced_transactions_root` membership and never touches a
 /// preimage, and a later dispute re-carries the bytes digest-checked under §8
 /// (§8.7's mandatory content addressing — carriage is identified by digests,
-/// never by `OutputReference`; the owner ruling's own text cites §8.5 for this,
-/// which is the Custody subsection, and the citation is corrected here). So
+/// never by `OutputReference`). So
 /// once this mint has hashed the bytes against the commitment, they are permanent
 /// L1 history, which is what the operator and the node's ingestion walk read.
 /// That is why the order datum carries no carriage identity and why reclaim is an
@@ -365,8 +364,7 @@ fn authenticate_material_fields(
 /// `walk_to_end` at one item head per item — ≈21,062 memory units each, which
 /// reaches the execution basis near 537 items while the byte bound admits 16,382. On
 /// those slots the item count is the operative bound, and the worst shape this
-/// function admits measures 26× the basis; recorded on #594 for #580's
-/// re-measurement, with the §8.11 erratum it needs.
+/// function admits measures 26× the basis.
 ///
 /// Note also that the bound enforced here is **per-field**: `whole_view` compares
 /// each opening's `total_length` against `max_transaction_aggregate_field_bytes`

@@ -51,7 +51,7 @@ export const closeTestCommitteeStore = async (
  * A healthy local-node L1 source state. The store refuses a signature or
  * capacity write until one is durable, as a running node saves it first.
  */
-export const healthyL1SourceState: L1SourceState = Object.freeze({
+const healthyL1SourceState: L1SourceState = Object.freeze({
   schemaVersion: 1,
   sourceMode: "local_node",
   network: "Preprod",

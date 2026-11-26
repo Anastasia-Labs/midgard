@@ -20,7 +20,7 @@ import {
 } from "./libp2p-runtime.da-libp2p-stream-framing.js";
 
 describe("DA libp2p protocol and topic allowlists", () => {
-  it("derives allowlisted IDs from the Phase 0/1 core transport module", () => {
+  it("derives allowlisted IDs from the core transport module", () => {
     const protocols = createDaProtocolAllowlist(DEPLOYMENT_FINGERPRINT);
     const topics = createDaTopicAllowlist(DEPLOYMENT_FINGERPRINT);
     const protocolId = daRequestResponseProtocolId(

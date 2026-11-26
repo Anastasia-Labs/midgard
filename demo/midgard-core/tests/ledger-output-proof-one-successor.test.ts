@@ -29,8 +29,8 @@ import {
  * the ledger output proof: the span attach (its window is the consuming
  * stage's demanded span, admitted only while the recorded window fails to
  * cover it) and the fact attach (its commitments come from the terminal
- * control alone). Candidate witnesses still carry the retired
- * redeemer-chosen fields, which the step must ignore.
+ * control alone). Candidate witnesses carry redeemer-chosen fields, which the
+ * step must ignore.
  */
 
 const output: MidgardTxOutput = {

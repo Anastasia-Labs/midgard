@@ -11,7 +11,7 @@ import {
 import { ValidationProofItemDatum } from "../src/fraud-proof/validation-auxiliary-witness.js";
 
 /**
- * #597. The publication's unit is the field's whole §5.1 preimage, not one item
+ * The publication's unit is the field's whole §5.1 preimage, not one item
  * with an opening into it: under §4 a field commits to a flat `blake2b_256` over
  * its preimage bytes, so a per-item opening has nothing to be checked against.
  * The Aiken twin is `ValidationProofItemDatum` in

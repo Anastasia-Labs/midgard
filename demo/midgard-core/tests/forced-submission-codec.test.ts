@@ -68,7 +68,7 @@ describe("immutable forced submission codec", () => {
       computeMidgardNativeTxProofCommitment(source()),
     );
   });
-  it("refuses obsolete full and compact envelopes", () => {
+  it("refuses native envelopes as forced ones and a forced compact as native", () => {
     expect(() =>
       decodeMidgardForcedTxCanonical(bytes(native.vector.canonical)),
     ).toThrow();

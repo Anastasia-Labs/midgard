@@ -5,7 +5,7 @@ use midgard/cek_data_v1
 use midgard/validation_merkle_v1
 
 /// Every `maximum_cardano_nested_*` constant in this module is **generated**:
-/// it is rebound from the vectors
+/// it is taken from the vectors
 /// `demo/midgard-validation/tests/nested-data-boundary.test.ts` and
 /// `nested-redeemer-data-boundary.test.ts` publish, by
 /// `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`,

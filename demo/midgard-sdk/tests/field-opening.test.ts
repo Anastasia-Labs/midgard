@@ -16,7 +16,7 @@ import {
 } from "../src/fraud-proof/field-opening.js";
 
 /**
- * The off-chain half of the #575 rebind's two wire shapes. It cannot execute
+ * The off-chain half of the field-opening wire shapes. It cannot execute
  * Plutus, so it never claims to prove the door's behaviour — the Aiken family in
  * `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.test.ak` does that,
  * and the emulator flows in `demo/midgard-fault-proofs` prove the end-to-end

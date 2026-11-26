@@ -243,9 +243,9 @@ test rejects_exact_info_match() fail {
 }
 
 /// The opened preimage must be the bytes step-02 authenticated. Here the prover
-/// opens different payload content. Inclusion time is now carried solely by
-/// the authenticated commitment; the opening cannot supply another timestamp. Without
-/// this check the "authentic content" would be whatever the prover chose to
+/// opens different payload content. Inclusion time is carried solely by the
+/// authenticated commitment; the opening cannot supply another timestamp.
+/// Without this check the "authentic content" would be whatever the prover chose to
 /// supply, and every content-mismatch conviction would be forgeable.
 test rejects_wrong_datum_bytes() fail {
   let tampered = step_02.authentic_deposit_datum_v1(

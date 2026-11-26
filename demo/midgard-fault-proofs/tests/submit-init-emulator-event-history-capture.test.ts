@@ -336,7 +336,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           },
         });
         expect(conflicts).toBe(3);
-        // Churn after capture is no longer a dependency for content classification.
+        // Content classification does not depend on churn after capture.
         waitForMutation(h, successful.witness);
         await h.submit(
           `${kind}-churn-after-capture`,

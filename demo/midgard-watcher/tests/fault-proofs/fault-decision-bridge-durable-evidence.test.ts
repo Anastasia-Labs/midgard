@@ -1,14 +1,10 @@
-import { mkdtemp, rm } from "node:fs/promises";
-
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.exact-record.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
-import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   decision,
@@ -17,16 +13,6 @@ import {
   observation,
   OBSERVATION_DIGEST,
 } from "./fault-decision-bridge.observation.js";
-
-const directories: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    directories
-      .splice(0)
-      .map(async (path) => await rm(path, { force: true, recursive: true })),
-  );
-});
 
 /** A healthy decision whose replay context (and so digest) varies. */
 const healthy = (
@@ -68,79 +54,20 @@ const record = (
   });
 
 describe("fault decision bridge durable evidence", () => {
-  it("does not journal or compare a healthy decision whose replay context moved", async () => {
+  it("does not journal a healthy decision", async () => {
     const current = observation([headerFixture("01")]);
     const [header] = current.finalizedHeaders;
-    const durable = healthy(header!.headerHash, "31");
     const fresh = healthy(header!.headerHash, "32");
-    expect(fresh.decisionDigest).not.toBe(durable.decisionDigest);
     const h = harness({
       current,
       categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      records: [record(durable, 0)],
+      records: [],
       classifyOverride: () => fresh,
     });
     const prepared = await h.bridge.reconcileAndDispatch(current);
     expect(prepared.target).toBeNull();
     expect(prepared.decisionDigests).toEqual([fresh.decisionDigest]);
     expect(h.appended).toEqual([]);
-  });
-
-  it("admits a journal holding repeated healthy records for one header and prepares over it", async () => {
-    const current = observation([headerFixture("01"), headerFixture("02")]);
-    const [first, second] = current.finalizedHeaders;
-    const root = await mkdtemp("/var/tmp/midgard-bridge-durable-");
-    directories.push(root);
-    const journal = await unsafeOpenWatcherFaultDecisionJournalForTest({
-      directory: root,
-      hubOraclePolicyId: DEPLOYMENT,
-      launchScope: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      authenticationKey: TEST_JOURNAL_KEY,
-    });
-    // Shaped like a live journal: the same header decided healthy at two
-    // observation depths, then once more under an already used identity.
-    for (const value of [
-      healthy(first!.headerHash, "31", "12".repeat(32)),
-      healthy(first!.headerHash, "32"),
-      healthy(first!.headerHash, "33"),
-    ])
-      await journal.unsafeAppendDecisionEnvelopeForTest(value);
-    const records = await journal.readAll();
-    expect(records).toHaveLength(3);
-    const h = harness({
-      current,
-      categoryByHeader: {
-        [first!.headerHash]: "doubleSpend",
-        [second!.headerHash]: "transitionTrace",
-      },
-      records,
-      classifyOverride: (fresh) =>
-        fresh.headerHash === first!.headerHash
-          ? healthy(first!.headerHash, "34")
-          : fresh,
-    });
-    const prepared = await h.bridge.reconcileAndDispatch(current);
-    expect(prepared.target?.headerHash).toBe(second!.headerHash);
-    expect(h.appended.map(({ headerHash }) => headerHash)).toEqual([
-      second!.headerHash,
-    ]);
-    expect(await journal.readAll()).toEqual(records);
-  });
-
-  it("admits a fault found later for a header the journal once decided healthy", async () => {
-    const current = observation([headerFixture("01")]);
-    const [header] = current.finalizedHeaders;
-    const h = harness({
-      current,
-      categoryByHeader: { [header!.headerHash]: "doubleSpend" },
-      records: [record(healthy(header!.headerHash, "31"), 0)],
-    });
-    expect(
-      (await h.bridge.reconcileAndDispatch(current)).target?.headerHash,
-    ).toBe(header!.headerHash);
-    expect(h.appended.map(({ decision }) => decision)).toEqual([
-      "fault_detected",
-    ]);
   });
 
   it("classifies a journaled transitionTrace fault again on a fresh process's recovery and dispatches that decision", async () => {

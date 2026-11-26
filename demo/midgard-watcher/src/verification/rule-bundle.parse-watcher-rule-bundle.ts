@@ -254,11 +254,11 @@ export const computeWatcherRuleBundleCommitment = (value: unknown): string =>
   computeDeploymentManifestJsonDigest(parseWatcherRuleBundle(value));
 
 /**
- * Constructs release material before the W02 envelope is signed.
+ * Constructs release material before the deployment-authority envelope is signed.
  *
  * This helper does not authenticate or authorize a deployment. Security
  * consumers must use {@link loadWatcherRuleBundle}, which verifies the raw
- * signed W02 authority on every load.
+ * signed deployment authority on every load.
  */
 export const makeWatcherCanonicalRuleBundle = (input: {
   readonly constructionIdentity: WatcherRuleBundleConstructionIdentity;

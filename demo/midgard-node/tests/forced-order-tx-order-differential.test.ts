@@ -1,6 +1,6 @@
 /**
  * The on-chain tx-order policy and the node's carriage reader, fed the same
- * vectors (N10b). The policy is the compiled `user_events/tx_order_v1` mint
+ * vectors. The policy is the compiled `user_events/tx_order_v1` mint
  * from the built blueprint, run by the Lucid emulator's phase-2 evaluator;
  * the node side is `carriage.ts`, the code the forced-order projection and
  * hook read an order's carriage with.
@@ -376,7 +376,7 @@ const nodeRead = (submitted: Buffer, redeemer: Buffer) => {
 
 const VECTORS = fc.sample(shape, { seed: 0x10b, numRuns: 3 });
 
-describe("tx-order policy and carriage.ts agree (N10b)", () => {
+describe("tx-order policy and carriage.ts agree", () => {
   it.each(VECTORS.map((tx, index) => [index, tx] as const))(
     "honest vector %i: the policy accepts it, the order lands, and the node reads and ingests the same transaction",
     async (_index, tx) => {

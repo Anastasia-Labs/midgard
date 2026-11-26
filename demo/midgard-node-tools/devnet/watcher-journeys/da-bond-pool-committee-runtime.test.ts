@@ -16,5 +16,5 @@ import "midgard-node/tests/helpers/published-workflow-deployment";
 import "vitest";
 import "./da-bond-pool-committee-process.js";
 import "./da-bond-pool-committee-runtime.js";
-import "./da-bond-pool-committee-runtime.the-committee-runtime-plan-p31.js";
-import "./da-bond-pool-committee-runtime.the-committee-node-accepts-the-generated-runtime-p31-6.js";
+import "./da-bond-pool-committee-runtime.the-committee-runtime-plan.js";
+import "./da-bond-pool-committee-runtime.reusing-an-earlier-runs-runtime.js";

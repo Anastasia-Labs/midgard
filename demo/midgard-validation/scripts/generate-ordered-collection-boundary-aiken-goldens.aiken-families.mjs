@@ -185,7 +185,7 @@ const AIKEN_FAMILIES = [
       maximum_cardano_inline_datum_terminal_post_work_root: bytes(
         blobChunk.postWorkRootHex,
       ),
-      // #592: the one genuinely new producer value the machine rebind needed.
+      // The one producer value the Aiken module cannot derive itself.
       // §8's carriage is the field's whole §5.1 preimage, and that module's
       // field-2 preimage is a single 16,221-byte output item it only ever built
       // the terminal 3,936-byte chunk of. §5.1's splitter is applied here so the

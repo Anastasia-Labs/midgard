@@ -1,8 +1,7 @@
 /**
- * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
- * remediation): thread state carries the §2.5 anchor rather than a per-field
- * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
- * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
+ * Thread state carries the §2.5 anchor rather than a per-field collection
+ * commitment, and a step redeemer carries a `FieldOpeningV1` rather than a
+ * reproduced `..._preimage: List<…>`; see
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core";
@@ -43,9 +42,8 @@ export const ZeroInputStep01SpendRedeemer =
 /**
  * The state mirrors `midgard/fraud_proofs/zero_input/rule.StateV1`. The thread
  * carries the proof-thread substrate's verdict subject, whose `transaction_id`
- * is the §2.5 anchor step-02 opens field 0 against; the retired
- * `bad_tx_spend_inputs_hash` was compared against `empty_field_commitment`
- * directly, and the step now reads the door's authenticated item count instead.
+ * is the §2.5 anchor step-02 opens field 0 against; the step reads the door's
+ * authenticated item count.
  */
 export const ZeroInputStep02DatumSchema = faultProofStepDatumSchema(
   Data.Object({ subject: VerdictSubjectSchema }),
@@ -58,9 +56,9 @@ export const ZeroInputStep02Datum = asDataType<ZeroInputStep02Datum>(
 );
 
 /**
- * Mirrors `midgard/fraud_proofs/zero_input/step_02.Args`. The opening is new:
- * the step no longer compares a carried hash against the empty commitment, it
- * opens the field. For a genuinely empty field the §5.1 preimage is the single
+ * Mirrors `midgard/fraud_proofs/zero_input/step_02.Args`. The step opens the
+ * field rather than comparing a carried hash against the empty commitment. For
+ * a genuinely empty field the §5.1 preimage is the single
  * byte `80`, so tier 1 always carries it.
  */
 export const ZeroInputStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(

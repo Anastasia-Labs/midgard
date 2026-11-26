@@ -247,13 +247,10 @@ test chunked_inclusion_v1_rejects_a_present_key_as_non_membership() {
 // ## Empty-trie sentinel translation
 //
 // The three selectors `validators/pexcludes.ak` carries for the direct route,
-// re-run through this route's terminal. The sentinel positive is the
-// route-parity gap this module's header used to record as open: until #625
-// `mpf_proof_v1.does_not_have` compared against the untranslated root, so a
-// first block over a genesis confirmed state was unprovable through
-// published-chunk carriage while the direct route proved it. Both arms of the
-// translation carry a positive, because a positive on only one of them leaves
-// the other free to be mutated silently.
+// re-run through this route's terminal. The sentinel positive proves a first
+// block over a genesis confirmed state through published-chunk carriage, as the
+// direct route does. Both arms of the translation carry a positive, because a
+// positive on only one of them leaves the other free to be mutated silently.
 
 /// A root the prover offers no proof for.
 const unproven_root =

@@ -5,60 +5,8 @@ use aiken/primitive/bytearray
 use midgard/cek_data_v1
 use midgard/ledger_output_commitment_v1
 
-// Frozen predecessor decoder, independent of the new wire parser. The encoder
-// and complete descriptor domain remain unchanged in this change.
-fn summary_from_data(data: Data) -> cek_data_v1.DataSummaryV1 {
-  expect [root_data, cbor_length_data, memory_data] = builtin.un_list_data(data)
-  let summary = cek_data_v1.DataSummaryV1 {
-    root: builtin.un_b_data(root_data),
-    cbor_length: builtin.un_i_data(cbor_length_data),
-    memory: builtin.un_i_data(memory_data),
-  }
-  // decode validates all three summaries with the complete descriptor below.
-  summary
-}
-
-fn predecessor_decode(
-  descriptor_cbor: ByteArray,
-) -> ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
-  expect Some(data) = cbor.deserialise(descriptor_cbor)
-  expect
-      [
-        version_data, output_index_data, total_length_data, item_commitment_data,
-        address_data, lovelace_data, asset_count_data,
-        asset_frontier_commitment_data, cardano_value_size_data,
-        reference_script_language_data, reference_script_hash_data,
-        reference_script_total_length_data,
-        reference_script_item_commitment_data, cardano_tx_out_data,
-        midgard_tx_out_data, cardano_spend_datum_data,
-      ]
-    = builtin.un_list_data(data)
-  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
-    version: builtin.un_i_data(version_data),
-    output_index: builtin.un_i_data(output_index_data),
-    total_length: builtin.un_i_data(total_length_data),
-    item_commitment: builtin.un_b_data(item_commitment_data),
-    address: builtin.un_b_data(address_data),
-    lovelace: builtin.un_i_data(lovelace_data),
-    asset_count: builtin.un_i_data(asset_count_data),
-    asset_frontier_commitment: builtin.un_b_data(asset_frontier_commitment_data),
-    cardano_value_size: builtin.un_i_data(cardano_value_size_data),
-    reference_script_language: builtin.un_i_data(reference_script_language_data),
-    reference_script_hash: builtin.un_b_data(reference_script_hash_data),
-    reference_script_total_length: builtin.un_i_data(
-      reference_script_total_length_data,
-    ),
-    reference_script_item_commitment: builtin.un_b_data(
-      reference_script_item_commitment_data,
-    ),
-    cardano_tx_out: summary_from_data(cardano_tx_out_data),
-    midgard_tx_out: summary_from_data(midgard_tx_out_data),
-    cardano_spend_datum: summary_from_data(cardano_spend_datum_data),
-  }
-  // encode enforces the descriptor domain and the exact definite wire form.
-  expect ledger_output_commitment_v1.encode(descriptor) == descriptor_cbor
-  descriptor
-}
+// `decode` and `decode_canonical_schema` accept the same descriptors and
+// refuse the same malformed wire.
 
 fn descriptor_fixture() -> ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
   ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
@@ -119,7 +67,7 @@ test decoder_preserves_unsigned_head_widths_and_complete_record() {
       }
       let bytes = ledger_output_commitment_v1.encode(descriptor)
       and {
-        predecessor_decode(bytes) == descriptor,
+        ledger_output_commitment_v1.decode(bytes) == descriptor,
         ledger_output_commitment_v1.decode(bytes) == descriptor,
         ledger_output_commitment_v1.decode_canonical_schema(bytes) == descriptor,
       }
@@ -146,7 +94,7 @@ test decoder_preserves_reference_script_languages_and_lengths() {
       }
       let bytes = ledger_output_commitment_v1.encode(descriptor)
       and {
-        predecessor_decode(bytes) == descriptor,
+        ledger_output_commitment_v1.decode(bytes) == descriptor,
         ledger_output_commitment_v1.decode(bytes) == descriptor,
         ledger_output_commitment_v1.decode_canonical_schema(bytes) == descriptor,
       }
@@ -180,214 +128,246 @@ fn replace_field(index: Int, replacement: ByteArray) -> ByteArray {
   )
 }
 
-test predecessor_rejects_version() fail {
-  let descriptor: Data = predecessor_decode(replace_field(0, #"02"))
+test decode_rejects_version() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(0, #"02"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_version() fail {
+test canonical_schema_rejects_version() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(0, #"02"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_output_index() fail {
-  let descriptor: Data = predecessor_decode(replace_field(1, #"1a00010000"))
+test decode_rejects_output_index() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(1, #"1a00010000"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_output_index() fail {
+test canonical_schema_rejects_output_index() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(1, #"1a00010000"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_negative_total_length() fail {
-  let descriptor: Data = predecessor_decode(replace_field(2, #"20"))
+test decode_rejects_negative_total_length() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(2, #"20"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_negative_total_length() fail {
+test canonical_schema_rejects_negative_total_length() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(2, #"20"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_item_hash_width() fail {
-  let descriptor: Data = predecessor_decode(replace_field(3, #"40"))
+test decode_rejects_item_hash_width() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(3, #"40"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_item_hash_width() fail {
+test canonical_schema_rejects_item_hash_width() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(3, #"40"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_address() fail {
-  let descriptor: Data = predecessor_decode(replace_field(4, #"4100"))
+test decode_rejects_address() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(4, #"4100"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_address() fail {
+test canonical_schema_rejects_address() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(4, #"4100"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_lovelace_negative() fail {
-  let descriptor: Data = predecessor_decode(replace_field(5, #"20"))
+test decode_rejects_lovelace_negative() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(5, #"20"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_lovelace_negative() fail {
+test canonical_schema_rejects_lovelace_negative() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(5, #"20"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_asset_count() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_asset_count() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     replace_field(6, #"1b0000000100000000"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_asset_count() fail {
+test canonical_schema_rejects_asset_count() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(6, #"1b0000000100000000"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_frontier_hash_width() fail {
-  let descriptor: Data = predecessor_decode(replace_field(7, #"40"))
+test decode_rejects_frontier_hash_width() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(7, #"40"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_frontier_hash_width() fail {
+test canonical_schema_rejects_frontier_hash_width() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(7, #"40"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_value_size() fail {
-  let descriptor: Data = predecessor_decode(replace_field(8, #"191389"))
+test decode_rejects_value_size() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(8, #"191389"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_value_size() fail {
+test canonical_schema_rejects_value_size() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(8, #"191389"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_language_negative_two() fail {
-  let descriptor: Data = predecessor_decode(replace_field(9, #"21"))
+test decode_rejects_language_negative_two() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(9, #"21"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_language_negative_two() fail {
+test canonical_schema_rejects_language_negative_two() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(9, #"21"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_language_unsupported() fail {
-  let descriptor: Data = predecessor_decode(replace_field(9, #"01"))
+test decode_rejects_language_unsupported() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(9, #"01"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_language_unsupported() fail {
+test canonical_schema_rejects_language_unsupported() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(9, #"01"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_missing_reference_hash() fail {
-  let descriptor: Data = predecessor_decode(replace_field(9, #"00"))
+test decode_rejects_missing_reference_hash() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(9, #"00"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_missing_reference_hash() fail {
+test canonical_schema_rejects_missing_reference_hash() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(9, #"00"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_none_reference_hash() fail {
-  let descriptor: Data = predecessor_decode(replace_field(10, #"4100"))
+test decode_rejects_none_reference_hash() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(10, #"4100"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_none_reference_hash() fail {
+test canonical_schema_rejects_none_reference_hash() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(10, #"4100"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_none_reference_length() fail {
-  let descriptor: Data = predecessor_decode(replace_field(11, #"01"))
+test decode_rejects_none_reference_length() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(11, #"01"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_none_reference_length() fail {
+test canonical_schema_rejects_none_reference_length() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(11, #"01"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_none_reference_commitment() fail {
-  let descriptor: Data = predecessor_decode(replace_field(12, #"4100"))
+test decode_rejects_none_reference_commitment() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(12, #"4100"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_none_reference_commitment() fail {
+test canonical_schema_rejects_none_reference_commitment() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(12, #"4100"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_summary_count() fail {
-  let descriptor: Data = predecessor_decode(replace_field(13, #"824001"))
+test decode_rejects_summary_count() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(13, #"824001"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_summary_count() fail {
+test canonical_schema_rejects_summary_count() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(13, #"824001"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_summary_hash_width() fail {
-  let descriptor: Data = predecessor_decode(replace_field(13, #"83400101"))
+test decode_rejects_summary_hash_width() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(13, #"83400101"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_summary_hash_width() fail {
+test canonical_schema_rejects_summary_hash_width() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(13, #"83400101"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_summary_negative() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_summary_negative() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     replace_field(
       13,
       #"835820"
@@ -398,7 +378,7 @@ test predecessor_rejects_summary_negative() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_summary_negative() fail {
+test canonical_schema_rejects_summary_negative() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(
       13,
@@ -410,50 +390,50 @@ test current_rejects_summary_negative() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-// Pinned predecessor deserialise interprets tag2 as a negative constructor
-// index; its evaluator panics before un_i_data can reject the non-IData.
-// The source-domain proof records that exclusion; exercise the replacement
-// directly without adding evaluator-panic tests to the ordinary suite.
-test current_rejects_bignum_total_length() fail {
+test canonical_schema_rejects_bignum_total_length() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(2, #"c249010000000000000000"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_bignum_reference_length() fail {
+test canonical_schema_rejects_bignum_reference_length() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(11, #"c249010000000000000000"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_nonminimal_integer() fail {
-  let descriptor: Data = predecessor_decode(replace_field(1, #"1807"))
+test decode_rejects_nonminimal_integer() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(1, #"1807"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_nonminimal_integer() fail {
+test canonical_schema_rejects_nonminimal_integer() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(1, #"1807"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_wrong_field_type() fail {
-  let descriptor: Data = predecessor_decode(replace_field(1, #"40"))
+test decode_rejects_wrong_field_type() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    replace_field(1, #"40"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_wrong_field_type() fail {
+test canonical_schema_rejects_wrong_field_type() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(1, #"40"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_nonminimal_bytes() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_nonminimal_bytes() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     replace_field(
       3,
       #"590020" |> bytearray.concat(builtin.replicate_byte(32, 22)),
@@ -462,7 +442,7 @@ test predecessor_rejects_nonminimal_bytes() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_nonminimal_bytes() fail {
+test canonical_schema_rejects_nonminimal_bytes() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(
       3,
@@ -472,8 +452,8 @@ test current_rejects_nonminimal_bytes() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_indefinite_bytes() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_indefinite_bytes() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     replace_field(
       3,
       #"5f5820"
@@ -484,7 +464,7 @@ test predecessor_rejects_indefinite_bytes() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_indefinite_bytes() fail {
+test canonical_schema_rejects_indefinite_bytes() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     replace_field(
       3,
@@ -496,8 +476,8 @@ test current_rejects_indefinite_bytes() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_indefinite_array() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_indefinite_array() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     #"9f"
       |> bytearray.concat(
           builtin.slice_bytearray(1, bytearray.length(wire) - 1, wire),
@@ -507,7 +487,7 @@ test predecessor_rejects_indefinite_array() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_indefinite_array() fail {
+test canonical_schema_rejects_indefinite_array() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     #"9f"
       |> bytearray.concat(
@@ -518,8 +498,8 @@ test current_rejects_indefinite_array() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_nonminimal_array() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_nonminimal_array() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     #"9810"
       |> bytearray.concat(
           builtin.slice_bytearray(1, bytearray.length(wire) - 1, wire),
@@ -528,7 +508,7 @@ test predecessor_rejects_nonminimal_array() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_nonminimal_array() fail {
+test canonical_schema_rejects_nonminimal_array() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     #"9810"
       |> bytearray.concat(
@@ -538,8 +518,8 @@ test current_rejects_nonminimal_array() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_wrong_array_count() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_wrong_array_count() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     #"8f"
       |> bytearray.concat(
           builtin.slice_bytearray(1, bytearray.length(wire) - 1, wire),
@@ -548,7 +528,7 @@ test predecessor_rejects_wrong_array_count() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_wrong_array_count() fail {
+test canonical_schema_rejects_wrong_array_count() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     #"8f"
       |> bytearray.concat(
@@ -558,26 +538,28 @@ test current_rejects_wrong_array_count() fail {
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_trailing_bytes() fail {
-  let descriptor: Data = predecessor_decode(bytearray.concat(wire, #"00"))
+test decode_rejects_trailing_bytes() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    bytearray.concat(wire, #"00"),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_trailing_bytes() fail {
+test canonical_schema_rejects_trailing_bytes() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     bytearray.concat(wire, #"00"),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_truncated() fail {
-  let descriptor: Data = predecessor_decode(
+test decode_rejects_truncated() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
     builtin.slice_bytearray(0, bytearray.length(wire) - 1, wire),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_truncated() fail {
+test canonical_schema_rejects_truncated() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     builtin.slice_bytearray(0, bytearray.length(wire) - 1, wire),
   )
@@ -598,24 +580,28 @@ fn native_reference_wire(length: Int) -> ByteArray {
       )
 }
 
-test predecessor_rejects_zero_native_reference_length() fail {
-  let descriptor: Data = predecessor_decode(native_reference_wire(0))
+test decode_rejects_zero_native_reference_length() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    native_reference_wire(0),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_zero_native_reference_length() fail {
+test canonical_schema_rejects_zero_native_reference_length() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     native_reference_wire(0),
   )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test predecessor_rejects_oversized_native_reference() fail {
-  let descriptor: Data = predecessor_decode(native_reference_wire(16385))
+test decode_rejects_oversized_native_reference() fail {
+  let descriptor: Data = ledger_output_commitment_v1.decode(
+    native_reference_wire(16385),
+  )
   bytearray.length(builtin.serialise_data(descriptor)) > 0
 }
 
-test current_rejects_oversized_native_reference() fail {
+test canonical_schema_rejects_oversized_native_reference() fail {
   let descriptor: Data = ledger_output_commitment_v1.decode_canonical_schema(
     native_reference_wire(16385),
   )

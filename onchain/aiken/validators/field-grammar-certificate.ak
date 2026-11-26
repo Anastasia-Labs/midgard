@@ -1,7 +1,7 @@
 //// The permissionless field grammar certificate validator.
 ////
 //// A field grammar certificate lets a step read one item of a variable-width
-//// field without walking the whole field, so the step's cost no longer grows
+//// field without walking the whole field, so the step's cost does not grow
 //// with the field's item count. This validator builds one: it walks the
 //// field's §5.1 envelope with the grammar-certification machine, one batch
 //// per transaction, and records the certified item count and a wrapper

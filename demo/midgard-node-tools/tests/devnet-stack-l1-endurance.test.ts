@@ -20,11 +20,11 @@ import {
 } from "../src/devnet-stack/chain.js";
 import { makeLayout } from "../src/devnet-stack/layout.js";
 
-const phase4 = join(import.meta.dirname, "../devnet/phase4-process");
-const composeFile = join(phase4, "compose.yaml");
+const chainRoot = join(import.meta.dirname, "../devnet/isolated-chain");
+const composeFile = join(chainRoot, "compose.yaml");
 const CARDANO_IMAGE =
-  /PHASE4_CARDANO_NODE_IMAGE="([^"]+)"/.exec(
-    readFileSync(join(phase4, "scripts/common.sh"), "utf8"),
+  /ISOLATED_CHAIN_CARDANO_NODE_IMAGE="([^"]+)"/.exec(
+    readFileSync(join(chainRoot, "scripts/common.sh"), "utf8"),
   )?.[1] ?? "";
 
 const docker = (args: readonly string[], env: Record<string, string> = {}) =>
@@ -55,10 +55,10 @@ const resolvedCompose = (files: readonly string[], runDir = "/tmp/run") => {
       "json",
     ],
     {
-      MIDGARD_PHASE4_COMPOSE_PROJECT: "endurance_test",
-      MIDGARD_PHASE4_RUN_DIR: runDir,
-      MIDGARD_PHASE4_POSTGRES_PASSWORD: "test",
-      MIDGARD_PHASE4_POSTGRES_DATABASE: "test",
+      MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT: "endurance_test",
+      MIDGARD_ISOLATED_CHAIN_RUN_DIR: runDir,
+      MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD: "test",
+      MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE: "test",
     },
   );
   expect(result.status, result.stderr).toBe(0);
@@ -225,18 +225,22 @@ describe.skipIf(!imageAvailable)("a generated chain", () => {
     const parent = mkdtempSync(join(tmpdir(), "devnet-stack-generate-"));
     const runDir = join(parent, "endurance");
     try {
-      const generated = spawnSync("sh", [join(phase4, "scripts/generate.sh")], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          MIDGARD_PHASE4_RUN_DIR: runDir,
-          MIDGARD_PHASE4_RUN_ID: "endurance-test",
-          MIDGARD_PHASE4_OGMIOS_PORT: "1",
-          MIDGARD_PHASE4_KUPO_PORT: "2",
-          MIDGARD_PHASE4_POSTGRES_PORT: "3",
+      const generated = spawnSync(
+        "sh",
+        [join(chainRoot, "scripts/generate.sh")],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            MIDGARD_ISOLATED_CHAIN_RUN_DIR: runDir,
+            MIDGARD_ISOLATED_CHAIN_RUN_ID: "endurance-test",
+            MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: "1",
+            MIDGARD_ISOLATED_CHAIN_KUPO_PORT: "2",
+            MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT: "3",
+          },
+          timeout: 300_000,
         },
-        timeout: 300_000,
-      });
+      );
       expect(generated.status, generated.stderr).toBe(0);
       const horizon = readKesHorizon(makeLayout(runDir));
       expect(horizon.slotsPerKESPeriod).toBe(

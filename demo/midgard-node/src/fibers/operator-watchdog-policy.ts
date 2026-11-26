@@ -98,7 +98,7 @@ const resolveTier = (
 };
 
 /**
- * Never strike progress (B7). Nobody is struck while no append can land: a
+ * Never strike progress. Nobody is struck while no append can land: a
  * new shift holder could not commit either. That starts one commit TTL
  * before the append fence closes, since a commit planned later cannot land
  * in time. The shift holder is not struck

@@ -17,8 +17,7 @@ import {
 /**
  * The follower stopped because transient store failures outlived its budget
  * (`l1_follower_transient_exhausted`): `runtime.done` rejects with it and
- * the process exits non-zero, its supervisor's restart being the backoff
- * (owner ruling 2026-10-09).
+ * the process exits non-zero, its supervisor's restart being the backoff.
  */
 export class WatcherFollowerExhaustedError extends Error {
   override readonly name = "WatcherFollowerExhaustedError";

@@ -3,7 +3,7 @@
  * (`BeforeSignedTransactionSubmission.persist`) commit in one SQL
  * transaction, on a Lucid emulator with the node's
  * follower-backed journal. The gate owns that transaction and runs the
- * journal's insert inside it (I1FIX-R2):
+ * journal's insert inside it:
  *
  * - a gate that refuses after the insert leaves no journal row: the workflow
  *   sends nothing and S6 has nothing to send at the next tip;

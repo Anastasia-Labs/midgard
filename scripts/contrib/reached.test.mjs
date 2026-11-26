@@ -205,21 +205,21 @@ test("a name edge says why only when its namer leads to a reached test", (t) => 
 test("a JS spelling not on disk is imported as its TS sources and said to be missing; one on disk is itself", (t) => {
   const root = workspace(t, {
     ...FILES,
-    "demo/app/src/legacy.js": "export {};\n",
-    "demo/app/src/legacy.ts": "export {};\n",
+    "demo/app/src/dual.js": "export {};\n",
+    "demo/app/src/dual.ts": "export {};\n",
     "demo/app/src/gone.ts": "export {};\n",
   });
   const a = at(root);
   const graph = appGraph(root);
   graph.edges[a("demo/app/tests/pool.test.ts")].push(
-    a("demo/app/src/legacy.js"),
+    a("demo/app/src/dual.js"),
   );
   graph.edges[a("demo/app/tests/helper.test.ts")].push(
     a("demo/app/src/gone.mjs"),
   );
   // Each source change also reaches built.test.ts, which runs the dist.
   const files = (path) => reach(root, [path], graph).files;
-  assert.deepEqual(files("demo/app/src/legacy.ts"), ["tests/built.test.ts"]);
+  assert.deepEqual(files("demo/app/src/dual.ts"), ["tests/built.test.ts"]);
   assert.deepEqual(files("demo/app/src/gone.ts"), ["tests/built.test.ts"]);
   const result = reach(root, ["demo/app/src/gone.mts"], graph);
   assert.deepEqual(result.files, [

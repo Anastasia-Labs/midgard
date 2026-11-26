@@ -29,13 +29,11 @@ pub type SpendRedeemer =
 
 /// The canonical-decode preparation commits to the transition
 /// alone — `hash_one_step_evidence(transition, NoAuxiliaryWitness)`, computed
-/// on-chain. The delivery wrapper is no longer part of the committed preimage,
-/// so the carriage tier stays free until the observe stage dereferences it and
-/// the §8.8 field door there is the sole content gate. The retired
-/// `PrepareSelectedByEvidenceHash` arm existed only to keep auxiliary bytes out
-/// of the prepare transaction; with the transition never carrying field
-/// preimage bytes, the on-chain hash is cheap and a second arm would be a
-/// dead-arm hazard (9f191e9a).
+/// on-chain. The delivery wrapper is not part of the committed preimage, so the
+/// carriage tier stays free until the observe stage dereferences it and the
+/// §8.8 field door there is the sole content gate. The transition never
+/// carries field preimage bytes, so the on-chain hash is cheap and a second,
+/// by-hash arm would be a dead-arm hazard.
 fn prepare_selected(
   semantic_resolver_script_hashes: List<ScriptHash>,
   computation_thread_policy_id: PolicyId,

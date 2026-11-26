@@ -100,9 +100,9 @@ describe("PHAS membership SDK boundary", () => {
   });
 
   it("refuses to deploy the withdrawal script bare once it declares a parameter", () => {
-    // #610: this loader has no applyParamsToScript route, so a declared
-    // parameter deployed from compiledCode would be the #605 under-application
-    // shape. The zero-arity door must fail closed at load time.
+    // This loader has no applyParamsToScript route, so a declared parameter
+    // deployed from compiledCode would be under-applied. The zero-arity door
+    // must fail closed at load time.
     expect(() =>
       parsePhasMembershipBlueprint({
         validators: [

@@ -189,7 +189,7 @@ describe("production ledger-absence artifacts V1", () => {
     ).toThrow(/counted root changed/u);
   });
 
-  it("rejects the retired creator-exclusion authority on a valid event-relative artifact", async () => {
+  it("rejects an unknown field on a valid event-relative artifact", async () => {
     const artifact = await prepare("nonExistentInput");
     expect(() =>
       admitLedgerAbsenceArtifact(

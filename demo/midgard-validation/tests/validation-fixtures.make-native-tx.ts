@@ -37,8 +37,7 @@ import {
 
 /**
  * §5.6: a field-5 preimage from a policy → asset-name → quantity map, sorted into
- * canonical key order at both levels. The retired scheme committed the raw map
- * itself, which is why so many fixtures spelled `encodeCbor(new Map(...))` here.
+ * canonical key order at both levels.
  */
 export const makeMintPreimageCbor = (
   policies: ReadonlyMap<Uint8Array, ReadonlyMap<Uint8Array, bigint>>,

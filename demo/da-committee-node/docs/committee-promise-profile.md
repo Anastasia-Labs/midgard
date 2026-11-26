@@ -45,7 +45,7 @@ never holds new signing. The signed 15-day retention window is preserved.
 The current scheduling limit can constrain signing cadence while a prior
 header remains challengeable. This optional committee-signature profile does
 not reserve producer capacity before L1 commitment, change ordinary producer
-cadence, establish a public SLA, or prove the literal combined B1 workload fits.
+cadence, establish a public SLA, or prove the combined workload fits.
 Numerical activation requires independent final-source calibration and review.
-The profile stays off by default, and its limits must be re-derived against the
+The profile stays off by default, and its limits must be computed against the
 current response windows before it is enabled.

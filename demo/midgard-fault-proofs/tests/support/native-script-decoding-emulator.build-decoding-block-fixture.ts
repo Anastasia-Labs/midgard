@@ -70,7 +70,7 @@ export const buildDecodingBlockFixture = async ({
   /**
    * Extra committed L2 transactions, present only to give the header's
    * `transactions_root` more than one leaf: a single-leaf MPF proof has zero
-   * steps, and the #545 published-chunk carriage has nothing to publish.
+   * steps, and the published-chunk carriage has nothing to publish.
    */
   readonly decoyTransactionCount?: number;
   /** Caller-supplied normal transactions committed beside the subject. */
@@ -166,8 +166,8 @@ export const buildDecodingBlockFixture = async ({
   // Decoys are ordinary committed L2 transactions. They exist only so the
   // transactions trie holds more than one leaf.
   // The placeholder validation-trace descriptor is stamped by the COMMITTED
-  // LEAF's verdict, not by what a replay would conclude — the #640
-  // convention. A `ForcedTxInvalid` leaf therefore carries `Rejected`, so a
+  // LEAF's verdict, not by what a replay would conclude. A
+  // `ForcedTxInvalid` leaf therefore carries `Rejected`, so a
   // direction-B fixture never presents a block that accepts and rejects the
   // same event at once.
   const events: {

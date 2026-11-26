@@ -345,8 +345,8 @@ it("doubleWithdraw proves two real published withdrawals of one L2 output and it
       "NonExistentWithdrawalUtxo",
     ]);
     // The second payable leaf is also a withdrawalMistag finding at the same
-    // event. Owner ruling 2026-11-10: the classifier prefers doubleWithdraw
-    // there, so the installed catalogue must name doubleWithdraw.
+    // event. The classifier prefers doubleWithdraw there, so the installed
+    // catalogue must name doubleWithdraw.
     //
     // The honest control's second leaf carries the NonExistentWithdrawalUtxo
     // verdict it actually earned, which differs from the WithdrawalIsValid

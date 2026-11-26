@@ -237,7 +237,7 @@ describe("retirement atomic authority", () => {
     expect(f.store.retirementDiscoveryActive()).toBe(false);
     expect(await f.compact()).toEqual([f.seeded.header.headerHash]);
   });
-  it("cannot use the legacy payload-only sweeper or import a late peer row below the paired floor", async () => {
+  it("cannot use the payload-only sweeper or import a late peer row below the paired floor", async () => {
     const f = await setup();
     expect(
       await f.store.deleteDaPayloadIfPrunable({

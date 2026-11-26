@@ -214,8 +214,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
         ADMISSION_BACKLOG_REFRESHED_AT: 0,
       });
 
-    // First-seen input claims of the txs pending admission or validation
-    // (design D6). Read and written only in synchronous sections, by
+    // First-seen input claims of the txs pending admission or validation.
+    // Read and written only in synchronous sections, by
     // admission, the tx-queue processor's verdict hooks and the startup
     // rebuild.
     const ADMISSION_INPUT_CLAIMS: AdmissionInputClaims =

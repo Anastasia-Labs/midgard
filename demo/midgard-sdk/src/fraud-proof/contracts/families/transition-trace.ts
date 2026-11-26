@@ -261,8 +261,8 @@ export const buildTransitionTraceChain = ({
       );
     }
     // `route_v1` selects a final validator by route index over this list and
-    // used to re-check `list.length == 8` on every execution. Deployment
-    // parameterization is trusted on chain, so the cardinality is pinned here.
+    // does not re-check `list.length == 8`: deployment parameterization is
+    // trusted on chain, so the cardinality is pinned here.
     const finalCount: number = finals.length;
     if (finalCount !== TRANSITION_TRACE_ROUTE_FINAL_COUNT) {
       return yield* Effect.fail(

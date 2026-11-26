@@ -237,10 +237,9 @@ fn verify_phase_a_native_advance_scan(
 ///
 /// This is one of the four sites that hand a *partially read* item to a later
 /// step: `item_commitment` goes into the successor control and the token-head
-/// scan opens chunk proofs against it. The commitment is now **derived** here
-/// from bytes the door authenticated (`machine_field_item_commitment`) rather
-/// than asserted by a prover's opening — see the door module's header on why
-/// that continuation is not part of #592's defect.
+/// scan opens chunk proofs against it. The commitment is **derived** here from
+/// bytes the door authenticated (`machine_field_item_commitment`), not asserted
+/// by a prover's opening.
 fn verify_phase_a_native_item_scan(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -446,7 +445,7 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
     control.field_preimage_lengths_cbor,
   )
   // The foreign yield reads its script item only through the field grammar
-  // certificate, so its cost no longer grows with the field's item count.
+  // certificate, so its cost does not grow with the field's item count.
   expect field_door.CertifiedFieldItem { cert_ref_input_index } = route
   let item = field_door.open_machine_certified_field_item(
     door,

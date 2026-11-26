@@ -21,7 +21,7 @@ pnpm --dir demo --filter @al-ft/l1-node-transport run native:test   # go vet + g
 pnpm --dir demo --filter @al-ft/l1-node-transport run test          # TS client against the compiled binary + mock node
 ```
 
-The opt-in real-node conformance needs a phase4 devnet run directory whose
+The opt-in real-node conformance needs a isolated-chain devnet run directory whose
 `cardano-node` is up:
 
 ```sh

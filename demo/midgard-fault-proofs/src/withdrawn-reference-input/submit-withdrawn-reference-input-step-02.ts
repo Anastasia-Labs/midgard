@@ -7,15 +7,11 @@
  * §2.5 field **1**, the bad transaction's native reference inputs, rather than
  * field 0's spend inputs.
  *
- * **Re-derived onto the §8.8 door by #604.** The redeemer used to reproduce the
- * whole `reference_inputs_preimage: List<MidgardTxInput>`; it now carries a
- * `FieldOpening`, and the validator reads item `bad_reference_input_index`
- * off the authenticated view.
+ * The redeemer carries a `FieldOpening`, and the validator reads item
+ * `bad_reference_input_index` off the authenticated view.
  *
- * **What distinguishes field 1 from field 0 is position, not encoding.** The
- * header this replaces claimed the two fields' commitments differed because the
- * items were committed "under `bounded_collection_v1.from_items(1, ...)`"; §4
- * removed field-index domain separation, so identical items in fields 0 and 1
+ * **What distinguishes field 1 from field 0 is position, not encoding.** §4
+ * has no field-index domain separation, so identical items in fields 0 and 1
  * commit to identical hashes and only the slot the door reads tells them apart.
  * {@link planFaultProofFieldOpening} names the slot explicitly and checks the
  * preimage against the commitment the compact body carries *there*, which is the
@@ -61,7 +57,6 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
 import {
   type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
@@ -95,9 +90,6 @@ export type WithdrawnReferenceInputStep02Build = {
   readonly outputIndex: number;
   readonly referenceScriptOutRef: string;
 };
-
-export type SubmitWithdrawnReferenceInputStep02Result =
-  OutsideWorkflowSubmission<WithdrawnReferenceInputStep02Build>;
 
 export const buildWithdrawnReferenceInputStep02 = async ({
   lucid,

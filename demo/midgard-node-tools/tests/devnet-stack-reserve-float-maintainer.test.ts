@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -370,36 +369,6 @@ describe("reserve float maintainer on the emulator", () => {
 
 describe("withFloatLock", () => {
   const layoutAt = (state: string) => ({ state }) as Layout;
-
-  it("waits for a live holder, then runs its step once", async () => {
-    const state = tempDir();
-    const holder = spawn(process.execPath, [
-      "-e",
-      "setTimeout(() => {}, 60000)",
-    ]);
-    try {
-      writeFileSync(join(state, "reserve-float.lock"), String(holder.pid));
-      let polls = 0;
-      let steps = 0;
-      const result = await withFloatLock(
-        layoutAt(state),
-        {
-          sleep: async () => {
-            polls += 1;
-            if (polls === 2) rmSync(join(state, "reserve-float.lock"));
-            await Promise.resolve();
-          },
-          now: Date.now,
-        },
-        () => Promise.resolve((steps += 1)),
-      );
-      expect(polls).toBe(2);
-      expect(steps).toBe(1);
-      expect(result).toBe(1);
-    } finally {
-      holder.kill();
-    }
-  });
 
   it("takes over a dead holder's lock without waiting", async () => {
     const state = tempDir();

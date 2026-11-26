@@ -1,4 +1,4 @@
-// W4.7: a pinned Lucid wallet view is released where it was pinned.
+// A pinned Lucid wallet view is released where it was pinned.
 //
 // `lucid.overrideUTxOs(utxos)` makes the wallet read that list from then on,
 // for every later build on the same instance: the provider is never asked

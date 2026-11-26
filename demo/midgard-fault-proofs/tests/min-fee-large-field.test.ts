@@ -1,7 +1,7 @@
 /**
  * The min-fee end to end at a large field: 761 committed outputs fill field 2
  * under tier 3. The fee formula reads each field's byte length only, so step
- * 02 authenticates the committed bytes and its cost no longer grows with the
+ * 02 authenticates the committed bytes and its cost does not grow with the
  * field's item count.
  */
 import {

@@ -9,7 +9,7 @@
  * block that spends it. Once the store pruned, the model drops orders spent
  * at or before the pruned slot (`closed_k_deep`). The follower's key set
  * holds a `forced` key for every order whose block is canonical, spent and
- * pruned or not (N10b): a rollback that removes an order removes its key.
+ * pruned or not: a rollback that removes an order removes its key.
  */
 import {
   type BlockSummary,

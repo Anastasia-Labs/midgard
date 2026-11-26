@@ -1,8 +1,7 @@
 /**
  * `da-hash-preimage` step-01 submitter.
  *
- * Unlike the retired step routes, nothing in the prepared JSON is
- * trusted. Before a transaction is built this module re-derives, from the
+ * Nothing in the prepared JSON is trusted. Before a transaction is built this module re-derives, from the
  * **on-chain** state-queue block header:
  *
  * - the counted `transactions_root` over the supplied raw PHAS root and the

@@ -221,8 +221,8 @@ const exerciseRetainedReconstruction = (
   });
   expect(reconstructed.equals(canonical)).toBe(true);
   // §4 is authenticate-once per field, so a reveal is one step per field that
-  // carries material — not one step per item chunk, which is what the retired
-  // counted publication chain counted here. An empty field is exactly `80`.
+  // carries material, not one step per item chunk. An empty field is exactly
+  // `80`.
   const emptyPreimage = encodeMidgardFieldPreimage([]);
   return {
     revealStepCount: fields.filter(
@@ -256,8 +256,7 @@ describe("canonical V1 deep unary datum with stock CML", () => {
       4_043,
     );
     // §4 pays one authenticate-once per field that carries material, so the
-    // 16,472-byte maximum reveals in 3 steps rather than the 6 per-item chunk
-    // openings the retired counted publication chain needed for the same bytes.
+    // 16,472-byte maximum reveals in 3 steps.
     expect(revealStepCount).toBe(3);
   }, 60_000);
 

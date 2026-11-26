@@ -16,7 +16,6 @@ import {
 import { DaPayloadsDB } from "../database/index.js";
 import type { NodeDeploymentMismatch } from "../database/node-deployment.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
   refreshAdmissionBacklogGauge,
   refreshAdmissionBacklogGaugeOnStartup,
@@ -115,7 +114,6 @@ export const runNode = (
         }),
     });
 
-    yield* assertPhase1AcceptCrashCheckpointConfiguration;
     // The ledger MPF is always the Architecture G owner. Refuse to start before
     // any durable work when its binary is not pinned.
     yield* requirePinnedNativeOwnerBinary(nodeConfig).pipe(
@@ -255,7 +253,7 @@ export const runNode = (
 
     yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
     // Before the node serves or validates: a backlog tx's inputs stay
-    // claimed across the restart (design D6).
+    // claimed across the restart.
     yield* rebuildAdmissionInputClaimsOnStartup();
 
     const sql = yield* SqlClient.SqlClient;

@@ -1,12 +1,11 @@
-//// Conformance for the re-pinned datum/redeemer canonicity predicate
+//// Conformance for the datum/redeemer canonicity predicate
 //// (`docs/spec/midgard-tx.md` §6.2).
 ////
 //// The predicate's definition is "membership in the image of `serialiseData`",
 //// so the strongest test available is the definition itself: Aiken's
 //// `cbor.serialise` **is** that builtin, so anything it emits must be
-//// accepted. The bignum and tag-102 cases below are the two classes the
-//// retired stdlib round-trip pin rejected — datums L1 accepts that Midgard
-//// used to refuse.
+//// accepted. The bignum and tag-102 cases below are the two classes of datum
+//// L1 accepts that a stdlib round-trip check rejects.
 
 use aiken/builtin
 use aiken/cbor
@@ -61,7 +60,7 @@ test serialise_data_image_is_accepted_across_the_grammar() {
   }
 }
 
-/// The two newly-canonical classes, still expressed as "whatever the builtin
+/// The bignum and high-alternative classes, expressed as "whatever the builtin
 /// emits", so the test cannot drift from the definition.
 test serialise_data_image_covers_bignums_and_high_alternatives() {
   and {
@@ -75,12 +74,12 @@ test serialise_data_image_covers_bignums_and_high_alternatives() {
 }
 
 // ---------------------------------------------------------------------------
-// The L1-parity re-pin, pinned on exact bytes
+// L1 parity on exact bytes
 // ---------------------------------------------------------------------------
 
-/// These are the byte forms the retired Aiken-stdlib-v3.1.0 round-trip pin
-/// rejected. Every one is something cardano-ledger's `decodeData` accepts, so
-/// every one must now be canonical.
+/// An Aiken-stdlib-v3.1.0 round-trip check rejects these byte forms. Every one
+/// is something cardano-ledger's `decodeData` accepts, so every one must be
+/// canonical.
 test big_bignums_are_canonical() {
   and {
     // 2^64 exactly: nine magnitude bytes, no leading zero.
@@ -106,7 +105,7 @@ test high_constructor_alternatives_are_canonical() {
   }
 }
 
-/// Non-minimal and out-of-image bignum spellings still reject: a magnitude
+/// Non-minimal and out-of-image bignum spellings reject: a magnitude
 /// shorter than nine bytes has a plain integer spelling, and a leading zero is
 /// never minimal.
 test non_canonical_bignums_still_reject() {
@@ -132,7 +131,7 @@ test low_alternatives_under_tag_102_still_reject() {
 }
 
 // ---------------------------------------------------------------------------
-// Everything the retired predicate rejected still rejects
+// Structurally non-canonical forms reject
 // ---------------------------------------------------------------------------
 
 test structural_non_canonical_forms_still_reject() {
@@ -206,7 +205,7 @@ fn output_is_decodable(datum_cbor: ByteArray) -> Bool {
   }
 }
 
-/// The user story the re-pin exists for: an output whose inline datum carries
+/// The user story this predicate serves: an output whose inline datum carries
 /// a bignum or a high constructor alternative is spendable on Midgard, because
 /// it is spendable on L1.
 test outputs_carrying_l1_acceptable_datums_now_decode() {

@@ -44,8 +44,8 @@ import { encodeData } from "../src/transition-trace/reconstruct.transition-trace
  * holds. The shared helpers take a byte value and reject anything else, so fold
  * the label into a byte explicitly at this one place instead of letting the
  * helper do it silently. The fold is not injective: labels 256 apart name the
- * same bytes (730/986 and 731/987 do, in unrelated fields), which is exactly
- * what a silent mask used to hide.
+ * same bytes (730/986 and 731/987 do, in unrelated fields), which a silent
+ * mask would hide.
  */
 const label = (n: number): number => n & 0xff;
 
@@ -138,8 +138,7 @@ export const nativeMaterial = (byte: number) => {
 };
 
 /**
- * The #640 verdict standing in for the pre-format `FailedScript` arm: a
- * forced transaction the operator rejected for a failed Plutus execution at
+ * A forced transaction the operator rejected for a failed Plutus execution at
  * purpose (spend, 0).
  */
 export const forcedTxInvalidPlutus: SDK.OperatorVerdict = {

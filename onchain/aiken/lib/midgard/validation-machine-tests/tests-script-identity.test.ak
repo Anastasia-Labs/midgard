@@ -38,11 +38,8 @@ use midgard/validation_trace_v1
 /// The on-wire size of one `CanonicalDecode` item instruction, at both ends of
 /// §8's carriage ladder.
 ///
-/// The retired counted evidence was bounded by *proof* size — a 14-peak
-/// collection frontier, 14 siblings, a chunk frontier and one
-/// `bounded_item_v1.chunk_bytes` window — and this row pinned that worst case.
-/// §8 replaced all of it with a `FieldCarriageV1`, so the bound now has two
-/// shapes and both are pinned:
+/// The evidence is a `FieldCarriageV1`, so the bound has two shapes and both
+/// are pinned:
 ///
 ///   * **tier 1** is the only tier whose evidence grows with the field, and
 ///     §8.3 caps a tier-1 plan at `max_tier1_redeemer_preimage_bytes`;

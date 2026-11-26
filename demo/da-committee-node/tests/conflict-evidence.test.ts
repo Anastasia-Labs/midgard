@@ -319,7 +319,7 @@ describe("DA conflict evidence V1 lifecycle", () => {
     }
   });
 
-  // Owner ruling 2026-10-07: equivocation is one signer, one header hash and
+  // Equivocation is one signer, one header hash and
   // two availability commitments. Signatures over sibling headers (same
   // parent, different header hashes) are truthful and never conflict.
   it("builds equivocation evidence for one header only, never for sibling headers", async () => {

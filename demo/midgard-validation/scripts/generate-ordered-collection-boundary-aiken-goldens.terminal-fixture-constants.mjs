@@ -32,8 +32,8 @@ const PRODUCING_SUITES = [
   "tests/ordered-collection-observer-native-script-boundary.test.ts",
   "tests/ordered-collection-redeemer-boundary.test.ts",
   "tests/blob-chunk-boundary.test.ts",
-  // Added by #592. These four gained a write channel because
-  // the machine's terminal-fold fixtures now carry §8's carriage — the field's
+  // These four have a write channel because
+  // the machine's terminal-fold fixtures carry §8's carriage — the field's
   // whole §5.1 preimage — and a preimage is not a value a human mirrors.
   "tests/ordered-collection-spend-inputs-boundary.test.ts",
   "tests/ordered-collection-reference-inputs-boundary.test.ts",
@@ -70,9 +70,7 @@ const runProducingSuites = (vectorDirectory) => {
 
 /**
  * §5.1's one uniform split: a field preimage into its `enc_i` byte runs. All nine
- * fields share it — the retired counted grammar needed two readers here, a
- * byte-list one for fields 0/1/2/3/4/7 and a raw-concatenation one for 6/8, and
- * §5.1 deletes that distinction.
+ * fields share it.
  */
 const fieldItems = (preimageHex) =>
   decodeMidgardFieldPreimage(bytes(preimageHex));
@@ -152,9 +150,9 @@ export const outputs = vectors["output-boundary-v1"];
  * The constants of one `MaximumFieldTerminalFixtureV1` member, keyed by its Aiken
  * prefix.
  *
- * #592 turned these fixtures from struct literals inside `fn`s — unreachable by
- * `rebindAikenConstants`, which is #590's whole complaint — into named constants,
- * because §8's carriage is the field's whole §5.1 preimage and there is no
+ * These fixtures are named constants, not struct literals inside `fn`s (which
+ * `rebindAikenConstants` cannot reach), because §8's carriage is the field's
+ * whole §5.1 preimage and there is no
  * version of that a human mirrors correctly. Two vectors carry their terminal
  * fold in a nested object (the coupled signer/witness and observer/native-script
  * suites each measure two fields), so `fold` is passed separately from the

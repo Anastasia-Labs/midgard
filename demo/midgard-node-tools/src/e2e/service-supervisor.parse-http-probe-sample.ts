@@ -15,8 +15,6 @@ import {
 import { type E2EEnvInheritance } from "midgard-node/e2e/env";
 
 import type {
-  FileTerminationObservation,
-  FileTerminationSpec,
   OutputTerminationObservation,
   OutputTerminationSpec,
 } from "./logged-child-process.js";
@@ -76,7 +74,6 @@ export type HostProcessServiceSpec = {
   readonly restartBackoffMs?: number;
   readonly timeoutMs?: number;
   readonly terminateOnOutput?: OutputTerminationSpec;
-  readonly terminateOnFile?: FileTerminationSpec;
   readonly sleep?: (milliseconds: number) => Promise<void>;
   readonly ownership?: OwnedProcessGroupSpec;
 };
@@ -93,7 +90,6 @@ export type ServiceAttemptSummary = {
   readonly classification: ServiceErrorClassification;
   readonly cleanup: ChildProcessCleanupResult | null;
   readonly outputTermination: OutputTerminationObservation | null;
-  readonly fileTermination: FileTerminationObservation | null;
 };
 
 export type ServiceSupervisorSummary = {
@@ -236,27 +232,9 @@ export const parseOutputTerminationObservation = (
   value: unknown,
   label: string,
 ): OutputTerminationObservation => {
-  const input = exactRecord(value, label, [
-    "marker",
-    "occurrence",
-    "signal",
-    "at",
-  ]);
+  const input = exactRecord(value, label, ["marker", "signal", "at"]);
   return {
     marker: nonEmptyString(input.marker, `${label}.marker`),
-    occurrence: positiveInteger(input.occurrence, `${label}.occurrence`),
-    signal: nodeSignal(input.signal, `${label}.signal`),
-    at: isoTimestamp(input.at, `${label}.at`),
-  };
-};
-
-export const parseFileTerminationObservation = (
-  value: unknown,
-  label: string,
-): FileTerminationObservation => {
-  const input = exactRecord(value, label, ["path", "signal", "at"]);
-  return {
-    path: nonEmptyString(input.path, `${label}.path`),
     signal: nodeSignal(input.signal, `${label}.signal`),
     at: isoTimestamp(input.at, `${label}.at`),
   };

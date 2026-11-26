@@ -1,6 +1,6 @@
 /**
  * The watcher's independent per-step checks for the fork-simulator gate:
- * the queue view, the tip block's checkpoints and the ruling-2
+ * the queue view, the tip block's checkpoints and the
  * pinned reads, each against the chain oracle.
  */
 import { type FactStore } from "@al-ft/midgard-l1-follower";

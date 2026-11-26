@@ -176,7 +176,7 @@ const readJourneyTimingTip = async (
     "\n",
   );
   const port = lines
-    .find((line) => line.startsWith("MIDGARD_PHASE4_OGMIOS_PORT="))
+    .find((line) => line.startsWith("MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT="))
     ?.split("=")[1];
   if (
     port === undefined ||

@@ -133,7 +133,7 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
       },
     ],
     [
-      "legacy formatVersion alias",
+      "formatVersion alias",
       () => {
         const { version: _version, ...rest } = deltaEnvelope();
         return { ...rest, formatVersion: 1 };
@@ -146,7 +146,7 @@ describe("PendingBlockFinalizationV1 exact envelope", () => {
         const envelope = deltaEnvelope();
         return {
           ...envelope,
-          metadata: { ...envelope.metadata, legacySnapshot: [] },
+          metadata: { ...envelope.metadata, unknownSnapshot: [] },
         };
       },
     ],

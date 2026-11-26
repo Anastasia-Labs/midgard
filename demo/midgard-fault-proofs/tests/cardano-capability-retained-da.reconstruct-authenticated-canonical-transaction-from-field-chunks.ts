@@ -33,7 +33,7 @@ const boundaryCorpusInput = (): string | URL => {
   const override = process.env.MIDGARD_BOUNDARY_CORPUS_JSON;
   if (override === undefined) {
     return new URL(
-      "./fixtures/cardano-capability-p2-boundary-corpus-v1.json",
+      "./fixtures/retained-da-boundary-corpus-v1.json",
       import.meta.url,
     );
   }
@@ -118,10 +118,9 @@ export const reconstructAuthenticatedCanonicalTransactionFromFieldChunks = (
   )(source);
   // §4 authenticates a field once, over its whole preimage, against the hash the
   // compact structure carries — which is what `reconstructMidgardTransaction`
-  // does for all nine. The retired counted chain verified per-item chunk openings
-  // here instead; §4 leaves nothing for such an opening to be checked against.
+  // does for all nine.
   const fields = deriveMidgardTxFieldPreimages(exactCanonicalCbor, sourceKind);
-  // The machine's own counted trace is still what a dispute step walks, so its
+  // The machine's own counted trace is what a dispute step walks, so its
   // step count and widest chunk stay measured here. They are trace measurements,
   // not publication claims (see `countedMachineFieldChunkSteps`).
   const chunks = countedMachineTransactionChunkSteps(

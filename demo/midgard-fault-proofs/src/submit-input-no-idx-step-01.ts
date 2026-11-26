@@ -1,18 +1,17 @@
 /**
- * **Re-derived onto the flat field commitments by #604.** Thread state carries
- * the §2.5 anchor — the disputed transaction's **id** — where it used to carry
- * that transaction's `spend_inputs_hash`; step-02 re-opens field 0 through the
- * §8.8 door from it. See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
- *
  * `input-no-idx` step-01 submitter.
+ *
+ * Thread state carries the §2.5 anchor — the disputed transaction's **id**;
+ * step-02 re-opens field 0 through the §8.8 door from it. See
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * Nothing in the prepared JSON is trusted. Before a transaction is built this
  * module re-derives, from the **on-chain** state-queue block header, the
  * counted `transactions_root` over the supplied raw PHAS root and the header's
  * own `l2TransactionCount`, and requires it to equal the committed
  * `transactionsRoot`. The bad transaction is also re-decoded from its canonical
- * compact CBOR, so the `spend_inputs_hash` forwarded to step 02 is the
- * transaction's own committed value rather than a prepared field.
+ * compact CBOR, so the id forwarded to step 02 is the transaction's own rather
+ * than a prepared field.
  */
 import {
   commitCountedRootProgram,
@@ -105,11 +104,7 @@ export type InputNoIdxStep01Build = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly badTxId: string;
-  /**
-   * The §2.5 anchor this step wrote into thread state. It replaced
-   * `verifiedTxInputsHash` in #604 — the thread no longer carries field 0's
-   * commitment.
-   */
+  /** The §2.5 anchor this step wrote into thread state. */
   readonly verifiedTxId: string;
   readonly inputIndex: number;
   readonly outputIndex: number;

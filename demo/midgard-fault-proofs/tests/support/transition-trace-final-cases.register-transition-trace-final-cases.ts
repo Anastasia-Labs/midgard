@@ -64,8 +64,8 @@ import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.js";
 import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { expectStateQueueHeaderOrder } from "./submit-init/queue-assertions.js";
+import { submitInit } from "./submit-steps.diagnostic.js";
 import { buildPastPrerequisites } from "./submit-steps.js";
-import { submitInit } from "./submit-steps.legacy.js";
 import {
   publishTransitionTraceBytes,
   submitTransitionTraceFinal,

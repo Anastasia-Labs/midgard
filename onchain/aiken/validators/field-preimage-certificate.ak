@@ -106,18 +106,16 @@ validator field_preimage_certificate {
         //    **The pair pins the name.** The single-pair destructuring plus
         //    `minted_name == asset_name` say there is *no other* asset name of
         //    this policy in the transaction, not merely that this one is
-        //    right. Nothing derives from the name any more, but an unpinned
+        //    right. Nothing derives from the name, but an unpinned
         //    name would let a valid certification carry a second, unexamined
         //    name of this policy along with it, to land wherever its minter
         //    liked — and anything that trusts "a token of the certificate
         //    policy" without asking which one would read it.
         //
-        //    **The quantity pins one-certificate-per-transaction, and since
-        //    #606 it is the only thing that does.** Under the retired derived
-        //    name two certificates were two names and therefore two pairs,
-        //    refused by the destructuring. Under the constant name they are
-        //    the same asset: `tx.mint` aggregates them into a *single* pair at
-        //    quantity 2, and the destructuring sees nothing wrong. Steps 1–8
+        //    **The quantity pins one-certificate-per-transaction, and it is the
+        //    only thing that does.** Under the constant name two certificates
+        //    are the same asset: `tx.mint` aggregates them into a *single* pair
+        //    at quantity 2, and the destructuring sees nothing wrong. Steps 1–8
         //    examine one output — the one `output_index` names — and step 10
         //    proves one content claim, so the second unit could ride out to a
         //    second output at this same script address carrying a datum this
@@ -218,8 +216,8 @@ validator field_preimage_certificate {
     //    guarding this UTxO *is* the certificate policy id.
     expect Script(own_policy_id) = own_input.output.address.payment_credential
     // 4. The same §8.6 constant name the mint handler pinned. The
-    //    datum still names the burn's authority (`owner` below); the asset
-    //    name no longer varies with it.
+    //    datum names the burn's authority (`owner` below); the asset name
+    //    does not vary with it.
     let asset_name = field_preimage_certificate_asset_name
 
     // 5. The token must not survive the transaction. Stated over outputs rather
@@ -227,14 +225,14 @@ validator field_preimage_certificate {
     // double-satisfied: a burn count is a sum over the whole transaction, so
     // two certificates of the same name spent together could each point at the
     // same single `-1` and let one token survive — and a surviving token is a
-    // certificate whose datum the minting policy never saw, i.e. a forgery.
-    // "No output carries it" is per-token and order-independent: if every input
+    // certificate whose datum the minting policy never saw, i.e. a forgery. "No
+    // output carries it" is per-token and order-independent: if every input
     // holding the name is consumed and no output holds it, the ledger's own
     // value balance says all of them were burnt. That form is what makes the
-    // discipline same-name-safe by construction under #606's constant name
-    // (invariant a of the ruling): every certificate token is now the same
-    // asset, and a token still cannot survive its UTxO or migrate onto a fresh
-    // datum, because no output of this transaction may carry the name at all.
+    // discipline same-name-safe by construction under the constant name: every
+    // certificate token is the same asset, and a token cannot survive its UTxO
+    // or move onto a fresh datum, because no output of this transaction may
+    // carry the name at all.
     expect
       list.all(
         tx.outputs,

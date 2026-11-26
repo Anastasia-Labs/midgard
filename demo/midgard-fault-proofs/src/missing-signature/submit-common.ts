@@ -6,9 +6,9 @@
  * thread NFT rides — see `contracts.ts`. This module owns what all five
  * submitters share: locating and validating the thread UTxO at a given step,
  * reading the step datum fail-closed, and the §2.3 reference-script sourcing
- * (owner ruling 2026-08-26: fault-proof step validators always deploy as
- * reference scripts and are referenced, never attached inline; each
- * submitter therefore accepts the published reference-script UTxO and
+ * (fault-proof step validators always deploy as reference scripts and are
+ * referenced, never attached inline; each submitter therefore accepts the
+ * published reference-script UTxO and
  * verifies the carried script hashes to the step it is spending before
  * building anything).
  */

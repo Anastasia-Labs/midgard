@@ -105,7 +105,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     const decoded =
       decodeMidgardNativeTxFullFromCanonicalCbor(nativeCanonicalCbor);
     // §5.6: the mint field is the §5.1 envelope over one enveloped item per
-    // policy, not the retired raw `a1 …` map.
+    // policy, not a raw `a1 …` map.
     const expectedMintPreimage = encodeMidgardFieldPreimageForField({
       fieldIndex: 5,
       items: [

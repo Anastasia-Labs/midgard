@@ -43,6 +43,36 @@ Their Aiken/blueprint module identifiers include `da_attestation`,
   See the
   [committee contract boundary](/docs/watchers/da-committee-node#contract-boundary).
 
+### Availability-challenge arms
+
+One validator carrying every mint and spend arm does not fit a 16,384-byte
+signed transaction, so the arms are split. The dispatcher keeps the
+`AvailabilityChallengeSpend` and `AvailabilityChallengeMint` roles and runs
+`AdvanceTranche`, `ConsumeCarrier` and `Coordinate` inline: `AdvanceTranche`
+carries the large payload chunk, and a further withdrawal there would charge
+another script on every publication. Each mint arm runs in its own
+authenticated zero-withdrawal validator:
+
+| Mint arm | Role token                         | Manifest contract key                  |
+| -------- | ---------------------------------- | -------------------------------------- |
+| Open     | `AvailabilityChallengeOpenYield`   | `availabilityChallengeOpenWithdraw`    |
+| Settle   | `AvailabilityChallengeSettleYield` | `availabilityChallengeSettleWithdraw`  |
+| Close    | `AvailabilityChallengeCloseYield`  | `availabilityChallengeCloseWithdraw`   |
+| Timeout  | `AvailabilityChallengeExpiryYield` | `availabilityChallengeTimeoutWithdraw` |
+
+The dispatcher's parameters include `reference_script_auth_policy_id`, and
+each yield is applied with the availability policy id, the hub-oracle policy id
+and the availability parameters, so the dispatcher is built first. Each mint
+constructor carries `yield_to_ref_input_index` as its first field; the
+rewarding redeemer is fieldless. The dispatcher picks the role from its mint
+constructor and requires the exact role NFT, script reference and one zero
+withdrawal. Each yield opens the mint redeemer of its applied availability
+policy, requires its own constructor and runs that arm's whole predicate. A
+missing, wrong-role, duplicate or substituted yield is refused. `Coordinate`
+binds each declared spend to that mint redeemer, and carrier consumption is
+bound to `AdvanceTranche`. Readiness fails while a role publication or reward
+registration is missing.
+
 <Callout type="info" title="Blueprint note">
   These validators exist in the Aiken source and in the checked-in
   `onchain/aiken/plutus.json`. After a validator or parameter change, run `aiken

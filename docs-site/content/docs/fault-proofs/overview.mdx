@@ -38,10 +38,10 @@ module function, writing the result to stdout as JSON. Passing `--help` or `-h`
 prints the usage block and exits.
 
 The command inventory lives in the `usage` template (`src/bin.parsed-args.ts`)
-and the dispatch branches (`src/bin.main.ts`). Help includes retired names so they can fail with a
-specific explanation; it is not a list of executable authenticated workflows.
-For example, `submit-input-no-idx-fold` is retired, and several older file-based
-step/init routes fail through `legacy-submission-boundary.ts`.
+and the dispatch branches (`src/bin.main.ts`). Every submission route must be
+on the allow-list in `src/submission-route-admission.ts`; an unadmitted route
+or `submit-init` category fails before any provider or wallet access. Help is
+not a list of executable authenticated workflows.
 
 The main operational groups are:
 
@@ -103,9 +103,9 @@ Supported low-level submit/remove commands use the L1 wiring in `src/runtime.ts`
 
 ## Help inventory
 
-The commands in the help template are listed below. This inventory
-includes retired routes and category-dependent entry points; the boundary column
-describes routing, not deployment acceptance.
+The commands in the help template are listed below. This inventory includes
+category-dependent entry points; the boundary column describes routing, not
+deployment acceptance.
 
 | Command                                 | Routing boundary                                                              |
 | --------------------------------------- | ----------------------------------------------------------------------------- |
@@ -115,13 +115,7 @@ describes routing, not deployment acceptance.
 | `inspect-contracts`                     | Read-only deployment inspection.                                              |
 | `prepare-transition-trace`              | Pinned-header retained-DA preparation.                                        |
 | `submit-transition-trace-proof`         | Category-specific evidence or correction route; consult current schema.       |
-| `submit-init`                           | Rejected without an explicit supported category; see the retirement boundary. |
-| `submit-step-01`                        | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-02`                        | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-03`                        | Retired unauthenticated file route; rejects before submission.                |
-| `submit-step-04`                        | Retired unauthenticated file route; rejects before submission.                |
-| `submit-invalid-range-step-01`          | Retired unauthenticated file route; rejects before submission.                |
-| `submit-invalid-range-step-02`          | Retired unauthenticated file route; rejects before submission.                |
+| `submit-init`                           | Rejected without an explicit admitted category.                               |
 | `submit-fabricated-deposit-step-01`     | Category-specific evidence or correction route; consult current schema.       |
 | `submit-fabricated-deposit-step-02`     | Category-specific evidence or correction route; consult current schema.       |
 | `submit-fabricated-deposit-step-03`     | Category-specific evidence or correction route; consult current schema.       |
@@ -130,17 +124,10 @@ describes routing, not deployment acceptance.
 | `submit-fabricated-withdrawal-step-02`  | Category-specific evidence or correction route; consult current schema.       |
 | `submit-fabricated-withdrawal-step-03`  | Category-specific evidence or correction route; consult current schema.       |
 | `submit-fabricated-withdrawal-step-04`  | Category-specific evidence or correction route; consult current schema.       |
-| `submit-non-existent-input-step-01`     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-02`     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-03`     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-non-existent-input-step-04`     | Retired unauthenticated file route; rejects before submission.                |
-| `submit-zero-input-step-01`             | Retired unauthenticated file route; rejects before submission.                |
-| `submit-zero-input-step-02`             | Retired unauthenticated file route; rejects before submission.                |
 | `submit-da-hash-preimage-step-01`       | Category-specific evidence or correction route; consult current schema.       |
 | `submit-da-hash-preimage-step-02`       | Category-specific evidence or correction route; consult current schema.       |
 | `submit-input-no-idx-step-01`           | Category-specific evidence or correction route; consult current schema.       |
 | `submit-input-no-idx-step-02`           | Category-specific evidence or correction route; consult current schema.       |
-| `submit-input-no-idx-fold`              | Retired; step 02 has one route.                                               |
 | `submit-input-no-idx-step-03`           | Category-specific evidence or correction route; consult current schema.       |
 | `submit-input-no-idx-step-04`           | Category-specific evidence or correction route; consult current schema.       |
 | `submit-no-reference-input-step-01`     | Category-specific evidence or correction route; consult current schema.       |

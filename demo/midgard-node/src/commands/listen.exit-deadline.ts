@@ -53,7 +53,7 @@ export const armNodeExitDeadline: Effect.Effect<void> = Effect.flatMap(
 );
 
 /**
- * Whether a failure ends the node (owner ruling 2026-10-09): a transient
+ * Whether a failure ends the node: a transient
  * that outlived its bound (`TransientBudgetExhaustedError`, or a startup
  * step `exhausted`), or a startup step marked `terminal`. Any other failure
  * holds the node up, unready.

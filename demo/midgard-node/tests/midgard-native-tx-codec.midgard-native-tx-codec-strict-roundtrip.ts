@@ -77,9 +77,8 @@ const mkBody = (): MidgardNativeTxBodyCanonical => {
 const mkWitnessSet = (): MidgardNativeTxWitnessSetCanonical => {
   const addrTxWitsPreimageCbor = Buffer.from("81420102", "hex");
   // §5.1: fields 6 and 8 wrap each item in a definite byte string like the other
-  // seven. The retired counted scheme concatenated raw item CBOR here — an
-  // array-of-arrays for the scripts, a bare uint list for the redeemers — and
-  // both forms are now refused by the §5.1 gate, so the two fields are built
+  // seven. The §5.1 gate refuses raw item CBOR (an array-of-arrays for the
+  // scripts, a bare uint list for the redeemers), so the two fields are built
   // with the production encoders.
   const scriptTxWitsPreimageCbor = encodeMidgardVersionedScriptListPreimage([
     { language: "PlutusV3", scriptBytes: Buffer.from("deadbeef", "hex") },

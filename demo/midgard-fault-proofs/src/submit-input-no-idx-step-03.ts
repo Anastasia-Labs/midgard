@@ -1,17 +1,16 @@
 /**
- * **Re-derived onto the flat field commitments by #604.** This step forwards the
- * *producing* transaction's §2.5 anchor to step-04, where it used to forward that
- * transaction's `outputs_hash`; step-04 opens its field 2 through the §8.8 door.
- * See `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
- *
  * `input-no-idx` step-03 submitter.
+ *
+ * This step forwards the *producing* transaction's §2.5 anchor to step-04,
+ * which opens its field 2 through the §8.8 door. See
+ * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  *
  * Re-enters the block binding for the **producing** transaction of the input
  * step 02 forwarded. Nothing in the prepared file is trusted: the counted
  * `transactions_root` is re-derived from the on-chain header, the producing
  * transaction is re-decoded from its canonical compact CBOR, and its canonical
  * id must equal the `bad_input_tx_id` read back from the on-chain step-02
- * datum. Only that transaction's own committed `outputs_hash` is forwarded.
+ * datum. Only that transaction's id is forwarded.
  */
 import {
   commitCountedRootProgram,
@@ -104,9 +103,7 @@ export type InputNoIdxStep03Build = {
   readonly fourthStepAddress: string;
   /**
    * The §2.5 anchor this step forwards to step-04 — the *producing*
-   * transaction's id. Before #604 the thread carried that transaction's
-   * `outputs_hash` instead; step-04 now opens its field 2 through the §8.8 door,
-   * so what it needs forwarded is the anchor.
+   * transaction's id. Step-04 opens its field 2 through the §8.8 door from it.
    */
   readonly producingTxId: string;
   readonly badInputOutputIndex: number;

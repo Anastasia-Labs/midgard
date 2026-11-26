@@ -49,10 +49,9 @@
 ////     rather than inferring it from the stride, so one logical field has
 ////     exactly one admissible commitment.
 ////
-//// The retired counted bounded-collection scheme committed each field with a
-//// per-item Merkle construction. Under this module a field commitment is a
-//// plain `blake2b_256` over the field's enveloped preimage bytes (§4), so a
-//// watcher recomputes any commitment from raw canonical bytes alone.
+//// A field commitment is a plain `blake2b_256` over the field's enveloped
+//// preimage bytes (§4), so a watcher recomputes any commitment from raw
+//// canonical bytes alone.
 
 use aiken/builtin
 use aiken/collection/list
@@ -75,15 +74,12 @@ use midgard/fraud_proofs/native_tx/types.{
 
 /// The nine committed fields of §2.5. Field identity is positional.
 ///
-/// This is the tree's single definition. The retired counted modules
-/// (`bounded_collection_v1`, `bounded_item_v1`, `bounded_blob_v1`) each used
-/// to restate it; they import it from here instead, so §2.5's field count has
-/// one place to change and the retired surface cannot drift away from the
-/// live one while it waits to be deleted.
+/// This is the tree's single definition. The counted modules
+/// (`bounded_collection_v1`, `bounded_item_v1`, `bounded_blob_v1`) import it
+/// from here, so §2.5's field count has one place to change.
 pub const field_count: Int = 9
 
-/// §5.4. Retained from the counted era by owner ruling: tightening it would be
-/// a capability change outside the reversion's scope.
+/// §5.4.
 pub const max_transaction_aggregate_field_bytes: Int = 32768
 
 /// §5.4. Field 0's own bound equals the aggregate bound.
@@ -95,29 +91,23 @@ pub const maximum_cardano_spend_redeemer_count: Int = 296
 /// §5.1 caps the item-count header at the `99 NNNN` form.
 pub const max_field_item_count: Int = 65535
 
-/// §8.3 tier-2 bound and tier-3 chunk size, at the value erratum E1 re-pinned
-/// it to.
-///
-/// **E1 falsified the provisional 15,900 and this constant carries the repair.**
-/// The Phase-4 measurement it was declared provisional pending was taken and
-/// refuted 15,900: a real signed key-address publication of a 15,900-byte chunk
-/// measures 16,648 bytes against a 16,384-byte `maxTxSize`. Because the chunker
-/// cuts *at* `K`, that made every tier-3 plan's first chunk unpublishable at
-/// every preimage length, so the whole window `(15,148, 32,768]` had no
-/// admissible carriage anywhere and tier 3 did not function on L1.
+/// §8.3 tier-2 bound and tier-3 chunk size.
 ///
 /// 15,148 is the reserve-clearing publication frontier: a 15,148-byte chunk
 /// publishes as exactly 15,872 bytes, `maxTxSize` less the 512-byte reliability
-/// reserve. `K` is therefore now the largest chunk that can be published, which
-/// is what makes §8.4's split a partition whose every piece is carriable.
-/// `ceil(32,768 / 15,148) = 3`, so `max_tier3_chunk_count` below does not move.
+/// reserve. A real signed key-address publication of a 15,900-byte chunk
+/// measures 16,648 bytes against a 16,384-byte `maxTxSize`, and because the
+/// chunker cuts *at* `K`, a larger `K` makes every tier-3 plan's first chunk
+/// unpublishable. `K` is therefore the largest chunk that can be published,
+/// which is what makes §8.4's split a partition whose every piece is carriable.
+/// `ceil(32,768 / 15,148) = 3` gives `max_tier3_chunk_count` below.
 ///
-/// **`K` is the split, not merely a bound**, which is why this re-pin is not a
-/// one-line change: every chunk boundary in the system moves with it — the §8.10
-/// three-chunk corner, the #569 cross-language straddle vector, the #568
-/// chunk-count goldens, the §8.10 script budgets and the §11.4/§12.5 rows
-/// whose fixtures sit at `chunk_bytes_k`. Those all move in the same commit as
-/// this literal, and the spec's §8.3/§8.10/§12.5 rows with them.
+/// **`K` is the split, not merely a bound**: every chunk boundary in the system
+/// moves with it — the §8.10 three-chunk corner, the cross-language straddle
+/// vector, the chunk-count goldens, the §8.10 script budgets and the
+/// §11.4/§12.5 rows whose fixtures sit at `chunk_bytes_k`. Those all move in
+/// the same commit as this literal, and the spec's §8.3/§8.10/§12.5 rows with
+/// them.
 ///
 /// Declared once here; callers name this constant rather than repeating the
 /// literal. Its TypeScript twin is `MIDGARD_CHUNK_BYTES_K_V1` in
@@ -125,10 +115,9 @@ pub const max_field_item_count: Int = 65535
 /// equal to the cost model's derived frontier so neither half can drift.
 pub const chunk_bytes_k: Int = 15148
 
-/// §8.3 tier-1 bound. **PROVISIONAL** on the same footing as `chunk_bytes_k`:
-/// `maxTxSize` (16,384) minus a round 2,048-byte allowance for step machinery,
-/// an engineering choice that Phase 4 re-pins against the real step
-/// transaction.
+/// §8.3 tier-1 bound. **PROVISIONAL**: `maxTxSize` (16,384) minus a round
+/// 2,048-byte allowance for step machinery, an engineering choice still to be
+/// measured against the real step transaction.
 pub const max_tier1_redeemer_preimage_bytes: Int = 14336
 
 /// §8.3, derived: `ceil(max_transaction_aggregate_field_bytes / chunk_bytes_k)`.
@@ -1220,10 +1209,8 @@ pub fn walked_field_view(view: FieldViewV1) -> FieldViewV1 {
 /// hashed once against the positionally-extracted commitment, so the manifest
 /// authenticates nothing about content and a substituted chunk changes the
 /// concatenation and therefore the hash. (The *lazy* door reaches the same
-/// admissibility since #606 through the certificate's mint-welded
-/// `field_hash`, which `certified_chunks` checks against the derived
-/// commitment on every path — the former fields-6–8 refusal in
-/// `field_opening_v1` lifted with that weld.)
+/// admissibility through the certificate's mint-welded `field_hash`, which
+/// `certified_chunks` checks against the derived commitment on every path.)
 ///
 /// **A caller that goes on to read an item out of these bytes is using the
 /// wrong door.** Nothing here establishes an item count, an item boundary, or
@@ -1301,8 +1288,8 @@ pub fn expected_chunk_count(total_length: Int) -> Int {
 /// The consequence for anyone editing `certified_view`: those three guards are
 /// load-bearing for this function, not merely for the ones they appear to
 /// guard. Do not reorder them below this call or relax them without making this
-/// function total first. Consolidating the two into one shared form is a
-/// Phase-1-surface change tracked in the #565 lane.
+/// function total first. Consolidating the two into one shared form changes
+/// every validator that compiles this module.
 fn chunk_lengths_match(chunks: List<ByteArray>, total_length: Int) -> Bool {
   when chunks is {
     [] -> total_length == 0

@@ -30,7 +30,7 @@ Understanding what it does **not** do is as important as its API.
 
 - It does **not** build or submit Cardano (L1) transactions. Operator and watcher L1
   transactions belong to [`midgard-sdk`](/docs/sdk/midgard-sdk/overview).
-- No legacy transaction compatibility, and no alias behavior.
+- No compatibility with other transaction formats, and no alias behavior.
 - Build and import only canonical Midgard-native transactions; reject Cardano
   transaction, body, and witness bytes without conversion.
 - Validation defaults are not weakened to make demos easier.

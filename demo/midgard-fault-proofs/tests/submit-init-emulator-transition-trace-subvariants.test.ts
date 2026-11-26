@@ -14,7 +14,7 @@ import "./support/emulator/blueprints.js";
 import "./support/emulator/family-history.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
-import "./support/legacy-submit-emulator.js";
+import "./support/submit-steps.diagnostic.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./support/transition-trace-yields.js";

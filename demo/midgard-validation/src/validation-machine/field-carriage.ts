@@ -29,38 +29,21 @@ import {
  * no caller treats it as such. What it feeds is the machine's proof-step trace,
  * whose on-chain twin is `lib/midgard/validation-machine/`.
  *
- * **It survived the rebind, and the correction is worth stating.**
- * The docstrings here used to promise that this trace "retires with the
- * openings". That is true only of the per-item *collection* opening, which is
- * gone: `bounded_collection_v1.verify_item` no longer runs in the machine and
- * `verifyMachineFieldItemV1` retired with it. What did not go is the walk — the
- * machine still steps item-major then chunk-major, four phases still hand a
+ * The machine steps item-major then chunk-major, four phases hand a
  * partially-read item forward under a genuine `bounded_item_v1` root, and five
- * suites use these functions for step counting and size measurement. What changed
- * is the *provenance* of that root: it is derived from bytes the §8 door
- * authenticated against the flat §4 field commitment, rather than asserted by a
- * prover's `ItemProofV1`. So the structure stays and the claim it used to make
- * about the committed field is gone.
- *
- * What *did* change with the reversion is the input: the items come from §5.1's
- * one uniform enveloped byte-list decode, replacing the retired counted-era
- * three-way split (byte lists / raw item concatenation / the field-5 raw map).
- * Field-5 policy items are byte-identical either way — §5.6's
- * `82 ‖ 58 1C policy_id ‖ map(k) ‖ assets` is the same `[bytes, map]` pair the
- * counted map-entry split produced — so only the field-level envelope moved.
+ * suites use these functions for step counting and size measurement. That root
+ * is derived from bytes the §8 door authenticated against the flat §4 field
+ * commitment; it makes no claim about the committed field. The items come from
+ * §5.1's one uniform enveloped byte-list decode.
  *
  * Exported so the machine's own test helpers build this trace the same way the
- * machine does. It replaced `deriveMidgardNativeFieldCollectionV1`, which used to
- * live in `@al-ft/midgard-core` — the package every consumer depends on.
- *
- * **What moving it did and did not buy.** `src/index.ts` re-exports this module
- * wholesale, so the name is public API of `@al-ft/midgard-validation` and is
- * already imported across the package boundary:
- * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts`
- * takes `countedMachineTransactionChunkSteps` that way. So this is not
- * containment; what it buys is that the counted spelling now lives in the package
- * whose on-chain twin still asks for it, one import away from this note, instead
- * of in the dependency every producer already pulls in. The discipline it asks
+ * machine does. `src/index.ts` re-exports this module wholesale, so the name is
+ * public API of `@al-ft/midgard-validation`, imported across the package
+ * boundary by
+ * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.ts`,
+ * which takes `countedMachineTransactionChunkSteps`. The counted spelling
+ * lives in the package whose on-chain twin asks for it, not in
+ * `@al-ft/midgard-core`. The discipline it asks
  * for is by name: `counted…` marks a machine-trace structure, and nothing called
  * `counted…` may be compared against a §4 field commitment. Reach for
  * `midgardFieldCommitmentV1` / `verifyMidgardV1TxFieldPreimage` for that.
@@ -79,12 +62,9 @@ export const countedMachineFieldTrace = (
  * per-item collection opening, the chunk opening inside that item, and the §5.1
  * byte count the field has completed through this step.
  *
- * `fieldEncodedSize` is where the retired counted grammar showed most plainly.
- * It used to need a per-field rule — a CBOR header plus the item for the byte-list
- * fields, the item minus one byte for field 5's map pair, the raw item for the
- * concatenated fields 6 and 8. §5.1 gives all nine fields one envelope, so it is
- * now the header width plus the wrapper-and-payload width of each completed item,
- * with no field in it at all.
+ * `fieldEncodedSize` is the header width plus the wrapper-and-payload width of
+ * each completed item: §5.1 gives all nine fields one envelope, so no
+ * per-field rule enters it.
  */
 export type MachineFieldChunkStep = {
   readonly fieldIndex: number;
@@ -96,12 +76,6 @@ export type MachineFieldChunkStep = {
 /**
  * §5.1's `definite_bytes_header(L) ‖ payload` width, measured with the encoder
  * that defines it rather than re-spelled here.
- *
- * The re-spelling this replaces stopped at three header bytes, so it silently
- * under-counted by two for any item wide enough to need `5a` — and an
- * under-counted `fieldEncodedSize` is exactly what the terminating check below
- * exists to catch, which means the duplicate could only ever have turned a real
- * encoding into a spurious failure or, worse, agreed by accident.
  */
 const midgardWrappedItemBytes = (item: Uint8Array): number =>
   encodeMidgardDefiniteBytes(item).length;
@@ -183,8 +157,7 @@ export const countedMachineFieldChunkSteps = (
  * where there is no dispute transaction, no published carriage and no
  * reference-input set — and never will be. A producer that refused a preimage
  * above §8.3's tier-1 cap would fail the whole block build for a legal ~14.3 KB
- * output, which is strictly worse than the dispute-side gap refusing was meant to
- * name. Carrying the plan input keeps the producer a pure function of the L2
+ * output. Carrying the plan input keeps the producer a pure function of the L2
  * transaction, exactly as its callers require, while no carriage §8.4 does not
  * admit ever exists at any instant.
  */

@@ -352,10 +352,8 @@ describe("fault-proof ABI", () => {
     // The commitment is over the assembled preimage bytes and nothing else:
     // envelope-then-hash and hash-of-envelope are the same value, and no field
     // index enters either. §4 is plain hashing, so the field index is **not**
-    // load-bearing here — the retired counted scheme salted each item leaf with
-    // it, and this test used to assert the resulting inequality against field 0.
-    // What separates the fields now is positional (§4's positional-identity
-    // invariant): step-01 takes its expected hash from
+    // load-bearing here. What separates the fields is positional (§4's
+    // positional-identity invariant): step-01 takes its expected hash from
     // `witness_set.addr_tx_wits_hash` in the committed compact structure.
     expect(midgardFieldCommitmentFromItems(items)).toEqual(
       midgardFieldCommitment(encodeMidgardFieldPreimage(items)),
@@ -369,9 +367,8 @@ describe("fault-proof ABI", () => {
       redeemer_tx_wits_hash: "77".repeat(32),
     };
     // Mirrors `blake2b_256(encode_native_tx_witness_set_compact(...))` as the
-    // on-chain §8.8 field-access door computes it, in positional order. The
-    // standalone `verify_native_tx_witness_set` helper was deleted by #575; the
-    // check now lives inside `authenticated_field_view`.
+    // on-chain §8.8 field-access door computes it, in positional order, inside
+    // `authenticated_field_view`.
     expect(SDK.invalidSignatureWitnessSetCommitment(witnessSet)).toBe(
       computeHash32(
         encodeCbor([
@@ -391,10 +388,9 @@ describe("fault-proof ABI", () => {
       ),
     ).toEqual({ fraud_prover: h28, data: null });
 
-    // #575 collapsed step-01's arguments to the shared inclusion carriage, and
-    // #604 followed it off-chain. The witness-set *preimage*
-    // no longer travels here: step-02 opens field 7 through the §8.8 door and
-    // re-derives it from the prover's carriage. What step-01 still owes the
+    // Step-01's arguments are the shared inclusion carriage. The witness-set
+    // *preimage* does not travel here: step-02 opens field 7 through the §8.8
+    // door and derives it from the prover's carriage. What step-01 owes the
     // thread is the witness-set *hash*, and that goes into `step_02.State`
     // below, not into these arguments.
     expect(
@@ -423,28 +419,6 @@ describe("fault-proof ABI", () => {
         },
       ],
     });
-    // The retired two-field wrapper must not encode any more. Left as an
-    // explicit negative because emitting it produced a redeemer the validator
-    // decoded positionally into the wrong fields rather than refusing —
-    // `Spend[0] unexpected empty list`, which reads like a fixture defect.
-    expect(() =>
-      Data.to(
-        {
-          Continue: [
-            {
-              tx_inclusion_args: txInclusionArgs,
-              bad_tx_witness_set_compact: {
-                addr_tx_wits_hash: h32,
-                script_tx_wits_hash: h32b,
-                redeemer_tx_wits_hash: "77".repeat(32),
-              },
-            },
-          ],
-        } as never,
-        SDK.InvalidSignatureStep01SpendRedeemer,
-      ),
-    ).toThrow();
-
     const step02Datum = {
       fraud_prover: h28,
       data: {
@@ -468,8 +442,7 @@ describe("fault-proof ABI", () => {
       fraud_proof_mint_redeemer_index: 1n,
       // Field 7 is a witness-set field, so the opening is the `WitnessFieldOpening`
       // arm and carries the transaction's compact witness set. Tier 3 is
-      // admissible for this arm since #606's welded-hash repair, which is
-      // asserted below.
+      // admissible for this arm, which is asserted below.
       addr_tx_wits_opening: {
         WitnessFieldOpening: {
           native_tx_compact_cbor: "a1b2c3",
@@ -490,8 +463,8 @@ describe("fault-proof ABI", () => {
       ),
     ).toEqual({ Continue: [step02Args] });
 
-    // The witness-set family is where E2 limit 3 used to bite, so the lifted
-    // refusal is asserted at the family rather than only in the shared
+    // The witness-set family is where §8.3 witness-set authentication applies, so tier-3 admission
+    // is asserted at the family rather than only in the shared
     // module's tests: a tier-3 opening of field 7 is emitted, not thrown.
     expect(
       SDK.fieldOpeningForField({
@@ -602,11 +575,8 @@ describe("fault-proof ABI", () => {
       Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
     });
 
-    // #604: the thread carries the §2.5 anchor, and the step redeemer carries a
-    // `FieldOpeningV1` rather than a reproduced `inputs_preimage`. The retired
-    // `Direct`/`Folding` state, the `PublishedSpendInputsV1` publication datum
-    // and the four-arm `Complete`/`CompletePublished`/`FoldStart`/`FoldNext`
-    // redeemer are gone from the validator, so their round-trips are gone here.
+    // The thread carries the §2.5 anchor, and the step redeemer carries a
+    // `FieldOpeningV1` rather than a reproduced `inputs_preimage`.
     const step02Datum = {
       fraud_prover: h28,
       data: { verified_tx_id: h32 },
@@ -831,11 +801,10 @@ describe("fault-proof ABI", () => {
     });
 
     // §4 puts no field index in the hash input, so fields 0 and 1 — which share
-    // the §5.3 item encoder — commit identical content to the same value. The
-    // retired counted scheme separated them by salting each leaf with its field
-    // index, and this assertion used to pin that inequality. Substitution is
-    // prevented positionally instead: each step reads its expected hash out of the
-    // committed compact structure (`body.reference_inputs_hash` versus
+    // the §5.3 item encoder — commit identical content to the same value.
+    // Substitution is prevented positionally: each step reads its expected
+    // hash out of the committed compact structure
+    // (`body.reference_inputs_hash` versus
     // `body.spend_inputs_hash`), which is §4's positional-identity invariant.
     expect(
       SDK.referenceInputNoIdxReferenceInputsCommitment(referenceInputs),
@@ -845,15 +814,10 @@ describe("fault-proof ABI", () => {
     );
   });
 
-  it("pins the rebound input-no-idx step-02 wire ABI", () => {
-    // The regression this exists for is subtler than an arity change, and it is
-    // why the stale builders failed as `Spend[0] the validator crashed` rather
-    // than as a clean decode error: the retired four-arm enum's `Complete` arm
-    // sat at tag 0 with arity 4, and the rebound flat `Args` record is ALSO tag
-    // 0 with arity 4. Only field 2 moved — a `List<MidgardTxInput>` became a
-    // `FieldOpeningV1` constructor. A test that checked tag and arity alone
-    // would pass against a builder that is still completely wrong, so the
-    // assertions below pin the *shape of field 2*.
+  it("pins the input-no-idx step-02 wire ABI", () => {
+    // Tag and arity alone would pass a builder that puts a
+    // `List<MidgardTxInput>` where the opening goes, so the assertions below pin
+    // the *shape of field 2*: a `FieldOpeningV1` constructor.
     const opening = {
       BodyFieldOpening: {
         native_tx_compact_cbor: "a1b2c3",
@@ -884,10 +848,9 @@ describe("fault-proof ABI", () => {
     expect(typeof argsConstr.fields[1]).toBe("bigint");
     expect(typeof argsConstr.fields[3]).toBe("bigint");
 
-    // Field 2 is the whole of the #575 divergence. Under the retired scheme it
-    // was a *list* of inputs; it is now a `FieldOpeningV1` constructor whose own
-    // field 1 is a `FieldCarriageV1` constructor. Asserting `not an array` is
-    // what makes a re-stalened builder fail here instead of at a validator.
+    // Field 2 is a `FieldOpeningV1` constructor, not a *list* of inputs, and
+    // its own field 1 is a `FieldCarriageV1` constructor. Asserting `not an
+    // array` makes a stale builder fail here instead of at a validator.
     const openingConstr = argsConstr.fields[2];
     expect(Array.isArray(openingConstr)).toBe(false);
     expect(openingConstr).toBeInstanceOf(Constr);
@@ -908,14 +871,10 @@ describe("fault-proof ABI", () => {
     const fields = [...argsConstr.fields];
     const invalid = [
       [
-        "retired Complete arm: a reproduced input list where the opening goes",
+        "a reproduced input list where the opening goes",
         new Constr(1, [
           new Constr(0, [0n, 0n, [new Constr(0, [h32b, 7n])], 0n]),
         ]),
-      ],
-      [
-        "obsolete nested CompleteArgs wrapper",
-        new Constr(1, [new Constr(0, [new Constr(0, fields)])]),
       ],
       [
         "args under an adjacent tag the flat record does not have",

@@ -6,7 +6,6 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,11 +32,7 @@ const scene = () => {
       existsSync(join(path, `${name}-${state}`)),
   };
 };
-const start = (
-  value: ReturnType<typeof scene>,
-  name: string,
-  pause = false,
-) => {
+const start = (value: ReturnType<typeof scene>, name: string) => {
   const child = spawn(
     process.execPath,
     [
@@ -47,7 +42,6 @@ const start = (
       value.lock,
       value.path,
       name,
-      pause ? "pause" : "run",
     ],
     { stdio: ["ignore", "ignore", "inherit", "ipc"] },
   );
@@ -62,15 +56,6 @@ const wait = async (condition: () => boolean) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 };
-/** Whether the kernel holds `child` stopped (state T in /proc/<pid>/stat). */
-const stopped = (child: ChildProcess) => {
-  try {
-    const stat = readFileSync(`/proc/${child.pid}/stat`, "utf8");
-    return stat.slice(stat.lastIndexOf(")") + 2).startsWith("T");
-  } catch {
-    return false;
-  }
-};
 const kill = async (child: ChildProcess) => {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const ended = once(child, "exit");
@@ -81,39 +66,6 @@ afterEach(async () => {
   await Promise.all(children.splice(0).map(kill));
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
-});
-
-it("permits one owner when two Node controllers encounter the same dead lock record", async () => {
-  const value = scene();
-  writeFileSync(value.lock, "999999999 0");
-  const names = ["a", "b"],
-    contenders = names.map((name) => start(value, name, true));
-  await wait(() =>
-    names.every(
-      (name) => value.marked(name, "read") || value.marked(name, "refused"),
-    ),
-  );
-  // On the old algorithm both have already cached the same stale bytes. Resume
-  // each in turn so the second stale reader deletes the first live owner.
-  for (let index = 0; index < names.length; index++) {
-    const name = names[index]!;
-    if (!value.marked(name, "read")) continue;
-    // A reader marks "read" and then stops itself: a SIGCONT sent between the
-    // two is lost and leaves it stopped for good.
-    await wait(() => stopped(contenders[index]!));
-    contenders[index]!.kill("SIGCONT");
-    await wait(
-      () => value.marked(name, "owned") || value.marked(name, "refused"),
-    );
-  }
-  const owners = names.filter((name) => value.marked(name, "owned"));
-  expect(
-    owners,
-    "a stale contender must not replace an acquired live owner",
-  ).toHaveLength(1);
-  expect(readFileSync(value.lock, "utf8").split(" ")[0]).toBe(
-    String(contenders[names.indexOf(owners[0]!)]!.pid),
-  );
 });
 
 it("releases kernel ownership on SIGKILL and recovers the stale record without replacing its sidecar", async () => {

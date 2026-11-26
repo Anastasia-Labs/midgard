@@ -192,7 +192,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     const id = { transactionId: "ff".repeat(32), outputIndex: 999_999n };
     const nonceLookup = vi
       .spyOn(h.lucid, "utxosByOutRef")
-      .mockRejectedValue(new Error("Legacy nonce lookup is forbidden"));
+      .mockRejectedValue(new Error("A nonce lookup is forbidden"));
     try {
       const f = await fixture(
         h,

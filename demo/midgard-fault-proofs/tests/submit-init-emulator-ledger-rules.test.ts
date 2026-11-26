@@ -30,18 +30,6 @@ import {
   requireInputExistenceTerminalResult,
 } from "./support/input-existence-execution-context.js";
 import {
-  parseSubmitStep01TxInclusion,
-  submitInit,
-  submitInvalidRangeStep01,
-  submitInvalidRangeStep02V1,
-  submitNonExistentInputStep01,
-  submitNonExistentInputStep02,
-  submitNonExistentInputStep03,
-  submitNonExistentInputStep04,
-  submitZeroInputStep01,
-  submitZeroInputStep02V1,
-} from "./support/legacy-submit-emulator.js";
-import {
   buildInvalidRangeTransactionInclusionFixture,
   buildNonExistentInputFixture,
   buildTransactionInclusionFixture,
@@ -65,6 +53,18 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  parseSubmitStep01TxInclusion,
+  submitInit,
+  submitInvalidRangeStep01,
+  submitInvalidRangeStep02V1,
+  submitNonExistentInputStep01,
+  submitNonExistentInputStep02,
+  submitNonExistentInputStep03,
+  submitNonExistentInputStep04,
+  submitZeroInputStep01,
+  submitZeroInputStep02V1,
+} from "./support/submit-steps.diagnostic.js";
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a tail invalid-range block end to end", async () => {
@@ -506,7 +506,7 @@ describe("fault-proof emulator integration", () => {
     expect(step01Result.txHash).toHaveLength(64);
     expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
     expect(step01Result.nativeTxId).toBe(zeroInputInclusion.badTx.nativeTxId);
-    // #604: the thread carries the §2.5 anchor, not the field commitment.
+    // The thread carries the §2.5 anchor, not the field commitment.
     expect(step01Result.badTxId).toBe(zeroInputInclusion.badTx.nativeTxId);
     await expect(
       proverLucid.utxosAtWithUnit(
@@ -527,7 +527,7 @@ describe("fault-proof emulator integration", () => {
       },
     });
 
-    // #604 mutation negative: the step-02 opening is bound to the transaction
+    // Mutation negative: the step-02 opening is bound to the transaction
     // the thread anchored, and nothing else. A different transaction's compact
     // structure — a genuinely committed one, from a valid block — re-derives to
     // a different §2.5 id, so the door would refuse it and the builder refuses

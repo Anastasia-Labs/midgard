@@ -494,7 +494,7 @@ Configure `L1_SETTLEMENT_SEED_PHRASE` with a
 funded wallet distinct from the commitment, merge and reference-script wallets.
 Keep both fee funds and a separate ADA-only collateral UTxO in it. Treat it as
 node-owned: do not use it in another process or manually spend its inputs.
-The phase 4 devnet funds this role along with the other wallets. No additional
+The process devnet funds this role along with the other wallets. No additional
 service or periodic operator command is required.
 
 The worker builds one transaction at a time, uses a two-connection database pool,
@@ -927,7 +927,7 @@ pnpm stress:valid
 ```
 
 Set both `STRESS_CORPUS_PATH` and `STRESS_CORPUS_SLICE_ID` for comparable
-Class A evidence; if they are absent, the engine falls back to the legacy
+Class A evidence; if they are absent, the engine falls back to the
 transaction builder path.
 The benchmark env also requires no-op calibration by default: start
 `pnpm stress:noop` separately and set `STRESS_NOOP_ENDPOINT` to that echo
@@ -959,7 +959,7 @@ Notes:
 
 - Corpus mode reads canonical transaction bytes from NDJSON and submits a
   canonical proof-submission envelope to `/submit` with `Content-Type: application/vnd.midgard.v1+cbor`.
-- The legacy no-corpus mode still reads test wallets and `/utxos`; do not use
+- The no-corpus mode reads test wallets and `/utxos`; do not use
   that mode for repeatable acceptance or regression evidence.
 - It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
   `STRESS_MODE=open`, `STRESS_MODE=ramp`, and `STRESS_MODE=find-max`.
@@ -1032,8 +1032,7 @@ missing input and a double spend are well-formed txs that validation refuses.
   `--offset`.
 
 `pnpm bench:submit-main-thread` measures main-thread CPU per `/submit` request
-with the admission writer stubbed (M2 in
-`docs/exec-plans/public-submit-ingress-design.md`), and `pnpm
+with the admission writer stubbed, and `pnpm
 bench:submit-check` the submit check alone per tx shape.
 
 ## DA Payload Hardening and Rollout

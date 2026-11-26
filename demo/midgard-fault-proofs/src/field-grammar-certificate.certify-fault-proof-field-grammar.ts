@@ -372,7 +372,7 @@ export const buildFaultProofFieldGrammarBatch = async ({
  * advances it batch by batch until it is `Complete`, resuming our own
  * `InProgress` certificate for the field when one is live. A field grammar
  * certificate lets a step read one item of a variable-width field without
- * walking the whole field, so the step's cost no longer grows with the
+ * walking the whole field, so the step's cost does not grow with the
  * field's item count.
  *
  * It sends each certificate batch directly, outside any workflow's lease,

@@ -26,8 +26,7 @@
  *   * a witness-set field (§2.5 6–8) carries the transaction's own compact
  *     witness set, whose hash is the anchored `witness_set_hash`;
  *   * the §2.5 half pairs with the field (`field_pairs_with`, applied by the
- *     SDK's `fieldOpeningForField`; the former fields-6–8 tier-3 refusal
- *     lifted with #606's welded-hash repair).
+ *     SDK's `fieldOpeningForField`).
  *
  * **The tier is never a caller's argument.** §8.4 partitions on the preimage's
  * own length, and `planMidgardFieldCarriage` is the only thing here that

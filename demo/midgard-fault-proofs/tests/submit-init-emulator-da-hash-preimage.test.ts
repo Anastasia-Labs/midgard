@@ -168,7 +168,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await runEmulatorLifecycleStage("q44.init", () =>
+    const initResult = await runEmulatorLifecycleStage("init", () =>
       buildAndSubmit(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
@@ -204,7 +204,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
     // ## step-01: bind the committed leaf to the header
-    const step01Result = await runEmulatorLifecycleStage("q44.step-01", () =>
+    const step01Result = await runEmulatorLifecycleStage("step-01", () =>
       buildAndSubmit(buildDaHashPreimageStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
@@ -252,7 +252,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     );
 
     // ## step-02: adjudicate and mint the permanent fraud-proof token
-    const step02Result = await runEmulatorLifecycleStage("q44.step-02", () =>
+    const step02Result = await runEmulatorLifecycleStage("step-02", () =>
       buildAndSubmit(buildDaHashPreimageStep02, {
         lucid: proverLucid,
         blueprint: realBlueprint,
@@ -298,7 +298,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
 
     // ## removal: the proven block leaves the state queue, the token stays
     const removeNow = BigInt(emulator.now());
-    const removeResult = await runEmulatorLifecycleStage("q44.removal", () =>
+    const removeResult = await runEmulatorLifecycleStage("removal", () =>
       submitRemoveFraudulentBlock({
         lucid: proverLucid,
         blueprint: realBlueprint,

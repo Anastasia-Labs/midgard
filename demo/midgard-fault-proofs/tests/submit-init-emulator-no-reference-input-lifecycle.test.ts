@@ -392,8 +392,8 @@ describe("no-reference-input emulator lifecycle", () => {
     );
     expect(membershipRefusal).toMatch(/failed script execution/u);
 
-    // The retired fixture shape stays refused too: an empty proof is a
-    // witness only for an empty trie, never for this block's populated one.
+    // An empty proof is refused too: it is a witness only for an empty trie,
+    // never for this block's populated one.
     const emptyProofCbor = Data.to([], SDK.Proof);
     await expectOnchainRefusal(async () => forgeStep04(emptyProofCbor));
 

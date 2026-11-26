@@ -89,7 +89,7 @@ export type SubmitReferenceInputNoIdxStep02CliConfig = SubmitProviderConfig & {
   readonly referenceInputsPreimagePath: string;
   /**
    * JSON `{ "nativeTxCompactCbor": "<hex>" }` — the disputed transaction's
-   * compact structure. New in #604: the door authenticates field 1 against it.
+   * compact structure. The door authenticates field 1 against it.
    */
   readonly nativeTxCompactPath: string;
   readonly badReferenceInputIndex?: string | number;

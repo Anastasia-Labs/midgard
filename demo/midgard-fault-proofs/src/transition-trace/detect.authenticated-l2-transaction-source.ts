@@ -184,7 +184,7 @@ export const requireCanonicalFieldCommitment = ({
 }): void => {
   // §4: the field commits to a flat `blake2b_256` of its §5.1 preimage, so the
   // check is over the assembled bytes rather than a counted per-item root — and
-  // the field index is no longer an input, because §4 puts no field index in the
+  // the field index is not an input, because §4 puts no field index in the
   // hash. Which field this *is* comes from `expectedCommitment`: the caller reads
   // it out of the authenticated compact structure, which is what §4's
   // positional-identity invariant requires and the only thing separating fields

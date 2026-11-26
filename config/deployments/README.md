@@ -258,7 +258,7 @@ the retention poll runs every quarter timeout (150 seconds) and the L1 view
 deadline, `L1_VIEW_FATAL_MS`, is the timeout itself (ten minutes).
 
 `l1_finality.confirmation_depth` selects the L1 confirmation count. The two live
-testing profiles use 10 (owner ruling, 2026-10-01) and the emulator profiles
+testing profiles use 10 and the emulator profiles
 use 3; `mainnet` and `preprod-public` use 30. Raising the testing profiles to
 30 also requires longer response and maturity windows. The count is included in
 the profile digest and finalized manifest, and runtime services must match it.
@@ -267,7 +267,7 @@ Existing deployments keep their signed finality policy; a changed count applies
 to newly prepared manifests, not a reset of deployed state.
 
 Fault proofs are **accepted as non-functional** on the two live testing
-profiles (owner ruling, 2026-09-27), and neither profile provides production
+profiles, and neither profile provides production
 security. Fifteen-minute maturity is shorter than the consensus profile's
 `minValidationDisputeMaturityMs` (2 D_case + 1 = 21,560,001 ms, about six
 hours) and than the transition-trace proof path. An execution-dispute case

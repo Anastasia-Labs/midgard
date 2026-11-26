@@ -288,14 +288,14 @@ const setupChallengedBlockOnEmulator = async (
     transitionTraceRoot: counted.root,
     eventToStepRoot: counted.root,
   });
-  const legacy = Data.from(
+  const authenticDatum = Data.from(
     DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
     SDK.WithdrawalOrderDatum,
   );
   const authenticEvent = {
-    ...legacy.event,
+    ...authenticDatum.event,
     id: eventId,
-    info: fundedWithdrawalInfo(legacy.event.info),
+    info: fundedWithdrawalInfo(authenticDatum.event.info),
   };
   if (mode === "external")
     authenticEvent.info.body.l1_datum = {
@@ -316,8 +316,8 @@ const setupChallengedBlockOnEmulator = async (
         {
           WithdrawalPayload: {
             event: authenticEvent,
-            refund_address: legacy.refund_address,
-            refund_datum: legacy.refund_datum,
+            refund_address: authenticDatum.refund_address,
+            refund_datum: authenticDatum.refund_datum,
           },
         },
         admittedBefore ? { ...header, endTime: header.startTime } : header,
@@ -412,19 +412,21 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     expect(evidence.headerHash).toBe(block.headerHash);
 
     // ## 2. The proof plan the prover would submit.
-    const legacy = Data.from(
+    const authenticDatum = Data.from(
       DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
       SDK.WithdrawalOrderDatum,
     );
     expect(
-      await Effect.runPromise(SDK.withdrawalEventNonce(legacy.event.id)),
+      await Effect.runPromise(
+        SDK.withdrawalEventNonce(authenticDatum.event.id),
+      ),
     ).toBe(NONCE_AUTHENTIC_WITHDRAWAL_ID);
     const witness = await historyWitnessFixture(
       {
         WithdrawalPayload: {
-          event: legacy.event,
-          refund_address: legacy.refund_address,
-          refund_datum: legacy.refund_datum,
+          event: authenticDatum.event,
+          refund_address: authenticDatum.refund_address,
+          refund_datum: authenticDatum.refund_datum,
         },
       },
       AUTHENTIC_INCLUSION_TIME,

@@ -162,7 +162,7 @@ describe("canonical event and operator V1 ABI", () => {
       ],
       ["retired mint adjacent tag", "d87e80", RetiredOperatorMintRedeemer],
       [
-        "retired slash arbitrary legacy payload",
+        "retired slash arbitrary payload",
         "d87d9f01ff",
         RetiredOperatorMintRedeemer,
       ],

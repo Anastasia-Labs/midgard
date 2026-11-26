@@ -90,7 +90,7 @@ export type MidgardNodeDeployment = {
   readonly stateQueue: MidgardAuthenticatedDeployment;
   /**
    * The state-queue spend yields its five state transitions to withdrawal
-   * scripts, so the spend contract alone no longer describes the validator the
+   * scripts, so the spend contract alone does not describe the validator the
    * SDK builders need. Each name is a first-class deployment-manifest contract
    * and is parsed like any other.
    */

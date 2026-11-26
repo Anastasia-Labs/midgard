@@ -164,34 +164,14 @@ const withFieldsSwapped = (schema: unknown, left: number, right: number) => {
   return copy;
 };
 
-// The #640 format wave retired the five coarse rejection arms: the compact
-// wire scalar is two-valued (0/1) and the rejection reason moved to the forced
-// leaf's `OperatorVerdictV1`. Codes 2..5 are no longer decodable.
+// The compact wire scalar is two-valued (0/1) and the rejection reason is the
+// forced leaf's `OperatorVerdictV1`. Codes 2..5 do not decode.
 const VALIDITY_VECTORS = [
   ["TxIsValid", 0n, "d87980"],
   ["TxIsInvalid", 1n, "d87a80"],
 ] as const satisfies readonly [NativeMidgardTxValidity, bigint, string][];
 
 describe("SDK/Aiken canonical V1 schema parity", () => {
-  it("has no retired transaction-order validator, export, or parser", () => {
-    const retiredName =
-      /(?:TxOrder(?:Datum|Event|Payload)|ForcedInclusionTxV1)V(?:2|3)/u;
-    expect(Object.keys(SDK).filter((name) => retiredName.test(name))).toEqual(
-      [],
-    );
-
-    for (const relativePath of [
-      "onchain/aiken/lib/midgard/user-events/tx-order-v2.ak",
-      "onchain/aiken/lib/midgard/user-events/tx-order-v3.ak",
-      "onchain/aiken/validators/user-events/tx-order-v2.ak",
-      "onchain/aiken/validators/user-events/tx-order-v3.ak",
-    ]) {
-      expect(existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(
-        false,
-      );
-    }
-  });
-
   it.each(Object.entries(MIRRORS))(
     "refines %s to %s recursively, field titles included",
     (name, definition) => {

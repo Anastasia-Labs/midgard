@@ -14,7 +14,7 @@ This includes:
   confirmed-ledger state
 - Using any reset script that discards local node state
 
-For an authorized fresh deployment, discard the deprecated deployment's local
+For an authorized fresh deployment, discard the replaced deployment's local
 state. Do not create database dumps, state archives, or copies of its deployment
 files unless the user explicitly requests a backup. Preserve active credentials,
 shared Cardano/Kupo provider data, unrelated databases, and evidence from the

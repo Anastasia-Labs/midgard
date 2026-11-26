@@ -88,7 +88,7 @@ export const initializeArchitectureGOwner = <R = never>(
     const sql = yield* SqlClient.SqlClient;
     const initializedStores = yield* sql<{ root_hex: string | null }>`
       SELECT root_hex FROM mpf_engine_state
-      WHERE store_name = 'ledger' AND migration_version >= 1 AND root_hex IS NOT NULL`;
+      WHERE store_name = 'ledger' AND root_hex IS NOT NULL`;
     const alreadyInitialized = initializedStores.length === 1;
     const initializeLedger = ({ level, store }: NativeOwnerLedger) =>
       Effect.gen(function* () {

@@ -99,10 +99,10 @@ export const LANGUAGE_TAG_VECTORS = [
  * Item `i` therefore carries pattern `i mod 10`, which is what makes an
  * off-by-one read visible: item 377 and item 379 are different bytes from 378.
  *
- * K is 15,148 (§8.3 erratum E1's repaired value) and item 378's payload spans
+ * K is 15,148 (§8.3) and item 378's payload spans
  * [15,125, 15,163), so reading it stitches 23 bytes out of chunk 0 and 15 out of
  * chunk 1 — the straddle the §8.8 door has to survive, at the stride fields 0/1
- * actually use. The index is a function of K and moved with it; the assertion
+ * actually use. The index is a function of K and moves with it; the assertion
  * below is what refuses to emit a vector whose named item does not straddle.
  *
  * **Field 1 rather than field 0**, and the difference is §5.4, not taste: both
@@ -153,9 +153,7 @@ const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
 /**
  * The tier-boundary sweep has to sit *on* `K`, and `K` is a value this module
  * imports while the vector file cannot (see that file's header). Asserted here so
- * a re-pin of `K` — §8.3 erratum E1 moved it once already — cannot leave the
- * sweep pinned at the superseded boundary and go on reporting a partition it is
- * no longer sampling.
+ * a re-pin of `K` cannot leave the sweep pinned at a stale boundary, reporting a partition it does not sample.
  */
 export const assertCarriageBoundariesStraddleKV1 = () => {
   for (const required of [MIDGARD_CHUNK_BYTES_K, MIDGARD_CHUNK_BYTES_K + 1]) {

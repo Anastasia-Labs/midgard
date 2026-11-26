@@ -8,9 +8,8 @@ use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}
 /// is the body, so the compact structure's trailing `witness_set_hash` is
 /// outside it and a step-02 redeemer could supply any value there. Step-01 read
 /// the real one off the structure the block's counted `transactions_root`
-/// committed, so it is carried — the same 32 bytes the retired
-/// `bad_addr_tx_wits_hash` cost, covering all three witness-set fields rather
-/// than one.
+/// committed, so it is carried; its 32 bytes cover all three witness-set
+/// fields.
 pub type State {
   subject: VerdictSubjectV1,
   bad_tx_witness_set_hash: ByteArray,

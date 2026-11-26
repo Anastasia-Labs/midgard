@@ -304,7 +304,7 @@ export const expectArmMatchesBlueprint = ({
   ).toBe(`C${declaredDomain.index.toString()}()`);
 
   // The schema must also read back exactly what it wrote; this is a secondary
-  // check, not the compatibility oracle above.
+  // check, not the blueprint oracle above.
   expect(
     Data.to(
       Data.from(encoded.cbor, SDKFraudProof.TransitionFault),

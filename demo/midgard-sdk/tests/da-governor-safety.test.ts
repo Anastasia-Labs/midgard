@@ -47,9 +47,8 @@ const MAX_INDEXED_SIGNER_COUNT = aikenMaxIndexedSignerCount();
 // `da_params_governor_invariant_da_threshold_majority_floor` in
 // `onchain/aiken/validators/da-params-governor.ak`, so a drift between the
 // off-chain guard and the on-chain governor fails here rather than at a script
-// evaluation. The `[1, 1]` row is the amendment itself: under the retired
-// `max(2, ceil(2n/3))` clamp it read `[1, 2]`, a floor no one-member committee
-// could satisfy.
+// evaluation. The `[1, 1]` row pins a floor a one-member committee can
+// satisfy.
 const SHARED_FLOOR_VECTORS: ReadonlyArray<readonly [number, number]> = [
   [1, 1],
   [2, 2],
@@ -225,8 +224,8 @@ describe("below-floor and drain rejection classes", () => {
   });
 
   it("rejection 4 control — the empty-committee class is silent at every representable committee size", () => {
-    // The added class is diagnostic only: it must fire on zero and nowhere
-    // else, so no previously reported result changed. Swept over every
+    // The class is diagnostic only: it must fire on zero and nowhere
+    // else, so it changes no other class's result. Swept over every
     // representable committee size, at the floor, one above it, and at the
     // committee size itself.
     const firedAtNonzero: number[] = [];
@@ -271,7 +270,7 @@ describe("below-floor and drain rejection classes", () => {
   });
 });
 
-// The 2026-08-11 owner ruling allows a one-member DA committee: the floor at
+// A one-member DA committee is allowed: the floor at
 // one is one, so a single-key attest loop is a representable — warned-about,
 // not refused — deployment shape. This block is the only place that is
 // measured end-to-end off-chain.
@@ -325,12 +324,11 @@ describe("single-member-committee consequence", () => {
   });
 });
 
-// The owner-side counterpart of the block above, and the newer of the two
-// lifts. The 2026-08-13 in-session owner ruling recorded on #602 dropped the
-// governor's owner-set minimum to one, so a lone owner carrying
+// The owner-side counterpart of the block above. The governor's owner-set
+// minimum is one, so a lone owner carrying
 // `updateThreshold === 1` is representable and can rotate the committee and
-// both thresholds on its own signature. That is accepted behaviour by owner
-// decision, so it is pinned positively here rather than inferred from a missing
+// both thresholds on its own signature. That is accepted behaviour, so it is
+// pinned positively here rather than inferred from a missing
 // rejection; the Aiken twin goes further and runs the real `spend` handler
 // through an actual single-signature rotation.
 describe("single-owner governance consequence", () => {

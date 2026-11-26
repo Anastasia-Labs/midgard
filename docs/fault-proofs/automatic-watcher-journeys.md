@@ -90,7 +90,7 @@ Callers without the native receipt reader retain the existing live-output check.
 
 ## Shared configuration and verification
 
-The common Phase 4 generator applies the verified Preprod profile before genesis
+The process devnet generator applies the verified Preprod profile before genesis
 hashing. The snapshot records its query time and canonical source tip. Both the
 CLI protocol-parameter representation (used to render genesis) and Ogmios
 representation (used for an exact live comparison) are retained. Refresh the
@@ -122,7 +122,7 @@ afresh; never reuse a previous chain's database or deployment receipts.
 The watcher devnet pins Cardano node 11.1.3 by image digest. This is a
 prerelease used only by this isolated acceptance environment. Node 11.0.1
 silently retains the original Plutus V1/V3 cost models when `extraConfig`
-supplies replacements ([ledger issue 5896](https://github.com/IntersectMBO/cardano-ledger/issues/5896));
+supplies replacements;
 the [11.1.0 release](https://github.com/IntersectMBO/cardano-node/releases/tag/11.1.0)
 includes the fix.
 
@@ -181,7 +181,7 @@ wait and final deployment uniqueness verification remain distinct stages.
 ## Pooled DA bond journey
 
 The pooled DA bond journey drives the committee's one shared bond pool through
-the six steps of spec #685 on the process devnet. The step logic lives in
+the six steps below on the process devnet. The step logic lives in
 `devnet/watcher-journeys/da-bond-pool-journey.ts`. The live adapter is
 `da-bond-pool-live-port.ts` and the live test is
 `da-bond-pool-journey-live.test.ts`. The same driver also runs against the
@@ -301,8 +301,8 @@ is a smoke check and never journey evidence. A refused
 configuration comes after the challenger funding transaction may have landed.
 
 The node's database comes from the devnet Postgres settings that the
-generated `run.env` already holds (`MIDGARD_PHASE4_POSTGRES_*` and
-`MIDGARD_PHASE4_COMPOSE_PROJECT`); the adapter creates a fresh database there
+generated `run.env` already holds (`MIDGARD_ISOLATED_CHAIN_POSTGRES_*` and
+`MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT`); the adapter creates a fresh database there
 for the node.
 
 It also needs `demo/da-committee-node` and `demo/midgard-node` built, which
@@ -494,7 +494,7 @@ supervisor queue as well as the workflow runner; a queue job marked finished
 does not establish that its correction landed.
 
 A frozen standalone producer has the actual consensus forecast horizon derived
-from `3*k/f` (129,600 one-second slots for this profile). Phase 4 refuses a restore
-at or beyond that boundary before replacing durable state. This is distinct from
+from `3*k/f` (129,600 one-second slots for this profile). The process devnet
+refuses a restore at or beyond that boundary before replacing durable state. This is distinct from
 an ordinary follower outage on a continuing canonical chain. There is no
 72-hour snapshot-reuse guarantee.

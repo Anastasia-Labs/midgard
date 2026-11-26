@@ -31,10 +31,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import {
   canonicalDecodabilityStepLabel,
@@ -65,9 +62,6 @@ export type CanonicalDecodabilityStep02Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitCanonicalDecodabilityStep02Result =
-  OutsideWorkflowSubmission<CanonicalDecodabilityStep02Build>;
 
 type Step02SpendLayout = {
   readonly inputIndex: bigint;

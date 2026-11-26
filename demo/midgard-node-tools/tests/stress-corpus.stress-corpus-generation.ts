@@ -45,7 +45,7 @@ describe("stress corpus generation", () => {
         outDir,
         workers: "1",
         sliceWalletCounts: "1,1",
-        corpusSliceIdPrefix: "phase1",
+        corpusSliceIdPrefix: "slice",
         yes: true,
       },
       {},
@@ -95,16 +95,16 @@ describe("stress corpus generation", () => {
       }[];
     };
     expect(manifest.walletSetIdentity).toEqual(result.walletSetIdentity);
-    expect(manifest.corpusSliceIds).toEqual(["phase1-1", "phase1-2"]);
+    expect(manifest.corpusSliceIds).toEqual(["slice-1", "slice-2"]);
     expect(manifest.sliceSummary).toEqual([
-      { corpusSliceId: "phase1-1", walletCount: 1, rowCount: 2 },
-      { corpusSliceId: "phase1-2", walletCount: 1, rowCount: 2 },
+      { corpusSliceId: "slice-1", walletCount: 1, rowCount: 2 },
+      { corpusSliceId: "slice-2", walletCount: 1, rowCount: 2 },
     ]);
     expect(parseStressCorpusManifest(manifest).schemaVersion).toBe(
       "midgard-stress-corpus-manifest-v1",
     );
     expect(() =>
-      parseStressCorpusManifest({ ...manifest, schemaVersion: "legacy-v2" }),
+      parseStressCorpusManifest({ ...manifest, schemaVersion: "unknown-v2" }),
     ).toThrow("Unsupported stress corpus manifest schemaVersion");
     const { files: _files, ...manifestWithoutFiles } = manifest;
     expect(() => parseStressCorpusManifest(manifestWithoutFiles)).toThrow(

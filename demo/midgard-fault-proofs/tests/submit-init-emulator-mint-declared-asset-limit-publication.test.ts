@@ -22,10 +22,8 @@ const missingTitles = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.filter(
 
 describe("mintDeclaredAssetLimit signed publication fit", () => {
   /**
-   * Discovery gate. This file used to hang off `describe.runIf`, so a
-   * blueprint that no longer carried the family reported a clean pass instead
-   * of an unpublishable deployment. The family's presence is now a required
-   * result of its own.
+   * Discovery gate. The family's presence is a required result of its own,
+   * so a blueprint without the family fails instead of passing clean.
    */
   it("finds every declared mintDeclaredAssetLimit validator in the deployed blueprint", () => {
     expect(missingTitles).toEqual([]);

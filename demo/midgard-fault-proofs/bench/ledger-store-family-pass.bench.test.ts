@@ -50,10 +50,10 @@ import {
 } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { WorkflowJsonObject } from "../src/workflow/identity.js";
 import { testLedgerEntries } from "../tests/support/ledger-store-conformance.js";
-import { sampled } from "../tests/support/ledger-store-exit-bench.js";
 import { withdrawalMistagRetainedFixture } from "../tests/support/withdrawal-mistag-retained.js";
 import { eventLedgerBlock } from "./event-ledger-block.js";
 import { installedFamiliesWithoutTransitionTrace } from "./installed-families.js";
+import { sampled } from "./sampled.js";
 
 const positive = (name: string, raw: string): number => {
   const parsed = Number(raw);

@@ -38,7 +38,7 @@ export type FabricatedWithdrawalStepContract = {
  * The already-resolved contracts a `fabricated-withdrawal` submission needs.
  *
  * Passed in explicitly after canonical deployment resolution. This keeps the
- * #609 arity guard in `applyBlueprintParams` the single place where scripts are
+ * arity guard in `applyBlueprintParams` the single place where scripts are
  * parameterized.
  */
 export type FabricatedWithdrawalContracts = {

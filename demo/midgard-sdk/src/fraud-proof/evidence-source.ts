@@ -377,7 +377,7 @@ export type TransactionsInclusionRootAuthentication = {
 
 /**
  * Fail-closed gate for the one normative source-leaf convention. Compact-only
- * leaves are not a compatibility route and cannot satisfy this API.
+ * leaves cannot satisfy this API.
  */
 export const assertTransactionSourceInclusionRootAuthenticated = (
   authentication: TransactionsInclusionRootAuthentication,

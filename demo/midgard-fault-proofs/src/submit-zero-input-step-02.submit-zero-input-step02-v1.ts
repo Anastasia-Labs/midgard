@@ -10,20 +10,13 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  parseNativeTxCompactCbor,
-  planFaultProofFieldOpening,
-} from "./field-opening.plan-fault-proof-field-opening.js";
+import { planFaultProofFieldOpening } from "./field-opening.plan-fault-proof-field-opening.js";
 import { faultProofFieldOpening } from "./field-opening.publish-fault-proof-field-carriage.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   fetchUtxoByOutRef,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  readJsonFile,
   type ResolvedProverSigner,
-  resolveProverSigner,
   resolveZeroInputDeploymentContracts,
 } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
@@ -31,14 +24,11 @@ import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./step-support.js";
-import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
   makeZeroInputStep02SpendRedeemer,
   requireStep02Datum,
-  type SubmitZeroInputStep02CliConfig,
-  type SubmitZeroInputStep02Result,
   type ZeroInputStep02Build,
   type ZeroInputStep02ResolvedLayout,
   type ZeroInputStep02SpendLayout,
@@ -287,39 +277,4 @@ export const buildZeroInputStep02V1 = async ({
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
   };
-};
-
-export const submitZeroInputStep02FromFiles = async (
-  config: SubmitZeroInputStep02CliConfig,
-): Promise<SubmitZeroInputStep02Result> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: "submit-zero-input-step-02",
-  });
-  const [blueprint, deploymentInfo, nativeTxCompactJson, lucid] =
-    await Promise.all([
-      readJsonFile(config.blueprintPath),
-      readJsonFile(config.deploymentInfoPath),
-      readJsonFile(config.nativeTxCompactPath),
-      makeLucidForSubmit(config),
-    ]);
-  const signer = resolveProverSigner(config);
-  return await submitFaultProofTurns(
-    buildZeroInputStep02V1,
-    {
-      lucid,
-      blueprint,
-      deploymentInfo,
-      network: config.network,
-      signer,
-      threadOutRef: config.threadOutRef,
-      nativeTxCompactCbor: parseNativeTxCompactCbor(
-        nativeTxCompactJson,
-        "--native-tx-compact",
-      ),
-    },
-    {
-      label: "zero-input-step02-v1",
-      awaitConfirmation: config.awaitConfirmation ?? true,
-    },
-  );
 };

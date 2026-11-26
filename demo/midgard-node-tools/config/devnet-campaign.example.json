@@ -32,7 +32,7 @@
     },
     {
       "id": "journeys-l1-up",
-      "kind": "phase4",
+      "kind": "isolated-chain",
       "action": "up",
       "runDir": "/absolute/devnets/watcher-journeys",
       "timeoutSeconds": 900
@@ -60,7 +60,7 @@
     },
     {
       "id": "journeys-l1-down",
-      "kind": "phase4",
+      "kind": "isolated-chain",
       "action": "down",
       "runDir": "/absolute/devnets/watcher-journeys",
       "timeoutSeconds": 600,

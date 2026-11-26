@@ -20,18 +20,14 @@ import {
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@/native-tx-field-access.js";
 
 /**
- * §8.6 certificate selection under #606's **constant** asset name (owner
- * ruling, 2026-08-16).
+ * §8.6 certificate selection under the **constant** asset name.
  *
- * Before #606 the token name was `blake2b_256(field_index ‖ tx_id)`, so a
- * token-only lookup *was* a selection: one name, one certificate, no ambiguity.
- * The ruling retired that derivation — every certificate of the policy now
- * wears the same constant name and identity lives in the mint-verified datum,
- * which is why it records that "consumers disambiguate by datum, never by token
- * alone".
+ * Every certificate of the policy wears the same constant name and identity
+ * lives in the mint-verified datum: consumers disambiguate by datum, never by
+ * token alone.
  *
- * {@link resolveCertificateReferenceIndex} is the single off-chain function
- * that ruling changed, and every other certificate fixture in this repo puts
+ * {@link resolveCertificateReferenceIndex} is the off-chain function that
+ * selects, and every other certificate fixture in this repo puts
  * exactly **one** certificate UTxO in the reference-input set — where a
  * token-only resolver and a datum-filtering one are indistinguishable. These
  * rows are the ones that can tell them apart: each puts two same-name
@@ -128,7 +124,7 @@ const certificateUtxoFor = (
   outputIndex = 0,
 ): UTxO => {
   const certification = deriveFieldPreimageCertification(plan);
-  // #606: the name is branding. Every certificate below is the *same* unit, so
+  // The name is branding. Every certificate below is the *same* unit, so
   // nothing in these rows can be selected by token.
   expect(certification.assetNameHex).toBe(
     FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,

@@ -29,7 +29,7 @@ type PersistedDeployment = Omit<
 /**
  * L1 depth the journey watcher requires before a block is finalized. Finality
  * anchors evidence: the finalized audit anchor of a completed workflow, its
- * incident records and its evidence stamp. It no longer gates the actions the
+ * incident records and its evidence stamp. It does not gate the actions the
  * journey drives. It is the compiled deployment profile's release depth (10
  * for local-devnet-testing), which the watcher process config must match.
  */
@@ -87,7 +87,7 @@ export const loadJourneyContext = async (runDirectory: string) => {
         return [line.slice(0, separator), line.slice(separator + 1)];
       }),
   );
-  if (runEnv.MIDGARD_PHASE4_RUN_DIR !== runDirectory)
+  if (runEnv.MIDGARD_ISOLATED_CHAIN_RUN_DIR !== runDirectory)
     throw new Error("Run environment changed its directory");
   const genesisBytes = await readFile(
     join(runDirectory, "genesis/shelley-genesis.json"),
@@ -103,8 +103,8 @@ export const loadJourneyContext = async (runDirectory: string) => {
       slotLength: genesis.slotLength * 1000,
     },
   };
-  const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_KUPO_PORT}`;
-  const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_PHASE4_OGMIOS_PORT}`;
+  const kupoUrl = `http://127.0.0.1:${runEnv.MIDGARD_ISOLATED_CHAIN_KUPO_PORT}`;
+  const ogmiosUrl = `http://127.0.0.1:${runEnv.MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT}`;
   const provider = new JourneyLocalKupmios(
     kupoUrl,
     ogmiosUrl,

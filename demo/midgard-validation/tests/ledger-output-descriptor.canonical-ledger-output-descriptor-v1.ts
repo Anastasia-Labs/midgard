@@ -62,9 +62,9 @@ describe("canonical ledger output descriptor V1", () => {
     const rejected = {
       // Indefinite-length array.
       indefinite: `9f5820${txIdHex}07ff`,
-      // CML's minimal one-byte index — the spelling every producer emitted
-      // before #586, and the one on-chain `decode_midgard_tx_input_cbor` rejects
-      // when it asserts the `0x19` head. 36 bytes.
+      // CML's minimal one-byte index, which on-chain
+      // `decode_midgard_tx_input_cbor` rejects when it asserts the `0x19`
+      // head. 36 bytes.
       minimalIndex: `825820${txIdHex}07`,
       // The two-byte minimal form for 24..255.
       shortIndex: `825820${txIdHex}1818`,

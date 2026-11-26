@@ -31,7 +31,7 @@ type RetainedCorpus = {
 const retainedCorpus = JSON.parse(
   readFileSync(
     new URL(
-      "../../midgard-fault-proofs/tests/fixtures/cardano-capability-p2-boundary-corpus-v1.json",
+      "../../midgard-fault-proofs/tests/fixtures/retained-da-boundary-corpus-v1.json",
       import.meta.url,
     ),
     "utf8",

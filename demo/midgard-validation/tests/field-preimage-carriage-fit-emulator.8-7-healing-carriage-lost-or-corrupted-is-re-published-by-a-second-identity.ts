@@ -49,9 +49,6 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
   // class of false green a content-addressed resolver invites, and a shared
   // `beforeAll` walks into it.
   beforeEach(async () => {
-    // Inflated for the same reason as the ladder block, and for no other: a
-    // tier-3 corner cannot be published at the currently-pinned `K` (§8.3 E1).
-    // The tier-2 heal at the end of this file runs at the real limit.
     harness = await setupEmulator();
   });
 
@@ -95,22 +92,20 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
   const itemIndexInsideChunk = (chunkIndex: number): number =>
     Math.floor((MIDGARD_CHUNK_BYTES_K * chunkIndex + 200) / STRIDE);
 
-  // §8.7 names two ways carriage stops being usable, and #565 claims healing
-  // for both. They are different failures — one removes the UTxO, the other
+  // §8.7 names two ways carriage stops being usable, and claims healing for
+  // both. They are different failures — one removes the UTxO, the other
   // leaves a UTxO carrying the wrong bytes — so they are exercised separately.
   //
   // The full-`K` chunk 0 is deliberately first. It is the largest publication
-  // the ladder produces and the one that sits exactly on erratum E1's reliable
-  // frontier; healing only the 2,467-byte ragged tail, as an earlier revision of
-  // this file did, exercised the one chunk whose publication was never in
-  // question.
+  // the ladder produces and the one that sits exactly on the §8.3 reliable
+  // frontier; healing only the 2,467-byte ragged tail would exercise the one
+  // chunk whose publication is never in question.
   for (const chunkIndex of [0, 2]) {
     it(`survives a yank of chunk ${chunkIndex.toString()}: the original certificate still describes healed bytes`, async () => {
       const { preimage, plan, published } = await publishCorner();
       const readIndex = itemIndexInsideChunk(chunkIndex);
       const chunkBytes = plan.publications[chunkIndex]?.bytes.length;
-      // The corner's ragged tail: 32,763 − 2·15,148 = 2,467 bytes at E1's
-      // repaired `K`. It was 963 at the superseded 15,900.
+      // The corner's ragged tail: 32,763 − 2·15,148 = 2,467 bytes.
       expect(chunkBytes).toBe(chunkIndex === 2 ? 2_467 : MIDGARD_CHUNK_BYTES_K);
 
       const beforeYank = readItemThroughTheDoor({
@@ -244,8 +239,8 @@ describe("§8.7 healing — carriage lost or corrupted is re-published by a seco
   }
 
   it("survives a malicious publication: wrong bytes on the ledger are ignored, not consumed", async () => {
-    // #565's other healing claim, and the one no test reached: the attack is
-    // not always removal. A hostile party can publish *wrong* bytes for a chunk
+    // §8.7's other healing claim: the attack is not always removal. A
+    // hostile party can publish *wrong* bytes for a chunk
     // and leave them sitting on the ledger next to the right ones. §8.7 says
     // content addressing makes that a non-event; this is that claim, exercised.
     const { preimage, plan, published } = await publishCorner();

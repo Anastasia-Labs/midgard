@@ -201,7 +201,7 @@ pub fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
 //
 // The six selectors above authenticate the ValueAndMint scan machinery. These
 // four close the row's remaining semantics: the canonical parameterized
-// minimum-fee formula and the minimum-Ada floor, both instantiated at the C70
+// minimum-fee formula and the minimum-Ada floor, both instantiated at the
 // target snapshot with adjacent accept/reject; the exact signed multi-asset
 // plus Ada conservation equation, pinned on the same numeric vector the
 // TypeScript twin uses; and mint/burn authorization against the authenticated
@@ -304,10 +304,10 @@ pub fn target_snapshot_min_fee_step_is_provable(
 }
 
 // ---------------------------------------------------------------------------
-// #618 -- the Aiken half of the min-Ada twin cross-check.
+// The Aiken half of the min-Ada twin cross-check.
 //
 // `parameterized_min_ada_boundary_matches_target_snapshot` above exercises one
-// rate (the C70 snapshot's 4,310) and one output shape, and its slope and
+// rate (the target snapshot's 4,310) and one output shape, and its slope and
 // comparison legs are stated relative to the formula under test. It does catch
 // a moved intercept, slope or comparison, but it cannot see the rate being
 // ignored altogether (a hard-coded `4_310 *` passes it), and it binds nothing

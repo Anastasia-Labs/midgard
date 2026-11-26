@@ -686,10 +686,9 @@ pub fn empty_witness_set_compact() -> native_types.NativeTxWitnessSetCompact {
 //
 // Every `validators/fraud-proofs/**` selector needs the same two things: a
 // §8 certificate policy to parameterise its validator with, and a tier-1
-// carriage of one field's preimage. They lived as a per-file constant and a
-// per-file `inline_*_opening` before #575's review; one copy each is enough,
-// and a single copy is the only way a change to the §8 opening shape reaches
-// every selector at once.
+// carriage of one field's preimage. One copy each is enough, and a single copy
+// is the only way a change to the §8 opening shape reaches every selector at
+// once.
 
 /// The §8 field-preimage certificate policy the selectors parameterise their
 /// validators with.
@@ -745,7 +744,7 @@ pub fn inline_witness_opening(
 // selector parameterises its validator with, carrying the constant §8.6 asset
 // name over a datum naming the committed transaction's `(tx_id, field_index)`.
 // Whether the *field* it certifies is the one that transaction committed is
-// the door's question since #606: the datum's `field_hash` must equal the
+// the door's question: the datum's `field_hash` must equal the
 // commitment the door derives from the anchored structures, so a certificate
 // over bytes the transaction never committed is refused at the door.
 
@@ -922,8 +921,7 @@ pub fn native_inclusion_args_v1(
 }
 
 /// The prover-side inclusion carriage matching `continue_step_l1_tx_v1`: the
-/// proof rides in this transaction's redeemers, which is the route every
-/// pre-#545 selector exercises.
+/// proof rides in this transaction's redeemers.
 pub fn native_inclusion_carriage_v1(
   fixture: NativeBlockFixtureV1,
 ) -> NativeTxInclusionCarriage {

@@ -24,15 +24,19 @@ export const ensureChainGenerated = async (layout: Layout): Promise<RunEnv> => {
       console.log(`moved an incomplete generation aside to ${aside}`);
     }
     requireSuccess(
-      await execLogged("sh", [join(layout.phase4Scripts, "generate.sh")], {
-        env: {
-          MIDGARD_PHASE4_RUN_DIR: layout.runDir,
-          MIDGARD_PHASE4_RUN_ID: basename(layout.runDir),
+      await execLogged(
+        "sh",
+        [join(layout.isolatedChainScripts, "generate.sh")],
+        {
+          env: {
+            MIDGARD_ISOLATED_CHAIN_RUN_DIR: layout.runDir,
+            MIDGARD_ISOLATED_CHAIN_RUN_ID: basename(layout.runDir),
+          },
+          logDir: join(layout.runDir, "..", `.${basename(layout.runDir)}-logs`),
+          label: "generate",
+          timeoutMs: 600_000,
         },
-        logDir: join(layout.runDir, "..", `.${basename(layout.runDir)}-logs`),
-        label: "generate",
-        timeoutMs: 600_000,
-      }),
+      ),
       "devnet chain generation",
     );
   }
@@ -59,7 +63,7 @@ export const L1_SERVICES = [
 ] as const;
 
 /**
- * The phase4 compose file runs the L1 containers with `restart: "no"` for its
+ * The process devnet compose file runs the L1 containers with `restart: "no"` for its
  * crash matrix. The long-running stack needs them supervised, and the node
  * socket must stay reachable by host processes after every restart, which a
  * one-off chmod does not survive: the node re-creates the socket with the
@@ -112,7 +116,10 @@ export const compose = (
       ...args,
     ],
     {
-      env: { MIDGARD_PHASE4_RUN_DIR: layout.runDir, ...composeVariables(run) },
+      env: {
+        MIDGARD_ISOLATED_CHAIN_RUN_DIR: layout.runDir,
+        ...composeVariables(run),
+      },
       logDir: layout.stepLogs,
       label,
       timeoutMs: 600_000,
@@ -121,13 +128,13 @@ export const compose = (
   );
 
 const composeVariables = (run: RunEnv) => ({
-  MIDGARD_PHASE4_COMPOSE_PROJECT: run.composeProject,
-  MIDGARD_PHASE4_OGMIOS_PORT: String(run.ogmiosPort),
-  MIDGARD_PHASE4_KUPO_PORT: String(run.kupoPort),
-  MIDGARD_PHASE4_POSTGRES_PORT: String(run.postgresPort),
-  MIDGARD_PHASE4_POSTGRES_USER: run.postgresUser,
-  MIDGARD_PHASE4_POSTGRES_PASSWORD: run.postgresPassword,
-  MIDGARD_PHASE4_POSTGRES_DATABASE: run.postgresDatabase,
+  MIDGARD_ISOLATED_CHAIN_COMPOSE_PROJECT: run.composeProject,
+  MIDGARD_ISOLATED_CHAIN_OGMIOS_PORT: String(run.ogmiosPort),
+  MIDGARD_ISOLATED_CHAIN_KUPO_PORT: String(run.kupoPort),
+  MIDGARD_ISOLATED_CHAIN_POSTGRES_PORT: String(run.postgresPort),
+  MIDGARD_ISOLATED_CHAIN_POSTGRES_USER: run.postgresUser,
+  MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD: run.postgresPassword,
+  MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE: run.postgresDatabase,
 });
 
 export const startL1 = async (layout: Layout, run: RunEnv): Promise<void> => {

@@ -41,7 +41,7 @@ import {
   SIZED_ENTRIES_FROM,
   testLedgerEntries,
 } from "../tests/support/ledger-store-conformance.js";
-import { sampled } from "../tests/support/ledger-store-exit-bench.js";
+import { sampled } from "./sampled.js";
 
 /** The node listener's inline response bound. */
 const PAGE_BYTES = 2 ** 20;

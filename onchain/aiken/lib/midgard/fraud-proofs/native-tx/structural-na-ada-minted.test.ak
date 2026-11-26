@@ -64,7 +64,7 @@ const real_mint_preimage_cbor: ByteArray =
 
 /// The same violating entry as a field-5 *preimage* under the spec section 5.6
 /// enveloped grammar: `81` array(1) `45` bytes(5) `82` `40` policy(0) `a1`
-/// map(1) `40` name(0) `05`. The retired raw-map preimage form is prohibited.
+/// map(1) `40` name(0) `05`. A raw-map preimage form is prohibited.
 const ada_mint_field_preimage_cbor: ByteArray = #"81458240a14005"
 
 /// The positive control as a field-5 preimage: `81` array(1) `5823` bytes(35)
@@ -97,8 +97,8 @@ test ada_policy_mint_preimage_bytes_rejected_by_canonical_verifier() fail {
   )
 }
 
-/// The retired raw-map preimage form is not a field-5 preimage at all now.
-test retired_raw_map_mint_preimage_is_refused() fail {
+/// A raw-map preimage form is not a field-5 preimage at all.
+test raw_map_mint_preimage_is_refused() fail {
   verify_canonical_mint_preimage_cbor(
     real_mint_preimage_cbor,
     native_tx_field_access_v1.field_commitment(real_mint_preimage_cbor),

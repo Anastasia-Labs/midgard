@@ -14,8 +14,8 @@ const TOOLS = "demo/midgard-node-tools";
 const JOURNEYS_CONFIG = "vitest.watcher-journeys.config.ts";
 // Node timers fire at once beyond 2^31-1 ms.
 const MAX_TIMEOUT_SECONDS = 2_147_483;
-const PHASE4_ACTIONS = ["up", "down"];
-// A watcher-journeys run directory as its generator leaves it: the phase4
+const ISOLATED_CHAIN_ACTIONS = ["up", "down"];
+// A watcher-journeys run directory as its generator leaves it: the isolated-chain
 // run environment, and the node config with host genesis paths plus the
 // compose overlay that only the watcher-journeys wrapper writes.
 const JOURNEY_RUN_FILES = [
@@ -58,20 +58,20 @@ const TOP_FIELDS = [
 ];
 const STAGE_FIELDS = {
   "devnet-stack": { required: ["args"], optional: ["always"] },
-  phase4: { required: ["action", "runDir"], optional: ["always"] },
+  "isolated-chain": { required: ["action", "runDir"], optional: ["always"] },
   "watcher-journeys": { required: ["runDir", "files"], optional: ["env"] },
 };
 const COMMON_STAGE_FIELDS = ["id", "kind", "timeoutSeconds"];
 
-/** Whether a stage starts services: phase4 up, or devnet-stack up. */
+/** Whether a stage starts services: isolated-chain up, or devnet-stack up. */
 export const startsServices = (stage) =>
-  stage.kind === "phase4"
+  stage.kind === "isolated-chain"
     ? stage.action === "up"
     : stage.kind === "devnet-stack" && stage.args?.[0] === "up";
 
 /** Whether a stage stops services (keeping their state): a teardown. */
 export const stopsServices = (stage) =>
-  stage.kind === "phase4"
+  stage.kind === "isolated-chain"
     ? stage.action === "down"
     : stage.kind === "devnet-stack" && stage.args?.[0] === "down";
 
@@ -125,10 +125,10 @@ const validateStage = (stage, where, problems) => {
     )
       problems.push(`${where}.args must be a nonempty array of strings`);
   }
-  if (stage.kind === "phase4") {
-    if (stage.action !== undefined && !PHASE4_ACTIONS.includes(stage.action))
+  if (stage.kind === "isolated-chain") {
+    if (stage.action !== undefined && !ISOLATED_CHAIN_ACTIONS.includes(stage.action))
       problems.push(
-        `${where}.action must be one of ${PHASE4_ACTIONS.join(", ")}`,
+        `${where}.action must be one of ${ISOLATED_CHAIN_ACTIONS.join(", ")}`,
       );
   }
   // An always-stage runs even after an earlier stage did not pass; only a
@@ -140,7 +140,7 @@ const validateStage = (stage, where, problems) => {
       );
     else if (!stopsServices(stage))
       problems.push(
-        `${where}.always is allowed only on a teardown stage (phase4 action down, or devnet-stack down)`,
+        `${where}.always is allowed only on a teardown stage (isolated-chain action down, or devnet-stack down)`,
       );
   }
   if (stage.runDir !== undefined && !isAbsolutePath(stage.runDir))
@@ -340,11 +340,11 @@ export const stageCommand = (root, campaign, stage, name = stage.id) => {
       cwd: tools,
       env: {},
     };
-  if (stage.kind === "phase4")
+  if (stage.kind === "isolated-chain")
     return {
       argv: [
         "sh",
-        resolve(tools, `devnet/phase4-process/scripts/${stage.action}.sh`),
+        resolve(tools, `devnet/isolated-chain/scripts/${stage.action}.sh`),
         stage.runDir,
       ],
       cwd: tools,

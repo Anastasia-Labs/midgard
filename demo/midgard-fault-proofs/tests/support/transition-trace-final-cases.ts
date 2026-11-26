@@ -21,7 +21,7 @@ import "./emulator/measurement.js";
 import "./emulator/reference-script-publisher.js";
 import "./emulator/reference-scripts.js";
 import "./emulator/validators.js";
-import "./legacy-submit-emulator.js";
+import "./submit-steps.diagnostic.js";
 import "./submit-init-emulator-fixtures.js";
 import "./submit-init-emulator-shared.js";
 import "./transition-trace-final-fixtures.js";

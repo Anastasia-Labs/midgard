@@ -724,11 +724,9 @@ const fruits_absence_proof: mpf.Proof =
     },
   ]
 
-/// The sentinel arm, and the path #608 found dead on this route: a Midgard
-/// header carries `env.empty_merkle_tree_root` for an empty MPF, and the empty
-/// proof is the only witness an empty trie can produce. Before #625 this
-/// answered `False`, so non-membership over an empty Midgard trie was
-/// unprovable through every caller of this function.
+/// The sentinel arm: a Midgard header carries `env.empty_merkle_tree_root` for
+/// an empty MPF, and the empty proof is the only witness an empty trie can
+/// produce, so it must prove non-membership.
 test mpf_proof_v1_accepts_non_membership_against_the_empty_sentinel() {
   mpf_proof_v1.does_not_have(env.empty_merkle_tree_root, key, [])
 }

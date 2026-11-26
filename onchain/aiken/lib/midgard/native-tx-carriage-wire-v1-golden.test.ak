@@ -532,9 +532,9 @@ test golden_certificate_missing_field_hash_parses_as_cbor() {
 }
 
 /// FieldPreimageCertificateV1 / `certificate_missing_field_hash`: the
-/// pre-#606 5-field shape — a datum without the mint-welded `field_hash`
-/// is a certificate the door has no anchored equality to hold, and the
-/// frozen wire format refuses it at decode.
+/// 5-field shape — a datum without the mint-welded `field_hash` is a
+/// certificate the door has no anchored equality to hold, and the frozen
+/// wire format refuses it at decode.
 test golden_certificate_missing_field_hash_rejects() fail {
   expect Some(decoded_data) = cbor.deserialise(
     certificate_missing_field_hash_cbor,

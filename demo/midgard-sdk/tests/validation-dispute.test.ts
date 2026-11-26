@@ -258,7 +258,7 @@ describe("validation dispute ABI", () => {
       ),
     ).toEqual(prepareSelected);
     // The canonical-decode prepare redeemer is transition-only
-    // — one four-field constructor, no auxiliary, and no retired by-hash arm.
+    // — one four-field constructor, no auxiliary.
     const canonicalDecodePrepareSelected: ValidationCanonicalDecodePrepareSelectedSpendRedeemerData =
       {
         Continue: [

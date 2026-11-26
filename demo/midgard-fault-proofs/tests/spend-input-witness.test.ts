@@ -1,15 +1,7 @@
 /**
- * What survives of the spend-input witness module after #604.
- *
- * The test this replaces published a 180-input typed witness UTxO through
- * `ensureSpendInputsReferenceWitness` and pinned its min-Ada. That publication
- * is deleted: §8's carriage ladder replaced it with the §8.5 nothing-but-bytes
- * publication that `field-opening.ts` builds, and the redeemer indices it fed
- * (`tx1_spend_inputs_ref_input_index` and its twin) no longer exist on-chain.
- *
- * The min-Ada calculation itself is still live — `publish-proof-chunks.ts` uses
- * it — and so is the canonical witness decoding, so both stay pinned here. The
- * §8 publication route has its own coverage in
+ * The spend-input witness module: the min-Ada calculation
+ * `publish-proof-chunks.ts` uses and the canonical witness decoding. The §8
+ * publication route has its own coverage in
  * `tests/submit-input-no-idx-step-02.test.ts` and the input-no-idx emulator leg.
  */
 import {
@@ -126,10 +118,9 @@ describe("inline-datum min-Ada pricing", () => {
       Array.from({ length: 180 }, (_, index) => inputCbor(index + 1)),
       "test.inputs",
     );
-    // #604 deleted the module's typed `datum` field along with the publication
-    // that consumed it, so what is priced here is the shape min-Ada is still
-    // asked about: a §8.5 nothing-but-bytes inline datum over the §5.1 preimage
-    // of the same 180 items.
+    // What is priced here is the shape min-Ada is asked about: a §8.5
+    // nothing-but-bytes inline datum over the §5.1 preimage of the same 180
+    // items.
     const datum = Data.to(
       encodeMidgardFieldPreimage(
         witness.inputs.map((input) =>

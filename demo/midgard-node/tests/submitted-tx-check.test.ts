@@ -230,7 +230,7 @@ describe("checkSubmittedTransaction", () => {
     });
   });
 
-  // Design D6: the junk classes Phase A refuses on stateless grounds, each
+  // The junk classes Phase A refuses on stateless grounds, each
   // with the code and detail the validation pool would give it.
   it.each([
     {

@@ -46,13 +46,12 @@ export const EMULATOR_PROTOCOL_PARAMETERS = {
   maxCollateralInputs: 3,
 } as const;
 
-// Wave-current on-chain bond. `operator-directory/registered-operators.ak` now
-// enforces `registered_node_lovelace == env.required_bond` (it used to accept
-// `>=`), and `env/testnet.ak` — the env this blueprint is built with, matching
+// On-chain bond. `operator-directory/registered-operators.ak` enforces
+// `registered_node_lovelace == env.required_bond`, and `env/testnet.ak` — the env this blueprint is built with, matching
 // `.github/workflows/midgard-node-ci.yml` — sets
 // `required_bond = slashing_penalty (500_000_000) + fraud_prover_reward
 // (400_000_000)`. `SDK.getProtocolParameters` carries the same 900_000_000n for
-// every non-mainnet profile. Any other value now makes the registration mint
+// every non-mainnet profile. Any other value makes the registration mint
 // crash, so this default is derived from the contract, not chosen.
 export const REQUIRED_BOND_LOVELACE = BigInt(
   process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "900000000",

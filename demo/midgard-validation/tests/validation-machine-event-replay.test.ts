@@ -215,21 +215,8 @@ describe("independent validation event replay", () => {
       const traceBytes = JSON.stringify(result.trace, (_, value: unknown) =>
         typeof value === "bigint" ? value.toString() : value,
       );
-      // Byte pin after uniform §5.1 byte-string item counting and the Cardano
-      // `validRange` (an absent upper bound is an inclusive PosInf); emitted
-      // Phase A steps are independently checked by the Aiken one-step predicate.
-      // Re-pinned when the declared ex-units moved under the per-tx cap, and
-      // again when the CEK witness began carrying its execution's purpose key,
-      // when the program began returning Unit (PV 11 halt rule), when each
-      // execution began with Cardano's 100 cpu / 100 memory startup cost, and
-      // when the term material began carrying Cardano's 1-based variable index,
-      // when the CEK witness and context control began naming the program
-      // by its script hash, and when the ledger-delta phase and the state's
-      // ledger-delta root were removed, so acceptance follows multi-asset
-      // accounting directly, when a carried Plutus script became its
-      // Cardano bytes, when a constant's compute step began naming its
-      // value by root, and when each schedule node bound its input's field
-      // position and the resolved-input accumulators were removed.
+      // Byte pin of the whole trace; emitted Phase A steps are independently
+      // checked by the Aiken one-step predicate.
       const expectedTraceHash =
         executionCount === 1
           ? "473801840f15af24c8203a4002b54548ae4a01ebaf774e9df9635c444f1006da"

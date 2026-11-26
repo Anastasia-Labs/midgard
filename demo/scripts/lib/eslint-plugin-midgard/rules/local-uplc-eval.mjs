@@ -1,4 +1,4 @@
-// W4.3: L1 completion evaluates scripts locally, everywhere.
+// L1 completion evaluates scripts locally, everywhere.
 //
 // With `localUPLCEval: false`, Lucid hands evaluation to the provider, and the
 // lucid-evolution emulator's `evaluateTx` echoes the budgets already in the

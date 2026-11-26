@@ -164,7 +164,7 @@ describe("published deposit history capture", () => {
     },
   );
 
-  it("rejects substituted opening, commitment, metadata and obsolete checkpoints", async () => {
+  it("rejects substituted opening, commitment and metadata, and a missing capture", async () => {
     const history = capturePublishedDepositHistory(
       await readFixture(true),
       policy,

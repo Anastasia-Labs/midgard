@@ -17,15 +17,15 @@ const chunkProof = {
 } as const;
 const signerProof = { kind: "none" } as const;
 /**
- * #597/#600. The four §8-door constructors name a `FieldCarriageV1` on the wire,
- * and the machine's witness now carries the *plan input* those constructors are
+ * The four §8-door constructors name a `FieldCarriageV1` on the wire,
+ * and the machine's witness carries the *plan input* those constructors are
  * resolved from — which field, and its §5.1 preimage.
  *
  * The preimage is the §5.1 envelope of one one-byte item, three bytes, so §8.4's
  * partition admits tier 1 and the default resolver emits `Inline`. That is
  * deliberate: this corpus pins the frozen constructor **arities and tags**, and
  * keeping every entry inside the tier-1 domain is what keeps the corpus bytes —
- * and the `auxiliary_corpus_blake2b_256` the Aiken side pins — unmoved by #600.
+ * and the `auxiliary_corpus_blake2b_256` the Aiken side pins — stable.
  * The tier-2 and tier-3 wire forms are pinned by their own cross-language
  * vectors in `generate-validation-one-step-aiken-fixture.mjs`, against carriage
  * resolved by content from a real reference-input set.

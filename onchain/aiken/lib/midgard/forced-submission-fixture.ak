@@ -24,7 +24,7 @@ pub fn from_native_source(
   }
 }
 
-/// Explicit fixture projection. Never used to admit obsolete protocol bytes.
+/// Explicit fixture projection; never a way to admit native bytes as forced.
 pub fn from_native_compact(bytes: ByteArray) -> ByteArray {
   let native = compact.decode_native_tx_compact_v1(bytes)
   compact.encode_forced_tx_compact_v1(

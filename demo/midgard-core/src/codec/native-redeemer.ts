@@ -199,8 +199,7 @@ const midgardRedeemerPurposeForCardanoTag = (
  * The §5.1 preimage of field 8 (`redeemer_tx_wits`).
  *
  * Each item is §5.3's four-element `enc_8` inside the per-item byte-string
- * envelope. The retired counted scheme concatenated raw item CBOR here; §5.1
- * prohibits that form for all nine fields.
+ * envelope; §5.1 prohibits concatenated raw item CBOR for all nine fields.
  */
 const encodeMidgardRedeemerPreimageCbor = (
   redeemers: readonly NormalizedRedeemer[],

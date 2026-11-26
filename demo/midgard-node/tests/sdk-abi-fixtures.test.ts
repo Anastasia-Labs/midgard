@@ -20,7 +20,7 @@ import * as SDK from "@al-ft/midgard-sdk/core";
 import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import * as SDKUsers from "@al-ft/midgard-sdk/users";
-import { Constr, Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -275,21 +275,6 @@ describe("SDK canonical ABI fixtures", () => {
       "payout_spend_redeemer_index",
       "hub_ref_input_index",
     ]);
-  });
-
-  it("rejects the obsolete deposit transition pointer fields", () => {
-    const fixture =
-      buildTransitionTraceAbiFixtures()[
-        "transition-fault.valid-deposit-transition.fault"
-      ]!;
-    const raw = Data.from(Data.to(fixture.value, fixture.schema));
-    if (!(raw instanceof Constr) || !(raw.fields[0] instanceof Constr))
-      throw new Error("Expected deposit fault witness");
-    expect(raw.fields[0].fields).toHaveLength(4);
-    raw.fields[0].fields.splice(3, 0, 999n, "00");
-    expect(() =>
-      Data.from(Data.to(raw), SDKFraudProof.TransitionFault),
-    ).toThrow();
   });
 
   it("matches transition trace golden ABI fixture files", () => {

@@ -23,10 +23,9 @@ const readFixture = (): SizeBalancedNativeTxFixture =>
   ) as SizeBalancedNativeTxFixture;
 
 /**
- * `native-size-balanced-15_5k.json` had no producer at all until #588: its
- * `fullTxCborHex` was an opaque ~16 kB blob, and the only route to a fresh one
- * was to hand-edit it. `fixtures/native-size-balanced.ts` is now its declared
- * construction and this suite is its writer, on the same contract as the
+ * `fixtures/native-size-balanced.ts` is the declared construction of
+ * `native-size-balanced-15_5k.json` and this suite is its writer, on the same
+ * contract as the
  * high-cardinality sibling: `MIDGARD_SYNC_FIXTURES=1` writes the construction's
  * own bytes, check mode — the default — asserts the checked-in file is exactly
  * what the construction produces today.

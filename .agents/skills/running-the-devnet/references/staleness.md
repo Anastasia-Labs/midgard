@@ -96,23 +96,10 @@ by a different node schema; …" [runtime: `NodeSchema.ensure` via
 `demo/midgard-node/src/database/init.ts`]. After a schema change, recreate the
 database (drop it and create it empty) and relaunch.
 
-## Phase4 runs
+## Isolated-chain runs
 
-Phase4 bootstrap compiles with `aiken build --env testnet`
-(`phase4-process/scripts/protocol-bootstrap.sh`), not `deployment:build`.
-`reset.sh` recomputes and compares, before stopping anything, the `src` and
-`dist` trees of `midgard-node` and `midgard-node-tools`, the run's genesis and
-config, `acceptance.env`, the compose file, the phase4 assets directory, the
-four image IDs and the PHAS registration proof, and refuses any drift
-[script: `phase4-process/scripts/reset.sh`].
-
-**Blind spot.** The snapshot identity records `blueprintSha256`, but `reset.sh`
-checks only that it is 64 hex characters; it never recomputes it. Validators
-live under `onchain/aiken`, outside every tree it hashes, so a validator-only
-change passes reset and the run keeps exercising the scripts deployed at
-bootstrap. `[review]`
-
-Any code change after the snapshot, validator or TypeScript, means a new run.
+Nothing compares a generated run with the tree: any code change, validator or
+TypeScript, means a new run. `[review]`
 
 ## Deciding in one pass
 
@@ -122,7 +109,7 @@ Ask, in order:
 2. Did a `config/deployments/*.yaml` or any validator change? Run
    `deployment:build`, rebuild, redeploy.
 3. Did a database schema change? Recreate the database, then relaunch.
-4. Otherwise relaunch. For a phase4 run, any code change still means a new run.
+4. Otherwise relaunch. For an isolated-chain run, any code change still means a new run.
 
 When unsure whether a running deployment still matches, run
 `node dist/index.js deployment-status` from `demo/midgard-node`: it prints the

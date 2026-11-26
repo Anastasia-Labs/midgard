@@ -34,16 +34,14 @@ import { Effect } from "effect";
  * that `layOutMidgardFieldCarriageV1` produced and reads items off the view,
  * and there is no tier-shaped argument anywhere on that path.
  *
- * **Publication is guarded (§8.3 erratum E1).** `chunk_bytes_k` is pinned at
- * 15,148 — E1's repaired value, the reserve-clearing publication frontier — so
- * an honest §8.4 split now produces chunks that all publish, a 15,148-byte chunk
- * measuring 15,872 signed bytes against a 16,384-byte `maxTxSize`. The guard
- * stays because the frontier is a *measurement*, not an invariant of the split:
- * {@link buildUnsignedFieldPreimagePublicationProgram} checks every publication
- * against it before building, so a hand-assembled chunk list, a plan produced by
- * an older chunker, or a deliberately raised limit is refused rather than handed
- * back as a transaction the ledger will reject. Before the repair the guard
- * refused every tier-3 plan there was, which is the outage E1 records.
+ * **Publication is guarded (§8.3).** `chunk_bytes_k` is pinned at 15,148, the
+ * reserve-clearing publication frontier, so an honest §8.4 split produces chunks
+ * that all publish, a 15,148-byte chunk measuring 15,872 signed bytes against a
+ * 16,384-byte `maxTxSize`. The frontier is a *measurement*, not an invariant of
+ * the split: {@link buildUnsignedFieldPreimagePublicationProgram} checks every
+ * publication against it before building, so a hand-assembled chunk list or a
+ * deliberately raised limit is refused rather than handed back as a
+ * transaction the ledger will reject.
  *
  * **Nothing here is privileged (§8.7).** Publication and certification are
  * permissionless: no operator role, no allowlist, no signature required at
@@ -192,7 +190,7 @@ export const minimumLovelaceForFieldPreimagePublication = ({
   });
 
 /**
- * §8.3 erratum E1's guard, as the one predicate that stands between a plan and
+ * The §8.3 publication guard, as the one predicate that stands between a plan and
  * a transaction the ledger would reject.
  *
  * `maxPublicationBytes` is a bound on the **payload**, because that is what a
@@ -240,8 +238,8 @@ export const assertFieldPreimagePublicationFits = ({
   throw new Error(
     `chunk ${publication.chunkIndex.toString()} is ${publication.byteLength.toString()} bytes, ` +
       `which publishes as a ${transactionBytes.toString()}-byte signed transaction and exceeds the ` +
-      `${maxPublicationBytes.toString()}-byte publishable frontier (§8.3 erratum E1). ` +
-      "`chunk_bytes_k` is pinned at 15,148, the publishable frontier (§8.3 E1's repair), so an " +
+      `${maxPublicationBytes.toString()}-byte publishable frontier (§8.3). ` +
+      "`chunk_bytes_k` is pinned at 15,148, the publishable frontier, so an " +
       "honest §8.4 split does not produce a chunk this large; check the chunk list's provenance.",
   );
 };
@@ -253,7 +251,7 @@ export const assertFieldPreimagePublicationFits = ({
  *
  * **One publication per transaction, not one per plan.** A chunk is sized to
  * fill a transaction: against a 16,384-byte `maxTxSize`, a full chunk's signed
- * publication measures 15,872 bytes at the repaired `K` (§8.3 erratum E1), which
+ * publication measures 15,872 bytes at `K` (§8.3), which
  * leaves exactly the 512-byte reliability reserve and no room for a second chunk.
  * A builder that tried to share a transaction would fail at exactly the sizes
  * tier 3 exists for. A caller publishes a tier-3 plan by
@@ -262,13 +260,10 @@ export const assertFieldPreimagePublicationFits = ({
  * is missing, and §8.7's content addressing means it does not matter who
  * publishes which.
  *
- * **It refuses what it cannot publish.** At the repaired `K` an honest §8.4 plan
- * has no such chunk, so the guard is quiet on every real publication; what it
- * still catches is a chunk list that did not come from this chunker. Before E1's
- * repair the first chunk of *every* tier-3 plan tripped it, which is how the
- * outage that erratum records became visible at build time rather than at
- * submission. `maxPublicationBytes` exists for the frontier measurement and for
- * nothing else.
+ * **It refuses what it cannot publish.** An honest §8.4 plan has no such chunk,
+ * so the guard is quiet on every real publication; what it catches is a chunk
+ * list that did not come from this chunker. `maxPublicationBytes` exists for
+ * the frontier measurement and for nothing else.
  */
 export const buildUnsignedFieldPreimagePublicationProgram = (
   lucid: LucidEvolution,

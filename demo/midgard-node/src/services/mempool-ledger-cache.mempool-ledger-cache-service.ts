@@ -61,7 +61,7 @@ export type MempoolLedgerCacheService = {
   readonly retireCanonicalEpoch: Effect.Effect<CanonicalCacheRecovery>;
   /**
    * Which outrefs are in the mempool ledger state, for the admission input
-   * check (design D6). Lock-free: it never waits for the Phase B lock, and
+   * check. Lock-free: it never waits for the Phase B lock, and
    * a caller must use the view synchronously. It cannot tell (answers
    * `undefined`) before the cache is first loaded, while canonical recovery
    * repairs it, at a key marked stale or being read again, and at every key

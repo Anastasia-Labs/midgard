@@ -125,7 +125,7 @@ describe("deployment run state", () => {
         ...state,
         events: [
           state.events[0],
-          { ...state.events[1], kind: "legacy_transition" },
+          { ...state.events[1], kind: "unknown_transition" },
         ],
       }),
     ).toThrow("must be created or step_transition");

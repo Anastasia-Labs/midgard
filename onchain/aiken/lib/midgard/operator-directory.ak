@@ -597,7 +597,7 @@ pub fn cross_validate_slashing_reason(
   slashing_reason
 }
 
-test q53_operator_bond_tranches_are_exact() {
+test operator_bond_tranches_are_exact() {
   let full = env.required_bond
   let partial = env.required_bond - env.inactivity_slashing_penalty
   and {
@@ -614,7 +614,7 @@ test q53_operator_bond_tranches_are_exact() {
   }
 }
 
-test q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty() {
+test fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty() {
   let full = env.required_bond
   let partial = env.required_bond - env.inactivity_slashing_penalty
   let full_fee = env.slashing_penalty

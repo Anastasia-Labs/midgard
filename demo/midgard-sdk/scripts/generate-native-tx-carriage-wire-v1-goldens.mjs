@@ -39,9 +39,9 @@
  * as `5f 5840 … ff`; `carriage_inline_63_byte_preimage` (`583f…`) and
  * `carriage_inline_64_byte_preimage` (`5840…`) sit at and just below it and
  * must stay definite. The remaining vectors carry only short byte strings and
- * are here for their shapes, not their widths. #568's channel pins no
- * Data-encoded value at all, so this is the first vector set that exercises any
- * of it.
+ * are here for their shapes, not their widths. The field-access channel pins
+ * no Data-encoded value at all, so this is the only vector set that exercises
+ * any of it.
  *
  * A second, smaller set — `negativeVectors` — carries payloads that a
  * conforming decoder must **refuse** (§9 clause 2), one trailing-bytes case and

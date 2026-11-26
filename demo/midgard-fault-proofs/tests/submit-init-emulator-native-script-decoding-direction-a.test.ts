@@ -9,7 +9,7 @@
  * payload that still exercises every windowed opening.
  *
  * Both step-01 carriages are driven: the redeemer-carried
- * inclusion proof, and the #545 published-chunk transport. One of the two
+ * inclusion proof, and the published-chunk transport. One of the two
  * threads is driven end-to-end through the proving core off a
  * finding record; the other drives the per-step submitters directly, so the
  * two planes are pinned against each other. The proving-core journey then
@@ -395,7 +395,8 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       `${category.categoryId}${setup.headerHash}`,
     );
 
-    // #545 carriage: the membership proof is published once, then referenced.
+    // Published-chunk carriage: the membership proof is published once, then
+    // referenced.
     const publication = await publishProofChunks({
       lucid: proverLucid,
       signer: proverSigner,

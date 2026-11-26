@@ -137,7 +137,7 @@ test proof_thread_subject_rejects_an_accepted_transaction_with_invalid_scalar() 
   )
 }
 
-/// Family Step 01 binds no longer re-check canonicity, so the accepted opener
+/// Family Step 01 binds do not re-check canonicity, so the accepted opener
 /// itself must refuse an id that is not 32 bytes.
 test proof_thread_subject_rejects_an_accepted_transaction_with_a_short_id() fail {
   substrate.open_subject_v1(
@@ -199,16 +199,16 @@ test proof_thread_subject_rejects_wrongful_acceptance_on_a_rejecting_leaf() fail
   ) == #""
 }
 
-test proof_thread_subject_rejects_forced_valid_with_an_obsolete_four_field_source() fail {
+test proof_thread_subject_rejects_forced_valid_with_a_native_four_field_source() fail {
   let original = tf.forced_leaf_v1(rejected_transaction_v1(), ForcedTxValid)
-  let obsolete = native_transaction.midgard_transaction_proof_source_v1(
+  let native = native_transaction.midgard_transaction_proof_source_v1(
     rejected_transaction_v1(),
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..original,
     submitted_source: ledger_state.ForcedTxProofSourceV1 {
       ..original.submitted_source,
-      compact_cbor: obsolete.compact_cbor,
+      compact_cbor: native.compact_cbor,
     },
   }
   let (header, membership) = forced_claim_v1(leaf)
@@ -218,19 +218,19 @@ test proof_thread_subject_rejects_forced_valid_with_an_obsolete_four_field_sourc
   ) == forced_accepted_subject_v1()
 }
 
-test proof_thread_subject_rejects_forced_invalid_with_an_obsolete_four_field_source() fail {
+test proof_thread_subject_rejects_forced_invalid_with_a_native_four_field_source() fail {
   let original = tf.forced_leaf_v1(
     fixture.valid_native_tx_v1(),
     ForcedTxInvalid { reason: input_not_found_reason_v1() },
   )
-  let obsolete = native_transaction.midgard_transaction_proof_source_v1(
+  let native = native_transaction.midgard_transaction_proof_source_v1(
     fixture.valid_native_tx_v1(),
   )
   let leaf = ledger_state.ForcedInclusionTxV1 {
     ..original,
     submitted_source: ledger_state.ForcedTxProofSourceV1 {
       ..original.submitted_source,
-      compact_cbor: obsolete.compact_cbor,
+      compact_cbor: native.compact_cbor,
     },
   }
   let (header, membership) = forced_claim_v1(leaf)

@@ -186,8 +186,8 @@ burst that fills it makes `/submit` answer 503 until it drains, and the reverse.
 The backlog is bounded by rows (`MAX_DURABLE_ADMISSION_BACKLOG`, default
 300,000: 60 s at 5,000 TPS) and by payload bytes
 (`MAX_DURABLE_ADMISSION_BACKLOG_BYTES`, default 300,000 KiB: 1 KiB per row).
-Both defaults are provisional until the M1 throughput gate measures the
-node. `/submit` sheds first: it answers 503 once the backlog reaches 80 % of
+Both defaults are provisional until a throughput measurement of the node
+sets them. `/submit` sheds first: it answers 503 once the backlog reaches 80 % of
 either bound, and its 503 body names that 80 % share as `maxBacklog` or
 `maxBacklogBytes`. `/peer/txs` keeps admitting until the full bound, so
 transactions other operators forward still land while users are shed. Both

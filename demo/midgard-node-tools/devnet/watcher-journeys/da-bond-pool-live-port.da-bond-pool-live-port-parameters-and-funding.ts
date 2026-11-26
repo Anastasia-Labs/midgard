@@ -47,7 +47,7 @@ describe("DA bond pool live port: parameters and funding", () => {
     ).toThrow("da_bond_withdraw_delay_ms must be a positive integer");
   });
 
-  it("plans exact Open coins and a G9 collateral coin", () => {
+  it("plans exact Open coins and a Timeout collateral coin", () => {
     const plan = planDaBondPoolChallengerFunding({
       parameters,
       collateralPercentage: 150,
@@ -102,7 +102,7 @@ describe("DA bond pool live port: parameters and funding", () => {
         plan,
       }),
     ).toEqual([]);
-    // A 10 ADA coin is below G9 and cannot collateralize a Timeout; a coin
+    // A 10 ADA coin is below the Timeout collateral bound and cannot collateralize a Timeout; a coin
     // at another address or carrying a token is not the challenger's cash.
     expect(
       daBondPoolChallengerFundingShortfall({

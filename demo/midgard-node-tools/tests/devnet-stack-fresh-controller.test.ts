@@ -21,7 +21,11 @@ import {
   type Spawner,
   type UpDeps,
 } from "../src/devnet-stack/fresh-controller.js";
-import { lockOwner, processStartTime } from "../src/devnet-stack/lock.js";
+import { lockOwner } from "../src/devnet-stack/lock.js";
+import {
+  holdLockInChild,
+  stopLockHolders,
+} from "./support/hold-lock-in-child.js";
 
 const dirs: string[] = [];
 const scratch = () => {
@@ -29,7 +33,8 @@ const scratch = () => {
   dirs.push(dir);
   return dir;
 };
-afterEach(() => {
+afterEach(async () => {
+  await stopLockHolders();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
 });
@@ -154,12 +159,6 @@ const fakeDeps = (
     },
   };
   return { deps, order };
-};
-
-/** A lock file naming a live process other than this one. */
-const heldByOther = (path: string) => {
-  writeFileSync(path, `${process.ppid} ${processStartTime(process.ppid)}`);
-  return process.ppid;
 };
 
 describe("runUp", () => {
@@ -309,27 +308,25 @@ describe("runUp", () => {
 
   it("refuses to build while another up holds the controller lock, before stopping anything", async () => {
     const paths = run();
-    const owner = heldByOther(paths.lockPath);
+    await holdLockInChild(paths.lockPath);
     const fake = fakeSpawner({ code: 0, signal: null });
     const { deps, order } = fakeDeps(paths, {
       pending: ["stale"],
       supervisor: 4242,
     });
     await expect(runUp(true, deps, launch(fake.spawner))).rejects.toThrow(
-      `another controller (pid ${owner}) holds ${paths.lockPath}`,
+      `another controller holds ${paths.lockPath}`,
     );
     expect(order).toEqual(["validate", "decide build-lock=true"]);
   });
 
   it("refuses while another up holds the build lock, before deciding", async () => {
     const paths = run();
-    const owner = heldByOther(paths.buildLockPath);
+    await holdLockInChild(paths.buildLockPath);
     const { deps, order } = fakeDeps(paths, { pending: ["stale"] });
     await expect(
       runUp(true, deps, launch(fakeSpawner({ code: 0, signal: null }).spawner)),
-    ).rejects.toThrow(
-      `another controller (pid ${owner}) holds ${paths.buildLockPath}`,
-    );
+    ).rejects.toThrow(`another controller holds ${paths.buildLockPath}`);
     expect(order).toEqual(["validate"]);
   });
 

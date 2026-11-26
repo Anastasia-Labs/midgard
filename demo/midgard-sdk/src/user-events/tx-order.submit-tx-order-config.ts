@@ -198,11 +198,6 @@ export type SubmitTxOrderConfig = {
   /**
    * The §8.6 certificate minting policy id, needed only when a field's preimage
    * exceeds `K` and is therefore tier 3.
-   *
-   * It is a config field rather than a `MidgardValidators` role because the
-   * certificate validator is not in the frozen blueprint and has no deployment
-   * registry entry yet — that is #579's single regeneration event (rider 2 of its
-   * scope amendment). It moves into `contracts` with the role.
    */
   readonly fieldPreimageCertificatePolicyId?: string;
   /**
@@ -233,11 +228,10 @@ export type TxOrderFieldCarriage = {
    * which is what the §8 carriage plan and the on-chain door authenticate
    * against.
    *
-   * Since #585 this is also, necessarily, the hash the compact structure beside
-   * it carries: `deriveNativeTxBodyCompact` derives the nine field commitments
-   * the same way. {@link deriveTxOrderMaterial} asserts the two equal per field
-   * rather than leaving it implied — the equality is the whole point of the
-   * reversion, and before #585 it was false.
+   * This is also, necessarily, the hash the compact structure beside it
+   * carries: `deriveNativeTxBodyCompact` derives the nine field commitments the
+   * same way. {@link deriveTxOrderMaterial} asserts the two equal per field
+   * rather than leaving it implied.
    */
   readonly commitment: string;
   readonly plan: MidgardFieldCarriagePlan;
@@ -248,12 +242,8 @@ export type TxOrderFieldCarriage = {
  * triple its datum carries, and the §8 carriage of every field with material in
  * it.
  *
- * This replaced `deriveTxOrderFragmentBundleV1`, which produced counted per-item
- * `TxFieldPreimageV1` fragments for the retired publication receipt chain
- *. The nine field preimages are the same bytes either way — what changed
- * is that a field is now committed by one flat hash over the whole preimage
- * (§4), so there are no per-item openings to publish and the unit of carriage is
- * the field, not the item.
+ * A field is committed by one flat hash over the whole preimage (§4), so the
+ * unit of carriage is the field, not the item.
  */
 export type TxOrderMaterial = {
   readonly transactionId: string;

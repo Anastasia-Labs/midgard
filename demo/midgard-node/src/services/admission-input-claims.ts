@@ -1,7 +1,6 @@
 /**
- * First-seen input claims (design D6, stateful part; owner ruling
- * 2026-11-06: first seen wins, an acknowledged tx is never evicted or
- * replaced).
+ * First-seen input claims (stateful part: first seen wins, an acknowledged
+ * tx is never evicted or replaced).
  *
  * Every tx admission holds, from the moment it enters the writer's pending
  * set until its verdict, claims on the inputs it spends and an index entry

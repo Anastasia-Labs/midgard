@@ -59,7 +59,7 @@ export type SubmittedTxCheck =
     };
 
 /**
- * The node settings the stateless checks read (design D6). Plain data, so it
+ * The node settings the stateless checks read. Plain data, so it
  * can cross a worker boundary with the bytes.
  */
 export type SubmittedTxRules = {
@@ -93,7 +93,7 @@ export const submittedTxRules = Effect.gen(function* () {
 });
 
 /**
- * The Phase A verdicts ingress refuses on (design D6): a forged or wrong
+ * The Phase A verdicts ingress refuses on: a forged or wrong
  * signature, a fee under the minimum and a foreign network. Phase A's other
  * verdicts are left to the validation pool, which reaches the same ones.
  */
@@ -108,7 +108,7 @@ const INGRESS_PHASE_A_REFUSALS: ReadonlySet<RejectCode> = new Set([
  * the check's own decode of the bytes and returns what the pool's
  * `validatePhaseASingle` returns for them. Each refusal is one validation
  * would make, with validation's code, so ingress and validation cannot
- * disagree (design D6). Undefined when the tx passes.
+ * disagree. Undefined when the tx passes.
  */
 const statelessRefusal = (
   decoded: Parameters<typeof validatePhaseASingleDecoded>[1],

@@ -49,10 +49,7 @@ import { finishStep } from "../step-completion.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
@@ -157,9 +154,6 @@ export type DoubleWithdrawStep01Build = {
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
 };
-
-export type SubmitDoubleWithdrawStep01Result =
-  OutsideWorkflowSubmission<DoubleWithdrawStep01Build>;
 
 export const buildDoubleWithdrawStep01 = async ({
   lucid,

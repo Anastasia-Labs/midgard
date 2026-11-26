@@ -46,10 +46,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type LocallyEvaluatedTransaction,
-  type OutsideWorkflowSubmission,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   nativeScriptDecodingStepLabel,
@@ -125,9 +122,6 @@ export type NativeScriptDecodingStep04Build = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
 };
-
-export type SubmitNativeScriptDecodingStep04Result =
-  OutsideWorkflowSubmission<NativeScriptDecodingStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;

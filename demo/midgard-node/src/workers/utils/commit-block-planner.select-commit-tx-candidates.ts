@@ -282,8 +282,8 @@ export const planCommitBatchBudgets = ({
     estimatedDaPayloadBytes = nextEstimatedDaPayloadBytes;
   }
 
-  // Empty is the only safe result when the first candidate does not fit. The
-  // former "always include one" fallback silently exceeded consensus bounds.
+  // Empty is the only safe result when the first candidate does not fit:
+  // including it anyway would exceed consensus bounds.
   const candidateTxs = selected;
   const finalPlan = estimateCommitBatchPlan(
     candidateTxs,

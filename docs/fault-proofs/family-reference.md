@@ -49,8 +49,8 @@ the withdrawal-mistag family derive the same verdict from the step's pre-state.
 
 A dishonest block that tags both leaves `WithdrawalIsValid` is therefore also a
 `withdrawalMistag` fault at the later leaf, the same event this family
-convicts. The watcher reports `doubleWithdraw` there (owner ruling 2026-11-10;
-`FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE` in
+convicts. The watcher reports `doubleWithdraw` there
+(`FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE` in
 [the classifier](../../demo/midgard-fault-proofs/src/workflow/classification.classify-canonical-block-violations.ts)).
 Both families slash the same block; this one proves it in two steps instead of
 five. A mistagged leaf that is not the later half of such a pair stays
@@ -205,8 +205,8 @@ cannot convict.
 
 Such an output never existed, so it is also absent from the event's pre-state
 ledger: `nonExistentInput` or `noReferenceInput` finds it at the same event.
-The watcher reports the NoIdx family there (owner ruling 2026-11-15,
-[decision 0010](decisions/0010-no-idx-owns-same-block-missing-index.md);
+The watcher reports the NoIdx family there
+([decision 0010](decisions/0010-no-idx-owns-same-block-missing-index.md);
 `FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE` in
 [the classifier](../../demo/midgard-fault-proofs/src/workflow/classification.classify-canonical-block-violations.ts)).
 Both families slash the same block. This one needs no ledger proof. An input

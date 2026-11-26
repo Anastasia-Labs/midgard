@@ -204,7 +204,7 @@ const idOf = (kind: Kind, nonce: OutRef) =>
 
 /**
  * How the seeded foreign block names the event: as a processed block (its
- * row never written: a block processed before the fix), as a block a
+ * row never written), as a block a
  * rollback took off the landed chain, or not at all.
  */
 type Naming = "processed" | "removed" | "none";

@@ -122,7 +122,7 @@ fn input_records() -> Data {
   )
 }
 
-/// A value whose CBOR is past the old one-step bound (9,215 bytes).
+/// A value whose CBOR is past 9,215 bytes, more than one step can serialise.
 fn past_the_bound() -> Data {
   builtin.list_data([bytes_of(5000), bytes_of(4200), int(7)])
 }
@@ -151,7 +151,7 @@ test completes_a_mixed_value_under_any_hop_split() {
   list.all([1, 2, 7, 40, 10_000], fn(limit) { completes(case, limit) })
 }
 
-test completes_a_value_past_the_old_bound() {
+test completes_a_value_past_the_bound() {
   let case = honest_case(past_the_bound())
   and {
     list.length(case.runs) == 1,
