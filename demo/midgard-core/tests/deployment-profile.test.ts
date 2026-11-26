@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { canonicalJson } from "../src/canonical-json.js";
-import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "../src/deployment-manifest-identity.js";
+import {
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  verifyDeploymentManifestIdentity,
+} from "../src/deployment-manifest-identity.js";
 import {
   AllowListRefusal,
   assertValidationDisputeFitsProfile,
@@ -18,12 +21,14 @@ import {
   minValidationDisputeMaturityMs,
   requireAllowListed,
   requireSelectedDeploymentProfile,
+  resolveKnownDeploymentProfileBinding,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
   validationDisputeCaseDurationMs,
   validationTraceDisputeInstalled,
   verifyDeploymentProfileBinding,
 } from "../src/deployment-profile.js";
+import { identityInput } from "./deployment-manifest-identity.finalized-manifest.js";
 
 describe("deployment profile binding", () => {
   it("uses the SHA-256 digest of the canonical resolved profile", () => {
@@ -74,6 +79,80 @@ describe("deployment profile binding", () => {
     ).toThrow();
     expect(() => requireSelectedDeploymentProfile(undefined)).toThrow();
     expect(() => requireSelectedDeploymentProfile("preprod-public")).toThrow();
+  });
+
+  it("resolves any known profile binding for multi-network SDK/CLI consumers and rejects mismatches", () => {
+    for (const name of [
+      "preprod-public",
+      "preprod-testing",
+      "mainnet",
+    ] as const) {
+      const known = DEPLOYMENT_PROFILES[name];
+      expect(
+        resolveKnownDeploymentProfileBinding(
+          known,
+          DEPLOYMENT_PROFILE_DIGESTS[name],
+          known.network,
+        ),
+      ).toBe(known);
+    }
+    expect(() =>
+      resolveKnownDeploymentProfileBinding(
+        DEPLOYMENT_PROFILES["preprod-public"],
+        DEPLOYMENT_PROFILE_DIGESTS["preprod-testing"],
+        "Preprod",
+      ),
+    ).toThrow();
+    expect(() =>
+      resolveKnownDeploymentProfileBinding(
+        { ...DEPLOYMENT_PROFILES["preprod-public"], name: "unknown-profile" },
+        DEPLOYMENT_PROFILE_DIGESTS["preprod-public"],
+        "Preprod",
+      ),
+    ).toThrow();
+    expect(() =>
+      resolveKnownDeploymentProfileBinding(
+        DEPLOYMENT_PROFILES["preprod-public"],
+        DEPLOYMENT_PROFILE_DIGESTS["preprod-public"],
+        "Mainnet",
+      ),
+    ).toThrow();
+
+    const preprodPublic = DEPLOYMENT_PROFILES["preprod-public"];
+    const preprodPublicManifest = {
+      ...identityInput(),
+      deploymentProfile: preprodPublic,
+      deploymentProfileDigest: DEPLOYMENT_PROFILE_DIGESTS["preprod-public"],
+      network: preprodPublic.network,
+      economics: preprodPublic.economics,
+      availabilityChallenge: {
+        ...identityInput().availabilityChallenge,
+        ...daBondManifestAmounts(preprodPublic),
+        responseClasses: {
+          ...identityInput().availabilityChallenge.responseClasses,
+          smallResponseWindowMs:
+            preprodPublic.timing.da_small_response_window_ms,
+          fullResponseWindowMs: preprodPublic.timing.da_full_response_window_ms,
+        },
+      },
+    };
+    expect(() =>
+      verifyDeploymentManifestIdentity(preprodPublicManifest),
+    ).toThrow();
+    expect(
+      verifyDeploymentManifestIdentity(preprodPublicManifest, {
+        profileBinding: "any-known",
+      }),
+    ).toBe(preprodPublicManifest);
+    expect(() =>
+      verifyDeploymentManifestIdentity(
+        {
+          ...preprodPublicManifest,
+          economics: SELECTED_DEPLOYMENT_PROFILE.economics,
+        },
+        { profileBinding: "any-known" },
+      ),
+    ).toThrow("economics");
   });
 
   it("maps each DA bond amount to its own manifest key", () => {

@@ -1,4 +1,4 @@
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core/ed25519-ledger-signature";
 import { type Network } from "@lucid-evolution/lucid";
 
 import {

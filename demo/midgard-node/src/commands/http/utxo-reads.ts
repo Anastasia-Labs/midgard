@@ -34,11 +34,9 @@ export const getTxsOfAddressHandler = Effect.gen(function* () {
   const addr = params["address"];
 
   if (typeof addr !== "string") {
-    yield* Effect.logInfo(
-      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: [redacted]`,
-    );
+    yield* Effect.logInfo(`GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: [redacted]` },
+      { error: "Invalid address" },
       { status: 400 },
     );
   }
@@ -52,7 +50,9 @@ export const getTxsOfAddressHandler = Effect.gen(function* () {
       (row) => SDK.bufferToHex(requirePublicReadPayload(row.tx)),
     );
     const cbors = page.entries;
-    yield* Effect.logInfo(`Found ${cbors.length} CBORs with [redacted]`);
+    yield* Effect.logInfo(
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Found address transactions`,
+    ).pipe(Effect.annotateLogs({ count: cbors.length }));
     return yield* HttpServerResponse.json({
       txs: cbors,
       nextCursor: page.nextCursor,
@@ -60,9 +60,9 @@ export const getTxsOfAddressHandler = Effect.gen(function* () {
   } catch (_error) {
     if (_error instanceof PublicHttpReadLimitError)
       return yield* publicReadDataLimitResponse();
-    yield* Effect.logInfo(`Invalid address: [redacted]`);
+    yield* Effect.logInfo(`GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address: [redacted]` },
+      { error: "Invalid address" },
       { status: 400 },
     );
   }
@@ -87,11 +87,9 @@ export const getUtxosHandler = Effect.gen(function* () {
   const addr = params["address"];
 
   if (typeof addr !== "string") {
-    yield* Effect.logInfo(
-      `GET /${UTXOS_ENDPOINT} - Invalid address type: [redacted]`,
-    );
+    yield* Effect.logInfo(`GET /${UTXOS_ENDPOINT} - Invalid address`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: [redacted]` },
+      { error: "Invalid address" },
       { status: 400 },
     );
   }
@@ -114,7 +112,9 @@ export const getUtxosHandler = Effect.gen(function* () {
     );
     const response = page.entries;
 
-    yield* Effect.logInfo(`Found ${response.length} UTxOs for [redacted]`);
+    yield* Effect.logInfo(`GET /${UTXOS_ENDPOINT} - Found UTxOs`).pipe(
+      Effect.annotateLogs({ count: response.length }),
+    );
     return yield* HttpServerResponse.json({
       utxos: response,
       nextCursor: page.nextCursor,
@@ -122,9 +122,9 @@ export const getUtxosHandler = Effect.gen(function* () {
   } catch (_error) {
     if (_error instanceof PublicHttpReadLimitError)
       return yield* publicReadDataLimitResponse();
-    yield* Effect.logInfo(`Invalid address: [redacted]`);
+    yield* Effect.logInfo(`GET /${UTXOS_ENDPOINT} - Invalid address`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address: [redacted]` },
+      { error: "Invalid address" },
       { status: 400 },
     );
   }
@@ -159,7 +159,7 @@ export const getUtxoHandler = Effect.gen(function* () {
   const matched = yield* publicUtxosByOutRefs([txOutRef]);
   if (matched.length === 0) {
     return yield* HttpServerResponse.json(
-      { error: `UTxO not found for txOutRef [redacted]` },
+      { error: "UTxO not found" },
       { status: 404 },
     );
   }

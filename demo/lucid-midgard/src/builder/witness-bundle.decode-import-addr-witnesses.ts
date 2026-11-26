@@ -1,4 +1,3 @@
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
@@ -7,6 +6,7 @@ import {
   type MidgardNativeTxFull,
   verifyMidgardNativeTxFullConsistency,
 } from "@al-ft/midgard-core/codec";
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core/ed25519-ledger-signature";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { CML } from "@lucid-evolution/lucid";
 

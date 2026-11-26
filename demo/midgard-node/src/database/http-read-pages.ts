@@ -2,6 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import type { ReadPage } from "../commands/listen-read-page.js";
+import { removedHeader } from "../l1-queue-terminals/reads.js";
 import { Database } from "../services/database.js";
 import { HTTP_PUBLIC_READ_DATA_MAX_BYTES } from "../services/http-resource-limits.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
@@ -81,3 +82,78 @@ export const blockTransactionPage = (headerHash: Buffer, page: ReadPage) =>
     AND tx_id > ${page.cursor ?? Buffer.alloc(0)} ORDER BY tx_id ASC LIMIT ${page.limit + 1}`;
     return rows.map((row) => row.tx_id);
   }).pipe(sqlErrorToDatabaseError("blocks", "Failed bounded block read"));
+
+export type RecentBlockPageRow = {
+  readonly header_hash: Buffer;
+  readonly block_start_time: Date;
+  readonly block_end_time: Date;
+  readonly block_time: Date;
+  readonly l2_transaction_count: bigint | number | string;
+  readonly deposit_count: bigint | number | string;
+  readonly withdrawal_count: bigint | number | string;
+  readonly forced_transaction_count: bigint | number | string;
+  readonly total_event_count: bigint | number | string;
+};
+
+/** 36-byte keyset cursor: 8-byte big-endian epoch-ms + 28-byte header_hash. */
+export const RECENT_BLOCK_CURSOR_BYTES = 36;
+
+export const encodeRecentBlockCursor = (row: {
+  readonly block_end_time: Date;
+  readonly header_hash: Buffer;
+}): Buffer => {
+  const cursor = Buffer.allocUnsafe(RECENT_BLOCK_CURSOR_BYTES);
+  cursor.writeBigInt64BE(BigInt(row.block_end_time.getTime()), 0);
+  row.header_hash.copy(cursor, 8, 0, 28);
+  return cursor;
+};
+
+export const decodeRecentBlockCursor = (
+  cursor: Buffer,
+): { readonly blockEndTime: Date; readonly headerHash: Buffer } => {
+  if (cursor.length !== RECENT_BLOCK_CURSOR_BYTES)
+    throw new Error("Recent block cursor must be 36 bytes");
+  const epochMsBigInt = cursor.readBigInt64BE(0);
+  const epochMs = Number(epochMsBigInt);
+  if (
+    epochMsBigInt < 0n ||
+    !Number.isSafeInteger(epochMs) ||
+    Number.isNaN(new Date(epochMs).getTime())
+  )
+    throw new Error("Invalid recent block cursor timestamp");
+  return {
+    blockEndTime: new Date(epochMs),
+    headerHash: cursor.subarray(8, RECENT_BLOCK_CURSOR_BYTES),
+  };
+};
+
+/** Recent block metadata from `da_payloads`, excluding removed headers and payload bytes. */
+export const recentBlocksPage = (
+  page: ReadPage,
+): Effect.Effect<readonly RecentBlockPageRow[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const cursor =
+      page.cursor === undefined
+        ? undefined
+        : decodeRecentBlockCursor(page.cursor);
+    return yield* sql<RecentBlockPageRow>`SELECT
+        da_payloads.header_hash,
+        da_payloads.block_start_time,
+        da_payloads.block_end_time,
+        da_payloads.block_time,
+        da_payloads.l2_transaction_count,
+        da_payloads.deposit_count,
+        da_payloads.withdrawal_count,
+        da_payloads.forced_transaction_count,
+        da_payloads.total_event_count
+      FROM da_payloads
+      WHERE NOT ${removedHeader(sql, "da_payloads.header_hash")}
+        ${
+          cursor === undefined
+            ? sql``
+            : sql`AND (da_payloads.block_end_time, da_payloads.header_hash) < (${cursor.blockEndTime}, ${cursor.headerHash})`
+        }
+      ORDER BY da_payloads.block_end_time DESC, da_payloads.header_hash DESC
+      LIMIT ${page.limit + 1}`;
+  }).pipe(sqlErrorToDatabaseError("da_payloads", "Failed bounded blocks read"));

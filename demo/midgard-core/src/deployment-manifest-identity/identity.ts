@@ -7,6 +7,7 @@ import {
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
 } from ".././consensus-profile.js";
 import {
+  resolveKnownDeploymentProfileBinding,
   SELECTED_DEPLOYMENT_PROFILE,
   verifyDeploymentProfileBinding,
 } from ".././deployment-profile.js";
@@ -174,6 +175,7 @@ export const verifyDeploymentManifestL1SlotConfig = (
 
 export const verifyDeploymentManifestIdentity = (
   value: unknown,
+  options: Readonly<{ profileBinding?: "selected" | "any-known" }> = {},
 ): Record<string, unknown> => {
   const candidate = requireRecord(value, "Deployment manifest value");
   if (candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION) {
@@ -192,20 +194,31 @@ export const verifyDeploymentManifestIdentity = (
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
-  verifyDeploymentProfileBinding(
-    candidate.deploymentProfile,
-    candidate.deploymentProfileDigest,
-    candidate.network,
-  );
+  const matchedProfile =
+    options.profileBinding === "any-known"
+      ? resolveKnownDeploymentProfileBinding(
+          candidate.deploymentProfile,
+          candidate.deploymentProfileDigest,
+          candidate.network,
+        )
+      : (() => {
+          verifyDeploymentProfileBinding(
+            candidate.deploymentProfile,
+            candidate.deploymentProfileDigest,
+            candidate.network,
+          );
+          return SELECTED_DEPLOYMENT_PROFILE;
+        })();
   const economics = parseDeploymentManifestEconomics(candidate.economics);
-  if (
-    stableJson(economics) !== stableJson(SELECTED_DEPLOYMENT_PROFILE.economics)
-  ) {
+  if (stableJson(economics) !== stableJson(matchedProfile.economics)) {
     throw new Error(
       "Deployment manifest economics must match deployment profile",
     );
   }
-  parseDeploymentManifestAvailabilityChallenge(candidate.availabilityChallenge);
+  parseDeploymentManifestAvailabilityChallenge(
+    candidate.availabilityChallenge,
+    matchedProfile,
+  );
   verifyDeploymentManifestL1SlotConfig(
     candidate.network,
     candidate.l1SlotConfig,

@@ -23,11 +23,27 @@ export type HttpListenerTransport = {
   readonly listenOptions: (port: number) => ListenOptions;
 };
 
-/** Plain HTTP on every interface, on PORT. */
-export const tcpTransport: HttpListenerTransport = {
-  createServer: createHttpServer,
-  listenOptions: (port) => ({ port, host: "0.0.0.0" }),
+const createHardenedHttpServer = (): Server => {
+  const server = createHttpServer({
+    requestTimeout: 30_000,
+    headersTimeout: 10_000,
+    maxHeaderSize: 8_192,
+  });
+  server.maxConnections = 512;
+  // The ingress keeps its connections open and ends them itself: its
+  // upstream keepalive_timeout (60 s) is shorter than this, and it caps
+  // requests per connection, so the node never closes one under it.
+  server.keepAliveTimeout = 65_000;
+  server.maxRequestsPerSocket = 0;
+  return server;
 };
+
+/** Plain HTTP on TCP, bound to `host` (defaults to every interface, `0.0.0.0`). */
+export const tcpTransport = (host = "0.0.0.0"): HttpListenerTransport => ({
+  createServer:
+    host === "127.0.0.1" ? createHardenedHttpServer : createHttpServer,
+  listenOptions: (port) => ({ port, host }),
+});
 
 /**
  * Plain HTTP on a Unix socket, for the TLS ingress in front of the node. A
@@ -62,17 +78,7 @@ export const unixSocketTransport = (path: string): HttpListenerTransport => {
     createServer: () => {
       // A closing server removes its socket; one still there is stale.
       if (existing()?.isSocket() === true) unlinkSync(path);
-      const server = createHttpServer({
-        requestTimeout: 30_000,
-        headersTimeout: 10_000,
-        maxHeaderSize: 8_192,
-      });
-      server.maxConnections = 512;
-      // The ingress keeps its connections open and ends them itself: its
-      // upstream keepalive_timeout (60 s) is shorter than this, and it caps
-      // requests per connection, so the node never closes one under it.
-      server.keepAliveTimeout = 65_000;
-      server.maxRequestsPerSocket = 0;
+      const server = createHardenedHttpServer();
       server.once("listening", () => chmodSync(path, 0o660));
       return server;
     },

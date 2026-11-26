@@ -3,7 +3,7 @@ import {
   MidgardTxCodecError,
   MidgardTxCodecErrorCodes,
 } from "./codec/errors.js";
-import { DA_PAYLOAD_INNER_SCHEMA_VERSION } from "./da-payload-envelope.js";
+import { DA_PAYLOAD_INNER_SCHEMA_VERSION } from "./da-payload-envelope.constants.js";
 import {
   DA_TRANSPORT_PROTOCOL_VERSION,
   DaConflictEvidenceKind,

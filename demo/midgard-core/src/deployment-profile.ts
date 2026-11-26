@@ -4,6 +4,7 @@ import {
   type DeploymentManifestFraudProofCatalogueCategory,
 } from "./deployment-manifest-identity/catalogue-roles.js";
 import {
+  DEPLOYMENT_PROFILE_DIGESTS,
   DEPLOYMENT_PROFILES,
   PRODUCTION_DEPLOYMENT_PROFILE_NAMES,
   SELECTED_DEPLOYMENT_PROFILE,
@@ -74,6 +75,46 @@ export const verifyDeploymentProfileBinding = (
       "Deployment profile, digest, and network must match the compiled profile",
     );
   }
+};
+
+/**
+ * Verifies a manifest's profile, digest, and network against any compiled-in
+ * profile in `DEPLOYMENT_PROFILES` (for multi-network SDK / CLI consumers).
+ */
+export const resolveKnownDeploymentProfileBinding = (
+  profile: unknown,
+  digest: unknown,
+  network: unknown,
+): DeploymentProfile => {
+  const name =
+    typeof profile === "object" &&
+    profile !== null &&
+    "name" in profile &&
+    typeof (profile as { readonly name?: unknown }).name === "string"
+      ? (profile as { readonly name: string }).name
+      : undefined;
+  if (
+    name === undefined ||
+    !Object.prototype.hasOwnProperty.call(DEPLOYMENT_PROFILES, name)
+  ) {
+    throw new Error(
+      "Deployment profile, digest, and network must match a known deployment profile",
+    );
+  }
+  const expected = DEPLOYMENT_PROFILES[name as DeploymentProfileName];
+  const expectedDigest =
+    DEPLOYMENT_PROFILE_DIGESTS[name as DeploymentProfileName];
+  if (
+    digest !== expectedDigest ||
+    canonicalJson(profile, "Deployment profile") !==
+      canonicalJson(expected, "Deployment profile") ||
+    network !== expected.network
+  ) {
+    throw new Error(
+      "Deployment profile, digest, and network must match a known deployment profile",
+    );
+  }
+  return expected;
 };
 
 const catalogueCategories: ReadonlySet<string> = new Set(

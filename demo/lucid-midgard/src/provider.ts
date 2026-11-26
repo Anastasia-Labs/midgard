@@ -22,6 +22,7 @@ import type {
   TxStatus,
 } from "./core/index.js";
 import { normalizeOutRef } from "./core/out-ref.js";
+import { fetchBlocksPage } from "./provider/blocks.js";
 import {
   protocolInfoToParameters,
   requestedOutRefLabels,
@@ -50,6 +51,8 @@ import {
   unavailableProtocolInfoStatuses,
 } from "./provider/transport.js";
 import type {
+  MidgardBlocksPage,
+  MidgardBlocksQueryOptions,
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
@@ -58,6 +61,9 @@ import type {
 } from "./provider/types.js";
 
 export type {
+  MidgardBlocksPage,
+  MidgardBlocksQueryOptions,
+  MidgardBlockSummary,
   MidgardFetch,
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
@@ -218,6 +224,12 @@ export class MidgardNodeProvider implements MidgardProvider {
 
   async getCurrentSlot(): Promise<bigint> {
     return (await this.getProtocolInfo()).currentSlot;
+  }
+
+  async blocks(
+    options?: MidgardBlocksQueryOptions,
+  ): Promise<MidgardBlocksPage> {
+    return fetchBlocksPage(this.transport, options);
   }
 
   async getUtxos(address: Address): Promise<readonly MidgardUtxo[]> {

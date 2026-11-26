@@ -106,7 +106,9 @@ const admissionServer = (
     if (!decision.admitted) {
       answer(decision.status);
       response.writeHead(decision.status, decision.headers);
-      response.end(JSON.stringify(decision.body));
+      response.end(
+        decision.preflight ? undefined : JSON.stringify(decision.body),
+      );
       return;
     }
     const now = (active.get(client) ?? 0) + 1;

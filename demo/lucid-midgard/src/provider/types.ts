@@ -58,6 +58,18 @@ export type MidgardRedeemerBudget = {
   readonly steps: bigint;
 };
 
+export type MidgardBlocksQueryOptions = {
+  readonly limit?: number;
+  readonly cursor?: string;
+};
+
+export type MidgardBlockSummary = Readonly<Record<string, unknown>>;
+
+export type MidgardBlocksPage = {
+  readonly blocks: readonly MidgardBlockSummary[];
+  readonly nextCursor: string | null;
+};
+
 export type MidgardProvider = {
   getUtxos(address: Address): Promise<readonly MidgardUtxo[]>;
   getUtxoByOutRef(outRef: OutRef): Promise<MidgardUtxo | undefined>;
@@ -68,6 +80,7 @@ export type MidgardProvider = {
   getProtocolInfo(): Promise<MidgardProtocolInfo>;
   getProtocolParameters(): Promise<MidgardProtocolParameters>;
   getCurrentSlot(): Promise<bigint>;
+  blocks?(options?: MidgardBlocksQueryOptions): Promise<MidgardBlocksPage>;
   submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult>;
   /**
    * The ex-units each Plutus redeemer of a draft transaction spends, as the

@@ -19,6 +19,7 @@
     }
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": {
         "import": {
@@ -62,7 +63,7 @@
     "directory": "demo/lucid-midgard"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.15.0"
   },
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",

@@ -370,9 +370,22 @@
       "types": "./dist/deployment-release.d.ts",
       "import": "./dist/deployment-release.js",
       "require": "./dist/deployment-release.cjs"
+    },
+    "./deployment-release-bindings": {
+      "midgard-source": "./src/deployment-release-bindings.ts",
+      "types": "./dist/deployment-release-bindings.d.ts",
+      "import": "./dist/deployment-release-bindings.js",
+      "require": "./dist/deployment-release-bindings.cjs"
+    },
+    "./ed25519-ledger-signature": {
+      "midgard-source": "./src/ed25519-ledger-signature.ts",
+      "types": "./dist/ed25519-ledger-signature.d.ts",
+      "import": "./dist/ed25519-ledger-signature.js",
+      "require": "./dist/ed25519-ledger-signature.cjs"
     }
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       "./commit-lease-owner": {
         "import": {
@@ -964,6 +977,26 @@
           "types": "./dist/deployment-release.d.cts",
           "default": "./dist/deployment-release.cjs"
         }
+      },
+      "./deployment-release-bindings": {
+        "import": {
+          "types": "./dist/deployment-release-bindings.d.ts",
+          "default": "./dist/deployment-release-bindings.js"
+        },
+        "require": {
+          "types": "./dist/deployment-release-bindings.d.cts",
+          "default": "./dist/deployment-release-bindings.cjs"
+        }
+      },
+      "./ed25519-ledger-signature": {
+        "import": {
+          "types": "./dist/ed25519-ledger-signature.d.ts",
+          "default": "./dist/ed25519-ledger-signature.js"
+        },
+        "require": {
+          "types": "./dist/ed25519-ledger-signature.d.cts",
+          "default": "./dist/ed25519-ledger-signature.cjs"
+        }
       }
     },
     "imports": {}
@@ -1015,7 +1048,7 @@
     "directory": "demo/midgard-core"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.15.0"
   },
   "dependencies": {
     "@libp2p/crypto": "5.1.20",
@@ -1070,6 +1103,8 @@
             "src/da-libp2p-identity.ts",
             "src/deployment-manifest-identity.ts",
             "src/deployment-release.ts",
+            "src/deployment-release-bindings.ts",
+            "src/ed25519-ledger-signature.ts",
             "src/ledger-output-commitment.ts",
             "src/ledger-output-proof.ts",
             "src/ledger-output-scan.ts",

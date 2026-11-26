@@ -10,7 +10,7 @@ transaction family has a reference page in the
 
 ## Requirements
 
-Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+Node.js 22.15.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
 
 ## How to use
 

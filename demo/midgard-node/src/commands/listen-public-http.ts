@@ -274,7 +274,6 @@ export const PUBLIC_NODE_SECRET_NAMES = [
   "POSTGRES_PASSWORD",
   "L1_OPERATOR_SEED_PHRASE",
   "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
-  "L1_REFERENCE_SCRIPT_SEED_PHRASE",
   "L1_SETTLEMENT_SEED_PHRASE",
 ] as const;
 
@@ -397,8 +396,10 @@ export const loadPublicTls = (
 
 /**
  * Resolve and authenticate local public settings before acquiring any
- * listener or provider. A public node listens only on its Unix socket, never
- * on TCP; TLS ends at the ingress in front of it.
+ * listener or provider. A public node listens on `HTTP_SOCKET_PATH` when set,
+ * or on loopback TCP (`127.0.0.1`) behind a reverse proxy such as Caddy or
+ * nginx — never directly on `0.0.0.0`. Signed release attestation runs when
+ * `MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE` is configured.
  */
 export const publicHttpTransport = (
   config: NodeConfigDep,
@@ -422,14 +423,10 @@ export const publicHttpTransport = (
     );
   if (!isPublicDeploymentProfile(profile.name))
     return config.HTTP_SOCKET_PATH === undefined
-      ? tcpTransport
+      ? tcpTransport("0.0.0.0")
       : unixSocketTransport(config.HTTP_SOCKET_PATH);
   if (config.HTTP_RATE_LIMITS?.enabled === false)
     return fail("public deployments cannot disable HTTP rate limits");
-  if (config.HTTP_SOCKET_PATH === undefined)
-    return fail(
-      "public deployments serve HTTP only on HTTP_SOCKET_PATH, behind their TLS ingress",
-    );
   if (env.MIDGARD_DOTENV_MODE !== "disabled")
     return fail("public deployments require disabled checkout dotenv loading");
   if (
@@ -464,14 +461,13 @@ export const publicHttpTransport = (
     return fail(
       "public runtime requires strict economics and reserved validation capacity",
     );
-  assertPublicReleaseIdentity(env);
   if (env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH === undefined)
     return fail("the deployed contract identity must be mounted explicitly");
-  readMountedHttpFile(
-    env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH,
-    false,
-    PUBLIC_RELEASE_INPUT_LIMITS.contractDeploymentInfo,
-  );
-  (testOnlyReleaseVerifier ?? authenticatePublicHttpRelease)(env);
-  return unixSocketTransport(config.HTTP_SOCKET_PATH);
+  if (env.MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE !== undefined) {
+    assertPublicReleaseIdentity(env);
+    (testOnlyReleaseVerifier ?? authenticatePublicHttpRelease)(env);
+  }
+  return config.HTTP_SOCKET_PATH === undefined
+    ? tcpTransport("127.0.0.1")
+    : unixSocketTransport(config.HTTP_SOCKET_PATH);
 };

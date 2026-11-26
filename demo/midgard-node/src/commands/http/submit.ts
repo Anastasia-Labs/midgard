@@ -35,6 +35,7 @@ import {
   type AdmissionResult,
   makeCheckedTransactionsAdmitter,
 } from "./checked-transaction-admission.js";
+import { PUBLIC_CORS_HEADERS } from "./routes.js";
 import {
   requestMediaType,
   SUBMIT_HTTP_BODY_MAX_BYTES,
@@ -237,6 +238,7 @@ export const makeSubmitRequestHandler = <R>({
         response.writeHead(status, {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(payload).toString(),
+          ...PUBLIC_CORS_HEADERS,
           ...(keepsConnection(status, declared) ? {} : { connection: "close" }),
           ...headers,
         });
@@ -270,6 +272,14 @@ export const makeSubmitRequestHandler = <R>({
         controller,
       );
       if (!decision.admitted) {
+        if (decision.preflight) {
+          releaseAll();
+          if (!response.headersSent && !response.destroyed) {
+            response.writeHead(decision.status, decision.headers);
+            response.end();
+          }
+          return;
+        }
         // The gate already decided whether the connection stays open.
         refuse(decision.reason, decision, () => String(decision.body.error));
         return;

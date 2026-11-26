@@ -18,7 +18,14 @@ import {
   type HttpRateLimitPolicy,
 } from "../services/http-rate-limits.js";
 import { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
-import { HTTP_ROUTE_ACTIONS, httpRateClassOf } from "./http/routes.js";
+import {
+  HTTP_ROUTE_ACTIONS,
+  httpRateClassOf,
+  type HttpRouteKind,
+  httpRouteKindOf,
+  PUBLIC_CORS_HEADERS,
+  publicCorsPreflightHeaders,
+} from "./http/routes.js";
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "./http/submission-capacity.js";
 import { createHttpRateLimiter } from "./listen-http-rate-limit.js";
 export { HTTP_RESPONSE_MAX_BYTES } from "../services/http-resource-limits.js";
@@ -285,6 +292,7 @@ export type HttpIngressDecision =
   | {
       readonly admitted: true;
       readonly path: string;
+      readonly routeKind: HttpRouteKind;
       /** The bytes the request may send: its declared length, or the
        * route's bound when it declares none. */
       readonly declared: number;
@@ -293,18 +301,18 @@ export type HttpIngressDecision =
     }
   | {
       readonly admitted: false;
+      readonly preflight: true;
+      readonly status: 204;
+      readonly headers: Readonly<Record<string, string>>;
+    }
+  | {
+      readonly admitted: false;
+      readonly preflight?: false;
       readonly reason: HttpIngressRefusalReason;
       readonly status: number;
       readonly body: Readonly<Record<string, unknown>>;
       readonly headers: Readonly<Record<string, string>>;
     };
-
-const refuse = (
-  reason: HttpIngressRefusalReason,
-  status: number,
-  body: Readonly<Record<string, unknown>>,
-  headers: Readonly<Record<string, string>> = { connection: "close" },
-): HttpIngressDecision => ({ admitted: false, reason, status, body, headers });
 
 /**
  * The checks every installed route passes before its body is read, database
@@ -320,6 +328,37 @@ export const admitHttpRequest = (
   >,
   controller: ReturnType<typeof createHttpIngress> = httpIngressFor(config),
 ): HttpIngressDecision => {
+  const query = request.url.indexOf("?");
+  const path = query === -1 ? request.url : request.url.slice(0, query);
+  const routeKind = httpRouteKindOf(path);
+  const cors = routeKind === "public" ? PUBLIC_CORS_HEADERS : undefined;
+  const refuse = (
+    reason: HttpIngressRefusalReason,
+    status: number,
+    error: string | Readonly<Record<string, unknown>>,
+    headers: Readonly<Record<string, string>> = { connection: "close" },
+  ): HttpIngressDecision => ({
+    admitted: false,
+    reason,
+    status,
+    body: typeof error === "string" ? { error } : error,
+    headers: cors === undefined ? headers : { ...cors, ...headers },
+  });
+  const refuseReservation = (
+    denied: Extract<IngressReservation, { readonly accepted: false }>,
+    declared: number,
+  ) =>
+    refuse(
+      denied.status === 429 ? "rate_limited" : "ingress_capacity",
+      denied.status,
+      { error: denied.error, error_code: denied.errorCode },
+      {
+        "retry-after": denied.retryAfterSeconds.toString(),
+        ...(keepsConnection(denied.status, declared)
+          ? {}
+          : { connection: "close" }),
+      },
+    );
   const identity = httpClientIdentity(request, config);
   if (identity === undefined)
     return refuse(
@@ -332,23 +371,26 @@ export const admitHttpRequest = (
       RETRY_AFTER,
     );
   if (Buffer.byteLength(request.url) > HTTP_QUERY_MAX_BYTES)
-    return refuse("target_too_long", 414, {
-      error: "Request target is too long",
-    });
-  const path = request.url.split("?", 1)[0]!;
+    return refuse("target_too_long", 414, "Request target is too long");
   const actions = HTTP_ROUTE_ACTIONS.filter((action) => action[1] === path);
   if (actions.length === 0)
-    return refuse("not_found", 404, { error: "Endpoint not found" });
+    return refuse("not_found", 404, "Endpoint not found");
+  if (request.method === "OPTIONS" && routeKind === "public") {
+    const reservation = controller.reserve(identity, "read", 0);
+    if (!reservation.accepted) return refuseReservation(reservation, 0);
+    reservation.release();
+    return {
+      admitted: false,
+      preflight: true,
+      status: 204,
+      headers: publicCorsPreflightHeaders(path),
+    };
+  }
   if (!actions.some((action) => action[0] === request.method))
-    return refuse(
-      "method_not_allowed",
-      405,
-      { error: "Method not allowed" },
-      {
-        connection: "close",
-        allow: actions.map((action) => action[0]).join(", "),
-      },
-    );
+    return refuse("method_not_allowed", 405, "Method not allowed", {
+      connection: "close",
+      allow: actions.map((a) => a[0]).join(", "),
+    });
   const kind = httpRateClassOf(request.method, path, actions[0]![2]);
   // Binary bodies: one submission envelope for a submission or an
   // evaluation, up to the peer bound for a peer's CBOR list.
@@ -363,23 +405,17 @@ export const admitHttpRequest = (
           : HTTP_JSON_BODY_MAX_BYTES;
   const rawLength = request.headers["content-length"];
   if (rawLength !== undefined && !/^(0|[1-9][0-9]*)$/u.test(rawLength))
-    return refuse("invalid_content_length", 400, {
-      error: "Invalid Content-Length",
-    });
+    return refuse("invalid_content_length", 400, "Invalid Content-Length");
   // A submission declares its length, so it holds only the bytes it sends.
   if (
     request.method === "POST" &&
     path === "/submit" &&
     rawLength === undefined
   )
-    return refuse("length_required", 411, {
-      error: "Content-Length is required",
-    });
+    return refuse("length_required", 411, "Content-Length is required");
   const declared = rawLength === undefined ? maxBody : Number(rawLength);
   if (!Number.isSafeInteger(declared) || declared > maxBody)
-    return refuse("body_too_large", 413, {
-      error: "Request body exceeds endpoint limit",
-    });
+    return refuse("body_too_large", 413, "Request body exceeds endpoint limit");
   if (
     request.method === "POST" &&
     !proofBody &&
@@ -388,27 +424,19 @@ export const admitHttpRequest = (
     request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() !==
       "application/json"
   )
-    return refuse("unsupported_media_type", 415, {
-      error: "Content-Type must be application/json",
-    });
+    return refuse(
+      "unsupported_media_type",
+      415,
+      "Content-Type must be application/json",
+    );
   // Unknown lengths reserve the full allowance. Declared lengths are enforced by the bounded reader.
   // A submission carries one transaction, so every request costs one token.
   const reservation = controller.reserve(identity, kind, declared);
-  if (!reservation.accepted)
-    return refuse(
-      reservation.status === 429 ? "rate_limited" : "ingress_capacity",
-      reservation.status,
-      { error: reservation.error, error_code: reservation.errorCode },
-      {
-        "retry-after": reservation.retryAfterSeconds.toString(),
-        ...(keepsConnection(reservation.status, declared)
-          ? {}
-          : { connection: "close" }),
-      },
-    );
+  if (!reservation.accepted) return refuseReservation(reservation, declared);
   return {
     admitted: true,
     path,
+    routeKind: routeKind!,
     declared,
     release: reservation.release,
   };
@@ -424,11 +452,16 @@ export const withHttpIngress = <E, R>(
     const config = yield* NodeConfig;
     const decision = admitHttpRequest(request, config, controller);
     if (!decision.admitted)
-      return yield* HttpServerResponse.json(decision.body, {
-        status: decision.status,
-        headers: decision.headers,
-      });
-    const { declared } = decision;
+      return decision.preflight
+        ? HttpServerResponse.empty({
+            status: decision.status,
+            headers: decision.headers,
+          })
+        : yield* HttpServerResponse.json(decision.body, {
+            status: decision.status,
+            headers: decision.headers,
+          });
+    const { declared, routeKind } = decision;
     return yield* HttpIncomingMessage.withMaxBodySize(
       handler,
       Option.some(declared),
@@ -446,11 +479,16 @@ export const withHttpIngress = <E, R>(
               { status: 413, headers: { connection: "close" } },
             ),
       ),
-      Effect.map((response) =>
-        request.method === "POST" && !keepsConnection(response.status, declared)
-          ? HttpServerResponse.setHeader(response, "connection", "close")
-          : response,
-      ),
+      Effect.map((response) => {
+        const framed =
+          request.method === "POST" &&
+          !keepsConnection(response.status, declared)
+            ? HttpServerResponse.setHeader(response, "connection", "close")
+            : response;
+        return routeKind === "public"
+          ? HttpServerResponse.setHeaders(framed, PUBLIC_CORS_HEADERS)
+          : framed;
+      }),
       Effect.ensuring(Effect.sync(decision.release)),
     );
   }) satisfies Effect.Effect<

@@ -48,6 +48,14 @@ describe("public ingress inputs", () => {
     assert.equal(publicApiHostname(ENV), HOST);
   });
 
+  const render = (overrides = {}) =>
+    renderPublicIngress(ENV, {
+      socketPath: SOCKET,
+      submitBodyBytes: BODY_BYTES,
+      clientActiveMax: CLIENT_ACTIVE,
+      ...overrides,
+    });
+
   test("refuses a socket path or body cap that could change the configuration", () => {
     for (const socketPath of [
       undefined,
@@ -58,38 +66,44 @@ describe("public ingress inputs", () => {
       "/run/node.sock'",
       `/run/${"a".repeat(100)}`,
     ])
-      assert.throws(
-        () =>
-          renderPublicIngress(ENV, {
-            socketPath,
-            submitBodyBytes: BODY_BYTES,
-            clientActiveMax: CLIENT_ACTIVE,
-          }),
-        /E_PUBLIC_INGRESS_SOCKET/u,
-        String(socketPath),
-      );
+      assert.throws(() => render({ socketPath }), /E_PUBLIC_INGRESS_SOCKET/u);
     for (const submitBodyBytes of [undefined, 0, -1, 1.5, "295048", 2 ** 53])
       assert.throws(
-        () =>
-          renderPublicIngress(ENV, {
-            socketPath: SOCKET,
-            submitBodyBytes,
-            clientActiveMax: CLIENT_ACTIVE,
-          }),
+        () => render({ submitBodyBytes }),
         /E_PUBLIC_INGRESS_BODY/u,
-        String(submitBodyBytes),
       );
     for (const clientActiveMax of [undefined, 0, -1, 1.5, "4", 2 ** 53])
       assert.throws(
-        () =>
-          renderPublicIngress(ENV, {
-            socketPath: SOCKET,
-            submitBodyBytes: BODY_BYTES,
-            clientActiveMax,
-          }),
+        () => render({ clientActiveMax }),
         /E_PUBLIC_INGRESS_CLIENT_ACTIVE/u,
-        String(clientActiveMax),
       );
+  });
+
+  test("renders warn stderr logging, /blocks route, CORS forwarding and error-only public CORS map", () => {
+    const rendered = render();
+    for (const line of [
+      "error_log /dev/stderr warn;",
+      "/blocks blocks;",
+      "proxy_set_header Origin $http_origin;",
+      "proxy_set_header Access-Control-Request-Method $http_access_control_request_method;",
+      "proxy_set_header Access-Control-Request-Headers $http_access_control_request_headers;",
+    ])
+      assert.ok(rendered.includes(line), line);
+    const corsMap = rendered.match(/map \$uri \$cors_origin \{([^}]+)\}/u)?.[1];
+    assert.ok(corsMap);
+    for (const r of [
+      "/healthz",
+      "/utxos",
+      "/blocks",
+      "/submit",
+      "/tx/evaluate",
+    ])
+      assert.ok(corsMap.includes(`${r} "*";`), r);
+    for (const p of ["/init", "/commit", "/peer/txs", "/admin/session"])
+      assert.ok(!corsMap.includes(p), p);
+    const addCors =
+      /add_header Access-Control-Allow-Origin \$cors_origin always;/gu;
+    assert.equal(rendered.match(addCors)?.length, 4);
   });
 });
 
@@ -156,7 +170,20 @@ describe("public ingress served by nginx", { skip }, () => {
           });
           res.end('{"error":"Request rate exceeded"}');
         } else {
-          res.writeHead(200, { "content-type": "application/json" });
+          const path = (req.url ?? "").split("?", 1)[0];
+          const cors = [
+            "/healthz",
+            "/utxos",
+            "/blocks",
+            "/submit",
+            "/tx/evaluate",
+          ].includes(path)
+            ? {
+                "access-control-allow-origin": "*",
+                "access-control-expose-headers": "Retry-After",
+              }
+            : {};
+          res.writeHead(200, { "content-type": "application/json", ...cors });
           res.end('{"ok":true}');
         }
       });
@@ -197,7 +224,7 @@ describe("public ingress served by nginx", { skip }, () => {
       .replace("/run/secrets/tls-key.pem", join(directory, "key.pem"))
       .replace("/tmp/nginx.pid", join(directory, "nginx.pid"))
       .replaceAll(/(_temp_path) \/tmp\//gu, `$1 ${directory}/tmp/`)
-      .replace("error_log /dev/null", `error_log ${directory}/error.log`)
+      .replace("error_log /dev/stderr warn", `error_log ${directory}/error.log`)
       .replace("access_log /dev/stdout", `access_log ${directory}/access.log`)
       .replace("listen 8443 ssl", `listen 127.0.0.1:${port} ssl`);
     writeFileSync(join(directory, "nginx.conf"), config);
@@ -263,6 +290,7 @@ describe("public ingress served by nginx", { skip }, () => {
             resolve({
               status: response.statusCode,
               rawHeaders: response.rawHeaders,
+              headers: response.headers,
               retryAfter: response.headers["retry-after"],
               body: Buffer.concat(chunks).toString(),
             }),
@@ -317,15 +345,17 @@ describe("public ingress served by nginx", { skip }, () => {
     );
   });
 
+  const headerCount = (reply, name) =>
+    reply.rawHeaders.filter(
+      (header, index) => index % 2 === 0 && header.toLowerCase() === name,
+    ).length;
+
   test("passes the node's own refusals through unchanged", async () => {
     const limited = await send("/limited");
     assert.equal(limited.status, 429);
     assert.equal(limited.body, '{"error":"Request rate exceeded"}');
     // One Retry-After, the node's.
-    const retryAfter = limited.rawHeaders.filter(
-      (name, index) => index % 2 === 0 && name.toLowerCase() === "retry-after",
-    );
-    assert.equal(retryAfter.length, 1);
+    assert.equal(headerCount(limited, "retry-after"), 1);
     assert.equal(limited.retryAfter, "7");
   });
 
@@ -341,6 +371,8 @@ describe("public ingress served by nginx", { skip }, () => {
     });
     assert.equal(at.status, 200);
     assert.equal(over.status, 413);
+    assert.equal(over.headers["access-control-allow-origin"], "*");
+    assert.equal(over.headers["access-control-expose-headers"], "Retry-After");
   });
 
   /** A POST whose body the caller writes in parts. */
@@ -432,10 +464,18 @@ describe("public ingress served by nginx", { skip }, () => {
     const limited = health.find(({ status }) => status === 429);
     assert.ok(limited, JSON.stringify(count(health)));
     assert.equal(limited.retryAfter, "1");
+    assert.equal(limited.headers["access-control-allow-origin"], "*");
     assert.equal(JSON.parse(limited.body).errorCode, "E_HTTP_RATE_LIMITED");
   });
 
   test("answers 503 with Retry-After while the node's socket is gone, and serves again once it is back", async () => {
+    const pub = await send("/blocks");
+    assert.equal(headerCount(pub, "access-control-allow-origin"), 1);
+    assert.equal(pub.headers["access-control-allow-origin"], "*");
+    assert.equal(
+      (await send("/init")).headers["access-control-allow-origin"],
+      undefined,
+    );
     await new Promise((resolve) => {
       node.close(resolve);
       node.closeAllConnections();
@@ -444,7 +484,15 @@ describe("public ingress served by nginx", { skip }, () => {
     const down = await send("/utxos");
     assert.equal(down.status, 503);
     assert.equal(down.retryAfter, "5");
+    assert.equal(down.headers["access-control-allow-origin"], "*");
+    assert.equal(down.headers["access-control-expose-headers"], "Retry-After");
     assert.equal(JSON.parse(down.body).errorCode, "E_HTTP_INGRESS_CAPACITY");
+    for (const [p, opts] of [["/init"], ["/peer/txs", { method: "POST" }]]) {
+      const priv = await send(p, opts);
+      assert.equal(priv.status, 503);
+      assert.equal(priv.headers["access-control-allow-origin"], undefined);
+      assert.equal(priv.headers["access-control-expose-headers"], undefined);
+    }
     await startNode();
     assert.equal((await send("/utxos")).status, 200);
   });

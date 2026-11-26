@@ -48,6 +48,15 @@ export type OpenL1ViewRequest = {
   readonly seedPhrase?: string;
 };
 
+/** Default Blockfrost API URLs per named Cardano network. */
+export const DEFAULT_BLOCKFROST_URLS: Readonly<
+  Record<Exclude<Network, "Custom">, string>
+> = Object.freeze({
+  Mainnet: "https://cardano-mainnet.blockfrost.io/api/v0",
+  Preprod: "https://cardano-preprod.blockfrost.io/api/v0",
+  Preview: "https://cardano-preview.blockfrost.io/api/v0",
+});
+
 /** One HTTP request to the indexer is bounded so a dead indexer surfaces. */
 const REQUEST_BOUND_MS = 10_000;
 
@@ -62,6 +71,23 @@ const required = (
   return trimmed.length > 0
     ? trimmed
     : refuse(`${flag} (or ${envName}) is required for this --l1 access.`);
+};
+
+const resolveBlockfrostUrl = (
+  options: L1AccessOptions,
+  env: Readonly<Record<string, string | undefined>>,
+  network: Exclude<Network, "Custom">,
+): string => {
+  if (options.blockfrostUrl !== undefined) {
+    const trimmed = options.blockfrostUrl.trim();
+    if (trimmed.length === 0)
+      refuse("--blockfrost-url must not be empty when provided.");
+    return trimUrl(trimmed);
+  }
+  const fromEnv = env.L1_BLOCKFROST_URL?.trim() ?? "";
+  return trimUrl(
+    fromEnv.length > 0 ? fromEnv : DEFAULT_BLOCKFROST_URLS[network],
+  );
 };
 
 /** Flags win over the environment names the node's L1 access uses. */
@@ -89,18 +115,12 @@ export const resolveL1Access = (
     };
   if (kind === "blockfrost") {
     if (network === "Custom")
-      refuse(
+      return refuse(
         "--l1 blockfrost serves named networks only; this deployment is on a Custom network.",
       );
     return {
       kind,
-      url: trimUrl(
-        required(
-          options.blockfrostUrl ?? env.L1_BLOCKFROST_URL,
-          "--blockfrost-url",
-          "L1_BLOCKFROST_URL",
-        ),
-      ),
+      url: resolveBlockfrostUrl(options, env, network),
       projectId: required(
         options.blockfrostProjectId ?? env.L1_BLOCKFROST_PROJECT_ID,
         "--blockfrost-project-id",

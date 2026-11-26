@@ -65,9 +65,9 @@ const readVerifiedManifest = async (
     );
   }
   return usable(path, () => {
-    const manifest = verifyDeploymentManifestIdentity(
-      value,
-    ) as DeploymentManifest;
+    const manifest = verifyDeploymentManifestIdentity(value, {
+      profileBinding: "any-known",
+    }) as DeploymentManifest;
     const network = manifest.network as Network;
     if (!NETWORKS.includes(network))
       throw new Error(`unknown network ${JSON.stringify(manifest.network)}`);

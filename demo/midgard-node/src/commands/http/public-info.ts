@@ -3,7 +3,13 @@ import { HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { Effect } from "effect";
 
-import { blockTransactionPage } from "../../database/http-read-pages.js";
+import {
+  blockTransactionPage,
+  decodeRecentBlockCursor,
+  encodeRecentBlockCursor,
+  RECENT_BLOCK_CURSOR_BYTES,
+  recentBlocksPage,
+} from "../../database/http-read-pages.js";
 import { NodeConfig } from "../../services/index.js";
 import { Lucid } from "../../services/lucid.js";
 import { ContractDeploymentIdentity } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
@@ -13,6 +19,7 @@ import * as ProtocolInfoCommand from "../protocol-info.js";
 import { parseFixedHexParam } from "./parameters.js";
 import {
   BLOCK_ENDPOINT,
+  BLOCKS_ENDPOINT,
   HEALTH_ENDPOINT,
   PROTOCOL_INFO_ENDPOINT,
 } from "./routes.js";
@@ -44,20 +51,16 @@ export const getProtocolInfoHandler = Effect.gen(function* () {
 export const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const hdrHash = params["header_hash"];
-  yield* Effect.logInfo(
-    `GET /block - Request received for header_hash: [redacted]`,
-  );
 
   const headerHash = parseFixedHexParam(hdrHash, 28);
   if (headerHash === null) {
-    yield* Effect.logInfo(
-      `GET /${BLOCK_ENDPOINT} - Invalid block hash: [redacted]`,
-    );
+    yield* Effect.logInfo(`GET /${BLOCK_ENDPOINT} - Invalid block hash`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid block hash: [redacted]` },
+      { error: "Invalid block hash" },
       { status: 400 },
     );
   }
+  const headerHashHex = SDK.bufferToHex(headerHash);
   const parsedPage = yield* Effect.try(() => parseReadPage(params)).pipe(
     Effect.either,
   );
@@ -74,7 +77,12 @@ export const getBlockHandler = Effect.gen(function* () {
     SDK.bufferToHex,
   );
   yield* Effect.logInfo(
-    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: [redacted]`,
+    `GET /${BLOCK_ENDPOINT} - Found block transactions`,
+  ).pipe(
+    Effect.annotateLogs({
+      header_hash: headerHashHex,
+      count: page.entries.length,
+    }),
   );
   return yield* HttpServerResponse.json({
     hashes: page.entries,
@@ -88,6 +96,60 @@ export const getBlockHandler = Effect.gen(function* () {
     failWith500(
       "GET",
       BLOCK_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
+);
+
+/**
+ * `GET /blocks`: returns recent committed block metadata in reverse
+ * chronological order (`block_end_time DESC, header_hash DESC`).
+ */
+export const getBlocksHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const parsedPage = yield* Effect.try(() => {
+    const page = parseReadPage(params, RECENT_BLOCK_CURSOR_BYTES);
+    if (page.cursor !== undefined) decodeRecentBlockCursor(page.cursor);
+    return page;
+  }).pipe(Effect.either);
+  if (parsedPage._tag === "Left")
+    return yield* HttpServerResponse.json(
+      { error: "Invalid page" },
+      { status: 400 },
+    );
+  const rows = yield* recentBlocksPage(parsedPage.right);
+  const page = encodeReadPage(
+    rows,
+    parsedPage.right,
+    encodeRecentBlockCursor,
+    (row) => ({
+      headerHash: SDK.bufferToHex(row.header_hash),
+      blockStartTime: row.block_start_time.toISOString(),
+      blockEndTime: row.block_end_time.toISOString(),
+      blockTime: row.block_time.toISOString(),
+      l2TransactionCount: Number(row.l2_transaction_count),
+      depositCount: Number(row.deposit_count),
+      withdrawalCount: Number(row.withdrawal_count),
+      forcedTransactionCount: Number(row.forced_transaction_count),
+      totalEventCount: Number(row.total_event_count),
+    }),
+  );
+  yield* Effect.logInfo(`GET /${BLOCKS_ENDPOINT} - Found recent blocks`).pipe(
+    Effect.annotateLogs({ count: page.entries.length }),
+  );
+  return yield* HttpServerResponse.json({
+    blocks: page.entries,
+    nextCursor: page.nextCursor,
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", BLOCKS_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      BLOCKS_ENDPOINT,
       e.cause,
       `db failure with table ${e.table}`,
     ),

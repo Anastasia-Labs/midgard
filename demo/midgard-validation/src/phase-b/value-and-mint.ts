@@ -8,10 +8,10 @@ import { LedgerColumns } from "../ledger.js";
 import { type RejectSubject } from "../reject-subject.js";
 import { PhaseAValidatedTx, RejectCode, RejectCodes } from "../types.js";
 import { orderMidgardInputResolutionSchedule } from "../validation-machine/input-resolution.js";
-import { midgardValueAssets } from "../validation-machine/value-mutation.js";
 import {
   describeValueDelta,
   isZeroValueDelta,
+  midgardValueAssets,
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
   sumMidgardValues,

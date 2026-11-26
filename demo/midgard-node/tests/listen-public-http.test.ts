@@ -54,13 +54,11 @@ const socketDirectory = join(directory, "http");
 const socketPath = join(socketDirectory, "node.sock");
 const operator = generateMnemonic();
 const merge = generateMnemonic();
-const reference = generateMnemonic();
 const settings = {
   ADMIN_API_KEY: "0123456789abcdef".repeat(4),
   POSTGRES_PASSWORD: "r7-testing-password-with-private-entropy",
   L1_OPERATOR_SEED_PHRASE: operator,
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: merge,
-  L1_REFERENCE_SCRIPT_SEED_PHRASE: reference,
   L1_SETTLEMENT_SEED_PHRASE: generateMnemonic(),
   NETWORK: "Preprod",
   PORT: 3000,
@@ -85,6 +83,14 @@ const profile: PublicHttpProfile = {
 const env: NodeJS.ProcessEnv = {
   MIDGARD_DOTENV_MODE: "disabled",
   MIDGARD_CONFIG_FILE: configPath,
+  MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: identity,
+};
+const strictReleaseEnv: NodeJS.ProcessEnv = {
+  ...env,
+  MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE: join(
+    directory,
+    "deployment-authority.json",
+  ),
   MIDGARD_PUBLIC_RELEASE_REVISION: "a".repeat(40),
   MIDGARD_PUBLIC_NODE_IMAGE:
     "example.invalid/operator@sha256:" + "a".repeat(64),
@@ -92,9 +98,8 @@ const env: NodeJS.ProcessEnv = {
     "example.invalid/ingress@sha256:" + "c".repeat(64),
   MIDGARD_PUBLIC_POSTGRES_IMAGE:
     "example.invalid/postgres@sha256:" + "b".repeat(64),
-  MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: identity,
 };
-const testOnlyReleaseVerifier = () => undefined; // Isolates transport; compiled public release authentication is a separate required gate.
+const testOnlyReleaseVerifier = () => undefined; // Isolates transport when strict signed-release attestation is opted in.
 const mount = (value = config) =>
   writeFileSync(
     configPath,
@@ -145,113 +150,123 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
+const resolve = (
+  value = config,
+  overrides: {
+    env?: NodeJS.ProcessEnv;
+    profile?: PublicHttpProfile;
+    testOnlyReleaseVerifier?: (env: NodeJS.ProcessEnv) => void;
+  } = {},
+) => publicHttpTransport(value, { env, profile, ...overrides });
+
 describe("public HTTP local preflight and its socket listener", () => {
-  it.each([
-    ["MIDGARD_CONFIG_FILE", undefined],
-    ["MIDGARD_DOTENV_MODE", "enabled"],
-    ["MIDGARD_PUBLIC_NODE_IMAGE", "operator:latest"],
-    ["MIDGARD_PUBLIC_RELEASE_REVISION", "main"],
-    ["MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH", undefined],
-  ])("refuses %s before constructing any server", (name, value) => {
-    expect(() =>
-      publicHttpTransport(config, {
-        env: { ...env, [name]: value },
-        profile,
-        testOnlyReleaseVerifier,
-      }),
-    ).toThrow("E_PUBLIC_HTTP_CONFIG");
+  it("starts cleanly in simple preprod-public mode without signed release files, image digests, or L1_REFERENCE_SCRIPT_SEED_PHRASE", () => {
+    mount();
+    expect(resolve().listenOptions(config.PORT)).toEqual({ path: socketPath });
   });
-  it("refuses a public deployment that disables HTTP rate limits", () => {
+  it("refuses missing/disabled config env vars, invalid strict signed-release inputs, and disabled rate limits", () => {
+    for (const [name, value] of [
+      ["MIDGARD_CONFIG_FILE", undefined],
+      ["MIDGARD_DOTENV_MODE", "enabled"],
+      ["MIDGARD_CONFIG_MODE", "disabled"],
+      ["MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH", undefined],
+    ] as const)
+      expect(() => resolve(config, { env: { ...env, [name]: value } })).toThrow(
+        "E_PUBLIC_HTTP_CONFIG",
+      );
+    for (const [name, value] of [
+      ["MIDGARD_PUBLIC_NODE_IMAGE", "operator:latest"],
+      ["MIDGARD_PUBLIC_RELEASE_REVISION", "main"],
+    ] as const)
+      expect(() =>
+        resolve(config, {
+          env: { ...strictReleaseEnv, [name]: value },
+          testOnlyReleaseVerifier,
+        }),
+      ).toThrow("E_PUBLIC_HTTP_CONFIG");
     expect(() =>
-      publicHttpTransport(
-        {
-          ...config,
-          HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
-        },
-        { env, profile, testOnlyReleaseVerifier },
-      ),
+      resolve({
+        ...config,
+        HTTP_RATE_LIMITS: { ...DEFAULT_HTTP_RATE_LIMITS, enabled: false },
+      }),
     ).toThrow("public deployments cannot disable HTTP rate limits");
   });
-  it("calls the real default release verifier before constructing the listener", () => {
+  it("calls the real default release verifier and fails closed when MIDGARD_PUBLIC_RELEASE_AUTHORITY_FILE is set", () => {
     mount();
-    expect(() => publicHttpTransport(config, { env, profile })).toThrow(
+    expect(() => resolve(config, { env: strictReleaseEnv })).toThrow(
       "E_PUBLIC_HTTP_CONFIG",
     );
-    expect(() => authenticatePublicHttpRelease(env)).toThrow(
+    expect(() => authenticatePublicHttpRelease(strictReleaseEnv)).toThrow(
       "E_PUBLIC_HTTP_CONFIG",
     );
+    expect(() =>
+      resolve(config, { env: strictReleaseEnv, testOnlyReleaseVerifier }),
+    ).not.toThrow();
   });
-  // A publisher on an operator wallet is refused earlier, at config load
-  // (operational-wallet-config.test.ts).
-  it("refuses blank keys, weak credentials and user custody", () => {
+  it("refuses blank keys, weak credentials, user custody, env overrides, non-allow-listed wallets, and 0644 config", () => {
     for (const invalid of [
       { ...config, ADMIN_API_KEY: "" },
       { ...config, POSTGRES_PASSWORD: "postgres" },
       { ...config, VALIDATION_WORKER_POOL_SIZE: 1 },
     ]) {
       mount(invalid);
-      expect(() =>
-        publicHttpTransport(invalid, { env, profile, testOnlyReleaseVerifier }),
-      ).toThrow("E_PUBLIC_HTTP_CONFIG");
+      expect(() => resolve(invalid)).toThrow("E_PUBLIC_HTTP_CONFIG");
     }
     mount();
     expect(() =>
-      publicHttpTransport(config, {
+      resolve(config, {
         env: { ...env, L1_USER_SEED_PHRASE: generateMnemonic() },
-        profile,
-        testOnlyReleaseVerifier,
       }),
     ).toThrow("user wallet");
-  });
-  it("refuses environment secret overrides and public wallet identities outside the allow-list", () => {
-    mount();
     expect(() =>
-      publicHttpTransport(
-        { ...config, ADMIN_API_KEY: "ff".repeat(32) },
-        { env, profile, testOnlyReleaseVerifier },
-      ),
+      resolve({ ...config, ADMIN_API_KEY: "ff".repeat(32) }),
     ).toThrow("mounted configuration");
     expect(() =>
-      publicHttpTransport(config, {
-        env,
+      resolve(config, {
         profile: {
           ...profile,
           allow_lists: { ...profile.allow_lists, operators: ["00".repeat(28)] },
         },
-        testOnlyReleaseVerifier,
       }),
     ).toThrow("allow-list");
-  });
-  it("refuses a publicly readable mounted configuration", () => {
     chmodSync(configPath, 0o644);
     try {
-      expect(() =>
-        publicHttpTransport(config, { env, profile, testOnlyReleaseVerifier }),
-      ).toThrow("mounted");
+      expect(() => resolve()).toThrow("mounted");
     } finally {
       chmodSync(configPath, 0o600);
     }
   });
-  it("refuses to serve without a socket, on a socket other users can reach, or over a file", () => {
+  it("falls back to loopback TCP (127.0.0.1) when HTTP_SOCKET_PATH is omitted and enforces socket checks when set", async () => {
     mount();
-    const transport = (value: NodeConfigDep) => () =>
-      publicHttpTransport(value, { env, profile, testOnlyReleaseVerifier });
-    expect(transport({ ...config, HTTP_SOCKET_PATH: undefined })).toThrow(
-      "HTTP_SOCKET_PATH",
+    const loopback = resolve({ ...config, HTTP_SOCKET_PATH: undefined });
+    const port = await unusedPort();
+    expect(loopback.listenOptions(port)).toEqual({ port, host: "127.0.0.1" });
+    const health = await Effect.runPromise(
+      withStartupHttpServer(
+        port,
+        () =>
+          Effect.promise(
+            async () =>
+              (await fetch(`http://127.0.0.1:${port.toString()}/healthz`))
+                .status,
+          ),
+        loopback,
+      ),
     );
+    expect(health).toBe(200);
     chmodSync(socketDirectory, 0o755);
     try {
-      expect(transport(config)).toThrow("grants other users access");
+      expect(() => resolve()).toThrow("grants other users access");
     } finally {
       chmodSync(socketDirectory, 0o700);
     }
-    expect(
-      transport({ ...config, HTTP_SOCKET_PATH: join(directory, "x", "s") }),
+    expect(() =>
+      resolve({ ...config, HTTP_SOCKET_PATH: join(directory, "x", "s") }),
     ).toThrow("directory is missing");
     const file = join(socketDirectory, "file.sock");
     writeFileSync(file, "operator data");
     try {
-      expect(transport({ ...config, HTTP_SOCKET_PATH: file })).toThrow(
+      expect(() => resolve({ ...config, HTTP_SOCKET_PATH: file })).toThrow(
         "not a socket",
       );
       expect(existsSync(file)).toBe(true);
@@ -259,9 +274,8 @@ describe("public HTTP local preflight and its socket listener", () => {
       rmSync(file);
     }
   });
-  it("serves plain HTTP only on its socket, never over TCP, and replaces a socket a killed node left", async () => {
+  it("serves plain HTTP only on its socket when HTTP_SOCKET_PATH is set and replaces a socket a killed node left", async () => {
     mount();
-    // A node killed while listening leaves its socket file behind.
     try {
       execFileSync(process.execPath, [
         "-e",
@@ -272,13 +286,7 @@ describe("public HTTP local preflight and its socket listener", () => {
     }
     expect(statSync(socketPath).isSocket()).toBe(true);
     const port = await unusedPort();
-    const transport = publicHttpTransport(config, {
-      env,
-      profile,
-      testOnlyReleaseVerifier,
-    });
-    // Observed while serving, asserted after: a failed run would hold the
-    // startup server open instead of failing.
+    const transport = publicHttpTransport(config, { env, profile });
     const served = await Effect.runPromise(
       withStartupHttpServer(
         port,
@@ -297,16 +305,11 @@ describe("public HTTP local preflight and its socket listener", () => {
       ),
     );
     expect(served).toEqual({ health: 200, mode: 0o660, tcp: "refused" });
-    // Closing removes the socket, so the next start finds nothing stale.
     expect(existsSync(socketPath)).toBe(false);
   });
   it("charges each request to the client its ingress names on the socket", async () => {
     mount();
-    const transport = publicHttpTransport(config, {
-      env,
-      profile,
-      testOnlyReleaseVerifier,
-    });
+    const transport = publicHttpTransport(config, { env, profile });
     const server = transport.createServer();
     server.on(
       "request",

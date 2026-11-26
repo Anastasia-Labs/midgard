@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { vendoredSourceNotice } from "../../demo/scripts/lib/vendored-imports.mjs";
 import {
+  browserBundleProblems,
   checkPublishSet,
   forbiddenPackedPath,
   loadableSpecifiers,
@@ -23,6 +24,7 @@ import {
   packedManifestProblems,
   packedSecretProblems,
   parseArguments,
+  PUBLISH_SET,
   publishedExport,
   publishedExports,
   typesCheck,
@@ -605,4 +607,72 @@ test("requires a repository root and a new output directory", () => {
     parseArguments(["--root", "/r", "--output", "/o", "--skip-types"]).types,
     false,
   );
+});
+
+test("checks bin targets and includes @al-ft/midgard-user-cli in PUBLISH_SET", () => {
+  assert.ok(
+    PUBLISH_SET.some(({ name }) => name === "@al-ft/midgard-user-cli"),
+    "@al-ft/midgard-user-cli must be in PUBLISH_SET",
+  );
+  assert.deepEqual(
+    packedManifestProblems(
+      { ...cleanManifest(), bin: { cli: "./dist/cli.js" } },
+      [...cleanFiles, "dist/cli.js"],
+      publishNames,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    packedManifestProblems(
+      { ...cleanManifest(), bin: { cli: "./dist/missing-cli.js" } },
+      cleanFiles,
+      publishNames,
+    ),
+    ["bin.cli ./dist/missing-cli.js is not in the tarball"],
+  );
+});
+
+test("browserBundleProblems passes browser-safe packages and flags node:* / level / blake2b leaks", () => {
+  const installRoot = mkdtempSync(join(tmpdir(), "sdk-packages-browser-"));
+  writePackage(
+    installRoot,
+    "@al-ft/clean",
+    {
+      name: "@al-ft/clean",
+      version: "0.1.0",
+      type: "module",
+      exports: { ".": { import: "./dist/index.js" } },
+    },
+    {
+      "dist/index.js": "export const ok = (x) => x + 1;\n",
+    },
+  );
+  writePackage(
+    installRoot,
+    "@al-ft/leaky",
+    {
+      name: "@al-ft/leaky",
+      version: "0.1.0",
+      type: "module",
+      exports: { ".": { import: "./dist/index.js" } },
+    },
+    {
+      "dist/index.js":
+        'import * as zlib from "node:zlib";\nimport { createHash } from "node:crypto";\nimport "level";\nimport "blake2b";\nexport const leak = [zlib, createHash];\n',
+    },
+  );
+  assert.deepEqual(
+    browserBundleProblems(repositoryRoot, installRoot, ["@al-ft/clean"]),
+    [],
+  );
+  const leakyProblems = browserBundleProblems(repositoryRoot, installRoot, [
+    "@al-ft/leaky",
+  ]);
+  assert.equal(leakyProblems.length, 4);
+  for (const needle of ["node:zlib", "node:crypto", "level", "blake2b"]) {
+    assert.ok(
+      leakyProblems.some((problem) => problem.includes(needle)),
+      `expected problem naming ${needle}, got ${JSON.stringify(leakyProblems)}`,
+    );
+  }
 });

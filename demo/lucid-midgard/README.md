@@ -6,7 +6,8 @@ not build or submit Cardano transactions.
 
 ## Requirements
 
-Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+Node.js 22.15.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+Browser bundlers (Vite, Next.js, esbuild) import zero `node:*` built-ins, but currently require a global `Buffer` polyfill (e.g. `buffer` or `vite-plugin-node-polyfills`).
 
 ## Quickstart
 

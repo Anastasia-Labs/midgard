@@ -44,6 +44,7 @@ import { postPeerInventoryHandler, postPeerTxsHandler } from "./peer-routes.js";
 import { getPipelineStatusHandler } from "./pipeline-status.js";
 import {
   getBlockHandler,
+  getBlocksHandler,
   getHealthHandler,
   getProtocolInfoHandler,
 } from "./public-info.js";
@@ -51,6 +52,7 @@ import { getReadinessHandler } from "./readiness.js";
 import {
   ADDRESS_HISTORY_ENDPOINT,
   BLOCK_ENDPOINT,
+  BLOCKS_ENDPOINT,
   COMMIT_ENDPOINT,
   DEPOSIT_STATUS_ENDPOINT,
   HEALTH_ENDPOINT,
@@ -147,6 +149,7 @@ export const buildListenRouter = (
       HttpRouter.get(`/${UTXO_ENDPOINT}`, withHttpReadSql(getUtxoHandler)),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, withHttpReadSql(getUtxosHandler)),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, withHttpReadSql(getBlockHandler)),
+      HttpRouter.get(`/${BLOCKS_ENDPOINT}`, withHttpReadSql(getBlocksHandler)),
     )
     .pipe(
       HttpRouter.post(

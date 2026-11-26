@@ -1,5 +1,5 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
-import { DA_PAYLOAD_INNER_SCHEMA_VERSION } from "./da-payload-envelope.js";
+import { DA_PAYLOAD_INNER_SCHEMA_VERSION } from "./da-payload-envelope.constants.js";
 import type { DeploymentProfile } from "./deployment-profile.js";
 import { SELECTED_DEPLOYMENT_PROFILE } from "./generated-deployment-profiles.js";
 

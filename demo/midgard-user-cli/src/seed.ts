@@ -22,6 +22,40 @@ export type SeedSource = {
   readonly file?: string;
 };
 
+export type SeedCliOptions = {
+  readonly walletSeedPhraseEnv?: string;
+  readonly walletSeedPhraseFile?: string;
+  readonly seedEnv?: string;
+  readonly seedFile?: string;
+};
+
+export const hasSeedCliOptions = (options: SeedCliOptions): boolean =>
+  options.walletSeedPhraseEnv !== undefined ||
+  options.walletSeedPhraseFile !== undefined ||
+  options.seedEnv !== undefined ||
+  options.seedFile !== undefined;
+
+export const seedSourceOf = (options: SeedCliOptions): SeedSource => {
+  if (
+    options.walletSeedPhraseEnv !== undefined &&
+    options.seedEnv !== undefined
+  )
+    refuse(
+      "Give only one of --wallet-seed-phrase-env or --seed-env, not both.",
+    );
+  if (
+    options.walletSeedPhraseFile !== undefined &&
+    options.seedFile !== undefined
+  )
+    refuse(
+      "Give only one of --wallet-seed-phrase-file or --seed-file, not both.",
+    );
+  return {
+    env: options.walletSeedPhraseEnv ?? options.seedEnv,
+    file: options.walletSeedPhraseFile ?? options.seedFile,
+  };
+};
+
 const readSeedFile = (path: string): string => {
   if (!isAbsolute(path))
     return refuse("--wallet-seed-phrase-file must be an absolute path.");

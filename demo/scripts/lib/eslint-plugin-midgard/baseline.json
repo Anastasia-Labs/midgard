@@ -452,14 +452,6 @@
       "reason": "Evaluation-order preamble: da-committee-node/tests/tx-builders.da-attestation-init-output.ts imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
-    "lucid-midgard/src/builder.complete-tx.ts": {
-      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
-      "sites": ["} from \"@al-ft/midgard-validation\";"]
-    },
-    "lucid-midgard/src/builder.ts": {
-      "reason": "Evaluation-order preamble: lucid-midgard/src/builder.complete-tx.ts imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
-      "sites": ["import \"@al-ft/midgard-validation\";"]
-    },
     "midgard-fault-proofs/src/block-replay.ts": {
       "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub.",
       "sites": [

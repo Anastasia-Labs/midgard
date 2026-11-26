@@ -17,7 +17,7 @@ import {
   parseOptionalLovelace,
   parseSubmissionId,
 } from "./options.js";
-import { resolveSeedPhrase, walletOf } from "./seed.js";
+import { resolveSeedPhrase, seedSourceOf, walletOf } from "./seed.js";
 import {
   existingIntent,
   manifestPathOf,
@@ -49,13 +49,7 @@ export const runDeposit = async (
     options.structuralLovelace,
     "--structural-lovelace",
   );
-  const seedPhrase = resolveSeedPhrase(
-    {
-      env: options.walletSeedPhraseEnv,
-      file: options.walletSeedPhraseFile,
-    },
-    deps.env,
-  );
+  const seedPhrase = resolveSeedPhrase(seedSourceOf(options), deps.env);
   const deployment = await loadUserDeployment(manifestPathOf(options, deps));
   const l2Address = parseAddress(
     options.l2Address,

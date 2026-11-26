@@ -14,6 +14,8 @@ export const UTXOS_ENDPOINT: string = "utxos";
 
 export const BLOCK_ENDPOINT: string = "block";
 
+export const BLOCKS_ENDPOINT: string = "blocks";
+
 export const INIT_ENDPOINT: string = "init";
 
 export const COMMIT_ENDPOINT: string = "commit";
@@ -52,6 +54,7 @@ export const HTTP_ROUTE_ACTIONS = [
   ["GET", "/utxos", "public"],
   ["POST", "/utxos", "public"],
   ["GET", "/block", "public"],
+  ["GET", "/blocks", "public"],
   ["POST", "/submit", "public"],
   ["POST", "/tx/evaluate", "public"],
   ["POST", "/peer/txs", "peer"],
@@ -71,6 +74,27 @@ export type HttpRouteKind = (typeof HTTP_ROUTE_ACTIONS)[number][2];
 /** The kind of the installed route at `path`, or undefined when none is. */
 export const httpRouteKindOf = (path: string): HttpRouteKind | undefined =>
   HTTP_ROUTE_ACTIONS.find((action) => action[1] === path)?.[2];
+
+/** CORS response headers emitted on public routes only (never admin or peer). */
+export const PUBLIC_CORS_HEADERS: Readonly<Record<string, string>> = {
+  "access-control-allow-origin": "*",
+  "access-control-expose-headers": "Retry-After",
+};
+
+/** CORS preflight headers for `OPTIONS` on an installed public route. */
+export const publicCorsPreflightHeaders = (
+  path: string,
+): Readonly<Record<string, string>> => {
+  const methods = HTTP_ROUTE_ACTIONS.filter((action) => action[1] === path).map(
+    (action) => action[0],
+  );
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": [...methods, "OPTIONS"].join(", "),
+    "access-control-allow-headers": "Content-Type",
+    "access-control-max-age": "86400",
+  };
+};
 
 /**
  * The rate class the ingress charges a request to an installed route:

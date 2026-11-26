@@ -37,6 +37,13 @@ export const PUBLISH_SET = Object.freeze([
   { name: "@al-ft/midgard-validation", dir: "demo/midgard-validation" },
   { name: "@al-ft/midgard-sdk", dir: "demo/midgard-sdk" },
   { name: "@al-ft/lucid-midgard", dir: "demo/lucid-midgard" },
+  { name: "@al-ft/midgard-user-cli", dir: "demo/midgard-user-cli" },
+]);
+
+/** Browser-facing entrypoints checked for zero `node:*` / native-only leaks. */
+export const BROWSER_ENTRYPOINTS = Object.freeze([
+  "@al-ft/lucid-midgard",
+  "@al-ft/midgard-sdk/users",
 ]);
 
 /** The workspace-only condition that points at TypeScript sources. */
@@ -200,6 +207,14 @@ export const packedManifestProblems = (
       !shipped.has(stripDot(manifest[field]))
     )
       problems.push(`${field} ${manifest[field]} is not in the tarball`);
+  if (typeof manifest.bin === "string") {
+    if (!shipped.has(stripDot(manifest.bin)))
+      problems.push(`bin ${manifest.bin} is not in the tarball`);
+  } else if (manifest.bin !== null && typeof manifest.bin === "object") {
+    for (const [command, target] of Object.entries(manifest.bin))
+      if (typeof target !== "string" || !shipped.has(stripDot(target)))
+        problems.push(`bin.${command} ${target} is not in the tarball`);
+  }
   const entries = exportEntries(manifest.exports);
   if (entries.length === 0) problems.push("exports map is missing");
   for (const entry of entries) {
@@ -518,6 +533,144 @@ export const typesCheck = (root, installRoot, packages) => {
   return problems.map((problem) => `types: ${problem}`);
 };
 
+const NODE_BARE_BUILTINS = new Set([
+  "assert",
+  "buffer",
+  "child_process",
+  "cluster",
+  "crypto",
+  "dgram",
+  "dns",
+  "events",
+  "fs",
+  "http",
+  "http2",
+  "https",
+  "inspector",
+  "module",
+  "net",
+  "os",
+  "path",
+  "perf_hooks",
+  "process",
+  "readline",
+  "repl",
+  "sqlite",
+  "stream",
+  "tls",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "worker_threads",
+  "zlib",
+]);
+
+const browserProbeScript = (esbuildPath, entrypoints) => `
+import { pathToFileURL } from "node:url";
+const esbuild = await import(pathToFileURL(${JSON.stringify(esbuildPath)}).href);
+const NODE_BARE = new Set(${JSON.stringify([...NODE_BARE_BUILTINS])});
+const problems = [];
+for (const specifier of ${JSON.stringify(entrypoints)}) {
+  const leaks = new Set();
+  try {
+    await esbuild.build({
+      stdin: {
+        contents: \`export * from \${JSON.stringify(specifier)};\`,
+        resolveDir: process.cwd(),
+        loader: "js",
+      },
+      bundle: true,
+      write: false,
+      platform: "browser",
+      format: "esm",
+      logLevel: "silent",
+      loader: { ".wasm": "empty" },
+      conditions: ["browser", "import", "default"],
+      plugins: [{
+        name: "midgard-browser-check",
+        setup(build) {
+          build.onResolve({ filter: /.*/ }, (args) => {
+            const p = args.path;
+            const isNodeProtocol = p.startsWith("node:");
+            const isForbiddenPkg = p === "level" || p === "blake2b";
+            const isBareBuiltin = NODE_BARE.has(p);
+            if (!isNodeProtocol && !isForbiddenPkg && !isBareBuiltin) return null;
+            const importer = args.importer.replaceAll("\\\\", "/");
+            const fromMidgard = importer.includes("/node_modules/@al-ft/");
+            if (isNodeProtocol || isForbiddenPkg || fromMidgard) {
+              leaks.add(\`\${p} (from \${importer || specifier})\`);
+            }
+            return { path: p, external: true };
+          });
+        },
+      }],
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.split("\\n")[0] : String(error);
+    problems.push(\`\${specifier}: esbuild failed: \${message}\`);
+  }
+  for (const leak of [...leaks].sort()) {
+    problems.push(\`\${specifier} imports \${leak}\`);
+  }
+}
+console.log(JSON.stringify(problems));
+`;
+
+const resolveEsbuild = (root) => {
+  try {
+    const demoReq = createRequire(join(root, "demo/package.json"));
+    const vitestPkg = demoReq.resolve("vitest/package.json");
+    const vitePkg = createRequire(vitestPkg).resolve("vite/package.json");
+    return createRequire(vitePkg).resolve("esbuild");
+  } catch {
+    const tsupPkg = createRequire(
+      join(root, "demo/lucid-midgard/package.json"),
+    ).resolve("tsup/package.json");
+    return createRequire(tsupPkg).resolve("esbuild");
+  }
+};
+
+/**
+ * Bundles each browser-facing entrypoint from `installRoot` with esbuild
+ * (`platform: "browser"`) and verifies zero `node:*`, `level`, `blake2b`, or
+ * `@al-ft/*`-originating Node built-in imports. Returns problems prefixed
+ * `browser:`.
+ */
+export const browserBundleProblems = (
+  root,
+  installRoot,
+  entrypoints = BROWSER_ENTRYPOINTS,
+) => {
+  if (entrypoints.length === 0) return [];
+  let esbuildPath;
+  try {
+    esbuildPath = resolveEsbuild(root);
+  } catch (error) {
+    return [
+      `browser: cannot resolve esbuild from demo workspace: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", browserProbeScript(esbuildPath, entrypoints)],
+    {
+      cwd: installRoot,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "" },
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  );
+  if (result.status !== 0)
+    return [
+      `browser: probe exited ${result.status ?? result.signal}: ${result.stderr.trim()}`,
+    ];
+  return JSON.parse(result.stdout.trim().split("\n").at(-1)).map(
+    (problem) => `browser: ${problem}`,
+  );
+};
+
 /** Packs, extracts and checks the publish set into the new `output` directory. */
 export const checkPublishSet = ({ root, output, types = true }) => {
   if (existsSync(output))
@@ -602,6 +755,7 @@ export const checkPublishSet = ({ root, output, types = true }) => {
         ).map((failure) => `${mode} ${failure}`),
       );
   const typeProblems = types ? typesCheck(root, installRoot, packages) : [];
+  const browserProblems = browserBundleProblems(root, installRoot);
   const report = {
     schemaVersion: "midgard-sdk-publish-set-check-v1",
     sourceRevision: run(["git", "-C", root, "rev-parse", "HEAD"]).trim(),
@@ -610,7 +764,8 @@ export const checkPublishSet = ({ root, output, types = true }) => {
       "",
     status:
       packages.every((pkg) => pkg.problems.length === 0) &&
-      typeProblems.length === 0
+      typeProblems.length === 0 &&
+      browserProblems.length === 0
         ? "passed"
         : "failed",
     packages: packages.map(
@@ -619,6 +774,11 @@ export const checkPublishSet = ({ root, output, types = true }) => {
     types: types
       ? { checked: true, problems: typeProblems }
       : { checked: false },
+    browser: {
+      checked: true,
+      entrypoints: [...BROWSER_ENTRYPOINTS],
+      problems: browserProblems,
+    },
   };
   writeFileSync(
     join(output, "receipt.json"),
@@ -656,6 +816,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       for (const problem of pkg.problems) console.log(`  problem: ${problem}`);
     }
     for (const problem of report.types.problems ?? [])
+      console.log(`  ${problem}`);
+    for (const problem of report.browser?.problems ?? [])
       console.log(`  ${problem}`);
     console.log(`status: ${report.status}`);
     process.exitCode = report.status === "passed" ? 0 : 1;

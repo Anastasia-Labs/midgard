@@ -2,15 +2,18 @@
  * The value accumulator and the value mutation steps derived from Midgard values.
  */
 
-import { encodeCbor, type MidgardLedgerOutputAsset } from "@al-ft/midgard-core";
+import { encodeCbor } from "@al-ft/midgard-core";
 import { type MidgardValue } from "@al-ft/midgard-core/codec";
 
 import { Store, Trie } from "#merkle-patricia-forestry";
 
+import { midgardValueAssets } from "../value-accounting.js";
 import {
   exactTrieRoot,
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
+
+export { midgardValueAssets } from "../value-accounting.js";
 
 type ValidationValueAccumulator = {
   lovelaceDelta: bigint;
@@ -41,17 +44,6 @@ export type ValidationValueContribution = {
   readonly unit: Buffer;
   readonly quantityDelta: bigint;
 };
-
-export const midgardValueAssets = (
-  value: MidgardValue,
-): readonly MidgardLedgerOutputAsset[] =>
-  [...value.assets.entries()].flatMap(([policyId, policyAssets]) =>
-    [...policyAssets.entries()].map(([assetName, quantity]) => ({
-      policyId: Buffer.from(policyId, "hex"),
-      assetName: Buffer.from(assetName, "hex"),
-      quantity,
-    })),
-  );
 
 export const midgardValueContributions = (
   value: MidgardValue,

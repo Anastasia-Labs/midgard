@@ -28,18 +28,14 @@ export const getTxHandler = Effect.gen(function* () {
   const txHashParam = params["tx_hash"];
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
-    yield* Effect.logInfo(
-      `GET /${TX_ENDPOINT} - Invalid transaction hash: [redacted]`,
-    );
+    yield* Effect.logInfo(`GET /${TX_ENDPOINT} - Invalid transaction hash`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: [redacted]` },
+      { error: "Invalid transaction hash" },
       { status: 404 },
     );
   }
   const foundCbor = yield* publicTxCborByHash(txHashBytes);
-  yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: [redacted]`,
-  );
+  yield* Effect.logInfo(`GET /${TX_ENDPOINT} - Transaction found`);
   return yield* HttpServerResponse.json({
     tx: SDK.bufferToHex(foundCbor),
   });
@@ -65,7 +61,7 @@ export const getTxStatusHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: [redacted]` },
+      { error: "Invalid transaction hash" },
       { status: 400 },
     );
   }
@@ -183,7 +179,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
   const invalidIndex = txIdBytes.findIndex((txId) => txId === null);
   if (invalidIndex >= 0) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: [redacted]` },
+      { error: "Invalid transaction hash" },
       { status: 400 },
     );
   }

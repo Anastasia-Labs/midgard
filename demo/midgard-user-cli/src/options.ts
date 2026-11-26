@@ -37,6 +37,23 @@ const attempt = <T>(read: () => T): T => {
   }
 };
 
+const NETWORK_BY_LOWERCASE: Readonly<Record<string, Network>> = {
+  mainnet: "Mainnet",
+  preprod: "Preprod",
+  preview: "Preview",
+  custom: "Custom",
+};
+
+export const parseNetwork = (value: string, flag = "--network"): Network => {
+  const normalized = NETWORK_BY_LOWERCASE[value.trim().toLowerCase()];
+  return (
+    normalized ??
+    refuse(
+      `${flag} must be one of Mainnet, Preprod, Preview or Custom, not ${JSON.stringify(value)}.`,
+    )
+  );
+};
+
 /** Same bound as the node's L2-transfer submission ids. */
 export const parseSubmissionId = (value: string): string =>
   value.length >= 1 && value.length <= 128

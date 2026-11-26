@@ -1,13 +1,13 @@
 import {
-  ledgerEd25519SignatureReady,
-  verifyLedgerEd25519Signature,
-} from "@al-ft/midgard-core";
-import {
   decodeMidgardAddressBytes,
   ensureHash32,
   type Hash32,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
+import {
+  ledgerEd25519SignatureReady,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core/ed25519-ledger-signature";
 import { CML, type Network, walletFromSeed } from "@lucid-evolution/lucid";
 
 import { BuilderInvariantError, SigningError } from "./core/errors.js";

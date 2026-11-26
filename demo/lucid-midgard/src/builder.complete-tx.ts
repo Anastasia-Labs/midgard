@@ -6,13 +6,13 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { parseL1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type PhaseAConfig,
-  type PhaseBConfig,
-  type QueuedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type {
+  PhaseAConfig,
+  PhaseBConfig,
+  QueuedTx,
+} from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
 import {

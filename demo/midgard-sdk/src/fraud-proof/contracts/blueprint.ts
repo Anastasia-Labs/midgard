@@ -16,7 +16,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import {
   releaseRecord,
   releaseString,
-} from "@al-ft/midgard-core/deployment-release";
+} from "@al-ft/midgard-core/deployment-release-bindings";
 import {
   applyDoubleCborEncoding,
   Data,

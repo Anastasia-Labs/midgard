@@ -15,7 +15,7 @@ import {
  * concurrent requests per address at this number too (`public-ingress.mjs`),
  * and the throughput drill's one-client route never exceeds it.
  */
-export const CLIENT_ACTIVE_MAX = 4;
+export const CLIENT_ACTIVE_MAX = 16;
 /** Cells in each of the two rows of a hashed array. */
 const ROW_CELLS = 2 ** 18;
 const CELL_MASK = ROW_CELLS - 1;

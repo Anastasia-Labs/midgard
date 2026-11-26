@@ -2,6 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from ".././consensus-profile.js";
 import {
   daBondManifestAmounts,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  type DeploymentProfile,
   SELECTED_DEPLOYMENT_PROFILE,
 } from ".././deployment-profile.js";
 import { requireRecord } from "./primitives.js";
@@ -97,6 +98,7 @@ export const MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES = 15_148;
  */
 export const parseDeploymentManifestAvailabilityChallenge = (
   value: unknown,
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
 ): DeploymentManifestAvailabilityChallenge => {
   const candidate = requireRecord(
     value,
@@ -134,11 +136,9 @@ export const parseDeploymentManifestAvailabilityChallenge = (
   );
   const expectedClasses = {
     smallPayloadMaxBytes: 65_536,
-    smallResponseWindowMs:
-      SELECTED_DEPLOYMENT_PROFILE.timing.da_small_response_window_ms,
+    smallResponseWindowMs: profile.timing.da_small_response_window_ms,
     fullPayloadMaxBytes: 67_108_864,
-    fullResponseWindowMs:
-      SELECTED_DEPLOYMENT_PROFILE.timing.da_full_response_window_ms,
+    fullResponseWindowMs: profile.timing.da_full_response_window_ms,
   } as const;
   if (
     Object.keys(responseClasses).length !== Object.keys(expectedClasses).length
@@ -253,7 +253,9 @@ export const parseDeploymentManifestAvailabilityChallenge = (
     daBondPoolFloorLovelace,
     challengeRecordLovelace,
   };
-  for (const [key, expected] of Object.entries(daBondManifestAmounts())) {
+  for (const [key, expected] of Object.entries(
+    daBondManifestAmounts(profile),
+  )) {
     if (daBondAmounts[key as keyof typeof daBondAmounts] !== expected) {
       throw new Error(
         `Deployment manifest availabilityChallenge.${key} must equal the selected deployment profile's value ${expected.toString()}`,

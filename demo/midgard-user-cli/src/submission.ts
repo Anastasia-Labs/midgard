@@ -49,6 +49,8 @@ export type CommonOptions = {
 export type SubmitOptions = CommonOptions & {
   readonly walletSeedPhraseEnv?: string;
   readonly walletSeedPhraseFile?: string;
+  readonly seedEnv?: string;
+  readonly seedFile?: string;
   readonly timeoutMs?: string;
 };
 

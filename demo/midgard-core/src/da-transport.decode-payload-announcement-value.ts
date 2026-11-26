@@ -8,7 +8,7 @@ import { MidgardTxCodecErrorCodes } from "./codec/errors.js";
 import {
   DA_PAYLOAD_INNER_SCHEMA_VERSION,
   DaPayloadContentEncoding,
-} from "./da-payload-envelope.js";
+} from "./da-payload-envelope.constants.js";
 import {
   DA_GOSSIP_SIGNATURE_LENGTH,
   type DaPayloadAnnouncement,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createHttpIngress } from "../src/commands/listen-http-ingress.js";
+import { CLIENT_ACTIVE_MAX } from "../src/commands/listen-http-rate-limit.js";
 
 /** A clock the test moves, and an ingress with the public defaults on it. */
 const ingressAt = (start = 0) => {
@@ -114,9 +115,9 @@ describe("HTTP submission rate buckets", () => {
     expect(node.submit("198.51.100.20", 1, 10).accepted).toBe(1);
   });
 
-  it("holds each client to four requests in flight and frees a slot on release", () => {
+  it("holds each client to CLIENT_ACTIVE_MAX requests in flight and frees a slot on release", () => {
     const node = ingressAt();
-    const held = Array.from({ length: 4 }, () =>
+    const held = Array.from({ length: CLIENT_ACTIVE_MAX }, () =>
       node.ingress.reserve("198.51.100.30", "write", 0),
     );
     expect(held.every((result) => result.accepted)).toBe(true);

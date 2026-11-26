@@ -1,7 +1,6 @@
 {
   "name": "@al-ft/midgard-user-cli",
   "version": "0.1.0",
-  "private": true,
   "description": "midgard-user: a user's own Midgard deposits and withdrawals, submitted through the user's own L1 indexer",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,13 +10,24 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "!dist/.*"
   ],
   "exports": {
     ".": {
       "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      }
     }
   },
   "scripts": {
@@ -28,7 +38,9 @@
     "format-check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" vitest.config.ts package.json tsconfig.json README.md",
     "lint": "eslint . --max-warnings=0",
     "test": "node ../scripts/package-test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/release/pack-files.mjs copy",
+    "postpack": "node ../../scripts/release/pack-files.mjs remove"
   },
   "author": "Anastasia Labs",
   "license": "Apache-2.0",
@@ -55,7 +67,7 @@
     "vitest": "^5.0.3"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.15.0"
   },
   "midgardTasks": {
     "build": {

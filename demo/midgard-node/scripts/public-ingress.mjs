@@ -78,8 +78,11 @@ export const renderPublicIngress = (
     error: "Request rate exceeded",
     errorCode: "E_HTTP_RATE_LIMITED",
   });
+  const tooLarge = JSON.stringify({
+    error: "Request body exceeds endpoint limit",
+  });
   return `pid /tmp/nginx.pid;
-error_log /dev/null;
+error_log /dev/stderr warn;
 worker_processes 4;
 events { worker_connections 4096; }
 http {
@@ -97,7 +100,9 @@ http {
   uwsgi_temp_path /tmp/uwsgi;
   scgi_temp_path /tmp/scgi;
   map $request_method $log_method { default other; GET GET; POST POST; OPTIONS OPTIONS; }
-  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /init init; /commit commit; /peer/txs peer-txs; /peer/inventory peer-inventory; }
+  map $uri $log_route { default unknown; /healthz healthz; /readyz readyz; /submit submit; /tx/evaluate evaluate; /tx tx; /tx-status tx-status; /utxos utxos; /txs txs; /block block; /blocks blocks; /init init; /commit commit; /peer/txs peer-txs; /peer/inventory peer-inventory; }
+  map $uri $cors_origin { default ""; /healthz "*"; /readyz "*"; /pipeline-status "*"; /protocol-info "*"; /tx "*"; /tx-status "*"; /deposit-status "*"; /txs "*"; /utxo "*"; /utxos "*"; /block "*"; /blocks "*"; /submit "*"; /tx/evaluate "*"; }
+  map $cors_origin $cors_expose { default ""; "*" "Retry-After"; }
   log_format public escape=json '{"method":"$log_method","route":"$log_route","status":$status,"bytes":$body_bytes_sent,"seconds":$request_time}';
   access_log /dev/stdout public;
   limit_req_zone $binary_remote_addr zone=liveness_ip:1m rate=10r/s;
@@ -125,11 +130,15 @@ http {
     error_page 503 = @busy;
     error_page 429 = @limited;
     error_page 502 504 = @unavailable;
+    error_page 413 = @too_large;
     add_header Strict-Transport-Security "max-age=31536000" always;
     proxy_pass_request_headers off;
     proxy_set_header Host ${hostname};
     proxy_set_header Connection "";
     proxy_set_header Content-Type $http_content_type;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header Access-Control-Request-Method $http_access_control_request_method;
+    proxy_set_header Access-Control-Request-Headers $http_access_control_request_headers;
     proxy_set_header Authorization $http_authorization;
     proxy_set_header X-Midgard-Admin-Key $http_x_midgard_admin_key;
     proxy_set_header X-Midgard-Client-IP $remote_addr;
@@ -153,9 +162,10 @@ http {
     location = /peer/inventory { client_max_body_size 1m; proxy_request_buffering on; proxy_pass http://midgard_node; }
     location ~ ^/(healthz|readyz|init|commit|merge|stateQueue|logBlocksDB|logGlobals|operator/status|admin/session)$ { limit_req zone=liveness_ip burst=30 nodelay; proxy_pass http://midgard_node; }
     location / { proxy_pass http://midgard_node; }
-    location @busy { default_type application/json; add_header Retry-After 5 always; return 503 '${busy}'; }
-    location @limited { default_type application/json; add_header Retry-After 1 always; return 429 '${limited}'; }
-    location @unavailable { default_type application/json; add_header Retry-After 5 always; return 503 '${unavailable}'; }
+    location @busy { default_type application/json; add_header Retry-After 5 always; add_header Access-Control-Allow-Origin $cors_origin always; add_header Access-Control-Expose-Headers $cors_expose always; return 503 '${busy}'; }
+    location @limited { default_type application/json; add_header Retry-After 1 always; add_header Access-Control-Allow-Origin $cors_origin always; add_header Access-Control-Expose-Headers $cors_expose always; return 429 '${limited}'; }
+    location @unavailable { default_type application/json; add_header Retry-After 5 always; add_header Access-Control-Allow-Origin $cors_origin always; add_header Access-Control-Expose-Headers $cors_expose always; return 503 '${unavailable}'; }
+    location @too_large { default_type application/json; add_header Access-Control-Allow-Origin $cors_origin always; add_header Access-Control-Expose-Headers $cors_expose always; return 413 '${tooLarge}'; }
   }
 }
 `;

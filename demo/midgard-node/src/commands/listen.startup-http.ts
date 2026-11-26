@@ -26,6 +26,11 @@ import {
   StartupWaitingReporter,
 } from "../services/startup-waiting.js";
 import { findTransientBudgetExhausted } from "../services/transient-exhaustion.js";
+import {
+  httpRouteKindOf,
+  PUBLIC_CORS_HEADERS,
+  publicCorsPreflightHeaders,
+} from "./http/routes.js";
 import { isSubmitRequest, type SubmitRequestHandler } from "./http/submit.js";
 import {
   armNodeExitDeadline,
@@ -193,15 +198,24 @@ export const withStartupHttpServer = <A, E, R>(
       const current = yield* FiberRef.get(requestState);
       if (current.application !== undefined) return yield* current.application;
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const path = request.url.split("?")[0];
+      const path = request.url.split("?", 1)[0] ?? "";
+      const isPublic = httpRouteKindOf(path) === "public";
+      if (isPublic && request.method === "OPTIONS")
+        return HttpServerResponse.empty({
+          status: 204,
+          headers: publicCorsPreflightHeaders(path),
+        });
       // Live while the process holds: a failed startup that does not exit
       // stays up, so a liveness probe must not restart it.
       if (request.method === "GET" && path === "/healthz")
-        return HttpServerResponse.unsafeJson({
-          status: current.stage === "fatal" ? "held" : "ok",
-          stage: current.stage,
-          ...failure(current),
-        });
+        return HttpServerResponse.unsafeJson(
+          {
+            status: current.stage === "fatal" ? "held" : "ok",
+            stage: current.stage,
+            ...failure(current),
+          },
+          { headers: PUBLIC_CORS_HEADERS },
+        );
       return HttpServerResponse.unsafeJson(
         {
           ready: false,
@@ -216,7 +230,9 @@ export const withStartupHttpServer = <A, E, R>(
           stage: current.stage,
           ...failure(current),
         },
-        { status: 503 },
+        isPublic
+          ? { status: 503, headers: PUBLIC_CORS_HEADERS }
+          : { status: 503 },
       );
     });
     const withRuntimeDefaults = <E, R>(

@@ -29,7 +29,7 @@ import {
   refuse,
 } from "./options.js";
 import { readIntent } from "./record-store.js";
-import { resolveSeedPhrase, walletOf } from "./seed.js";
+import { resolveSeedPhrase, seedSourceOf, walletOf } from "./seed.js";
 import {
   existingIntent,
   manifestPathOf,
@@ -130,13 +130,7 @@ export const runWithdraw = async (
     "--refund-datum",
   );
   const lovelace = parseOptionalLovelace(options.lovelace, "--lovelace");
-  const seedPhrase = resolveSeedPhrase(
-    {
-      env: options.walletSeedPhraseEnv,
-      file: options.walletSeedPhraseFile,
-    },
-    deps.env,
-  );
+  const seedPhrase = resolveSeedPhrase(seedSourceOf(options), deps.env);
   const deployment = await loadUserDeployment(manifestPathOf(options, deps));
   const { network } = deployment;
   const l1Address = parseAddress(options.l1Address, "--l1-address", network);

@@ -11,6 +11,8 @@ import {
 } from "@al-ft/midgard-sdk/users";
 import { Command, CommanderError, Option } from "commander";
 
+import { type AddressOptions, formatAddress, runAddress } from "./address.js";
+import { type BalanceOptions, formatBalance, runBalance } from "./balance.js";
 import { type DepositOptions, runDeposit } from "./deposit.js";
 import { type UserCliDeps } from "./deps.js";
 import {
@@ -24,6 +26,7 @@ import {
   type PlutusTxOptions,
   runPlutusTx,
 } from "./plutus-tx.js";
+import { formatSend, runSend, type SendOptions } from "./send.js";
 import { formatStatusReport, runStatus, type StatusOptions } from "./status.js";
 import { runWithdraw, type WithdrawOptions } from "./withdraw.js";
 
@@ -46,7 +49,10 @@ const l1AccessOptions = (command: Command): Command =>
     )
     .option("--kupo-url <url>", "Kupo (env L1_KUPO_URL)")
     .option("--ogmios-url <url>", "Ogmios (env L1_OGMIOS_URL)")
-    .option("--blockfrost-url <url>", "Blockfrost (env L1_BLOCKFROST_URL)")
+    .option(
+      "--blockfrost-url <url>",
+      "Blockfrost URL (env L1_BLOCKFROST_URL; defaults from deployment network)",
+    )
     .option(
       "--blockfrost-project-id <id>",
       "Blockfrost project id (env L1_BLOCKFROST_PROJECT_ID)",
@@ -64,10 +70,12 @@ const seedOptions = (command: Command): Command =>
       "--wallet-seed-phrase-env <name>",
       "environment variable holding the wallet seed phrase",
     )
+    .option("--seed-env <name>", "alias for --wallet-seed-phrase-env")
     .option(
       "--wallet-seed-phrase-file <path>",
       "absolute path of a mode-0600 file holding the wallet seed phrase",
-    );
+    )
+    .option("--seed-file <path>", "alias for --wallet-seed-phrase-file");
 
 const commonOptions = (command: Command): Command =>
   l1AccessOptions(
@@ -136,6 +144,93 @@ const program = (deps: UserCliDeps, setExit: (code: number) => void) => {
     .configureOutput({
       writeOut: (text) => deps.stdout(text),
       writeErr: (text) => deps.stderr(text),
+    });
+  seedOptions(
+    manifestOption(
+      root
+        .command("address")
+        .description("Derive and print the wallet's Cardano address.")
+        .exitOverride(),
+    ),
+  )
+    .option(
+      "--network <network>",
+      "Cardano network (Mainnet, Preprod, Preview, Custom)",
+    )
+    .option("--json", "print the result as JSON")
+    .action(async (options: AddressOptions) => {
+      const result = await runAddress(options, deps);
+      deps.stdout(
+        options.json === true
+          ? `${JSON.stringify(result)}\n`
+          : formatAddress(result),
+      );
+      setExit(EXIT_CONFIRMED);
+    });
+  seedOptions(
+    manifestOption(
+      root
+        .command("balance")
+        .description(
+          "Show L2 lovelace, native assets, and UTxO outRefs from a Midgard node.",
+        )
+        .exitOverride(),
+    ),
+  )
+    .requiredOption(
+      "--node-endpoint <url>",
+      "a Midgard node's public HTTP API serving this deployment",
+    )
+    .option("--address <address>", "Cardano bech32 address to query")
+    .option(
+      "--network <network>",
+      "Cardano network (Mainnet, Preprod, Preview, Custom)",
+    )
+    .option("--json", "print the result as JSON")
+    .action(async (options: BalanceOptions) => {
+      const result = await runBalance(options, deps);
+      deps.stdout(
+        options.json === true
+          ? `${JSON.stringify(result)}\n`
+          : formatBalance(result),
+      );
+      setExit(EXIT_CONFIRMED);
+    });
+  seedOptions(
+    manifestOption(
+      root
+        .command("send")
+        .description("Send an L2 transfer through a Midgard node.")
+        .exitOverride(),
+    ),
+  )
+    .requiredOption(
+      "--node-endpoint <url>",
+      "a Midgard node's public HTTP API serving this deployment",
+    )
+    .requiredOption("--to <address>", "the L2 recipient address")
+    .requiredOption("--lovelace <n>", "lovelace to send")
+    .option(
+      "--asset <policyId.assetName:amount>",
+      "an additional asset (repeatable)",
+      collect,
+      [],
+    )
+    .option(
+      "--network <network>",
+      "Cardano network (Mainnet, Preprod, Preview, Custom)",
+    )
+    .option("--wait", "wait for /tx-status until accepted or committed")
+    .option("--timeout-ms <ms>", "maximum time to wait when --wait is set")
+    .option("--json", "print the result as JSON")
+    .action(async (options: SendOptions) => {
+      const result = await runSend(options, deps);
+      deps.stdout(
+        options.json === true
+          ? `${JSON.stringify(result)}\n`
+          : formatSend(result),
+      );
+      setExit(EXIT_CONFIRMED);
     });
   submitOptions(
     root

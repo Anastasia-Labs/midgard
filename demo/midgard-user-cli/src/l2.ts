@@ -8,15 +8,19 @@ import { type UserCliDeps } from "./deps.js";
 import { type ShapeWallet } from "./l2-shapes.js";
 import { type UserDeployment } from "./manifest.js";
 import { refuse } from "./options.js";
-import { resolveSeedPhrase, type UserWallet, walletOf } from "./seed.js";
+import {
+  resolveSeedPhrase,
+  type SeedCliOptions,
+  seedSourceOf,
+  type UserWallet,
+  walletOf,
+} from "./seed.js";
 import { manifestPathOf } from "./submission.js";
 
 /** Options every L2 command takes. */
-export type L2CommandOptions = {
+export type L2CommandOptions = SeedCliOptions & {
   readonly nodeEndpoint: string;
   readonly manifest?: string;
-  readonly walletSeedPhraseEnv?: string;
-  readonly walletSeedPhraseFile?: string;
   readonly json?: boolean;
 };
 
@@ -33,13 +37,7 @@ export const prepareL2Command = async <Deployment extends L2Deployment>(
   deps: UserCliDeps,
   load: (manifestPath: string) => Promise<Deployment>,
 ) => {
-  const seedPhrase = resolveSeedPhrase(
-    {
-      env: options.walletSeedPhraseEnv,
-      file: options.walletSeedPhraseFile,
-    },
-    deps.env,
-  );
+  const seedPhrase = resolveSeedPhrase(seedSourceOf(options), deps.env);
   const deployment = await load(manifestPathOf(options, deps));
   return {
     deployment,

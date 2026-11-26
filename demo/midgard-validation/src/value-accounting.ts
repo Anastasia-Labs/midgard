@@ -1,3 +1,4 @@
+import type { MidgardLedgerOutputAsset } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 
@@ -71,6 +72,17 @@ const addDeltaInto = (
   }
   return delta.lovelace * multiplier;
 };
+
+export const midgardValueAssets = (
+  value: MidgardValue,
+): readonly MidgardLedgerOutputAsset[] =>
+  [...value.assets.entries()].flatMap(([policyId, policyAssets]) =>
+    [...policyAssets.entries()].map(([assetName, quantity]) => ({
+      policyId: Buffer.from(policyId, "hex"),
+      assetName: Buffer.from(assetName, "hex"),
+      quantity,
+    })),
+  );
 
 export const sumMidgardValues = (
   values: readonly MidgardValue[],

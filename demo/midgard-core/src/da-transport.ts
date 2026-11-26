@@ -3,7 +3,7 @@ import "./codec/cbor.js";
 import "./codec/errors.js";
 import "./codec/hash.js";
 import "./consensus-profile.js";
-import "./da-payload-envelope.js";
+import "./da-payload-envelope.constants.js";
 import "./da-transport.da-libp2p-runtime-manifest.js";
 import "./da-transport.enum-label.js";
 import "./da-transport.parse-da-libp2p-runtime-manifest-deployment.js";

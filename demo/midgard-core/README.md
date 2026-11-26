@@ -11,7 +11,7 @@ is not a package goal.
 
 ## Requirements
 
-Node.js 22.12.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
+Node.js 22.15.0 or newer, and TypeScript 5.8 or newer for CommonJS consumers.
 
 ## Deployment manifests
 
