@@ -31,10 +31,7 @@ import {
   signSubmitTransaction,
 } from "../utils.js";
 import { TxExpiredError } from "../utils.tx-expiry.js";
-import {
-  DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
-  mergeSubmitValidityEvidence,
-} from "./merge-readiness.js";
+import { DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING } from "./merge-readiness.js";
 import {
   captureMergeLocalLedgerGate,
   mergeSubmitRecoveryOptions,
@@ -48,7 +45,6 @@ import {
   mergeSemanticSkipResult,
   type MergeTxResult,
   preflightDecodeBlockTxs,
-  slotFromUnixTime,
 } from "./merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import {
   diagnoseMissingBlockTxs,
@@ -399,19 +395,14 @@ export const buildAndSubmitMergeTx = (
           );
         });
       const txHash = txBuilder.toHash();
-      const submitValidFromSlot = yield* slotFromUnixTime(
+      const submitRecoveryOptions = yield* mergeSubmitRecoveryOptions({
         lucid,
-        mergeMaturity.validFromUnixTime,
-      );
-      const submitDueWorkEvidence = mergeSubmitValidityEvidence({
+        stateQueue: contracts.stateQueue,
         headerHash: recomputedHeaderHash,
-        validFromSlot: submitValidFromSlot,
+        validFromUnixTime: mergeMaturity.validFromUnixTime,
         candidateIdentity: oldestBlockReadiness.candidateIdentity,
+        submitSlotSnapshot: options?.submitSlotSnapshot,
       });
-      const submitRecoveryOptions = mergeSubmitRecoveryOptions(
-        submitDueWorkEvidence,
-        options?.submitSlotSnapshot,
-      );
       if (options?.assertSubmitAuthority !== undefined) {
         yield* options.assertSubmitAuthority();
       }
@@ -429,8 +420,8 @@ export const buildAndSubmitMergeTx = (
         ),
         submitRecoveryOptions,
       ).pipe(
-        Effect.tap(() =>
-          options?.onSubmitted === undefined
+        Effect.tap((submission) =>
+          options?.onSubmitted === undefined || submission.lostRace === true
             ? Effect.void
             : options.onSubmitted({
                 headerHash: headerHash.toString("hex"),
@@ -449,6 +440,15 @@ export const buildAndSubmitMergeTx = (
         ),
         Effect.withSpan("handleSignSubmit-merge-tx"),
       );
+      if (
+        submitOutcome.status === "submitted" &&
+        submitOutcome.submission.lostRace === true
+      )
+        return {
+          status: "skipped_merge_candidate_changed",
+          headerHash: recomputedHeaderHash,
+          reason: `another transaction merged the block before ${txHash}`,
+        } satisfies MergeTxResult;
       if (submitOutcome.status === "deferred") {
         const dueWork = yield* registerMergeNoInlineSubmitDueWork(
           submitOutcome.defer,

@@ -13,6 +13,11 @@ import {
 } from "../../fibers/slot-aware-due-work.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
 import { Database } from "../../services/index.js";
+import {
+  findLandedBlock,
+  requireLandedStateQueue,
+  type StateQueueContract,
+} from "../../services/landed-state-queue.js";
 import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   type NoInlineSubmitDefer,
@@ -34,25 +39,55 @@ import { MERGE_CONFIRMATION_PROVIDER_RETRIES } from "./merge-to-confirmed-state.
 /**
  * The merge's submit recovery. Without an explicit reader, the submit-slot
  * snapshot is the Lucid client's registered one (the local node's ledger tip).
+ * Any node may merge the oldest block, so the state a merge is sent for is
+ * the landed queue without the block, whoever merged it.
  */
-export const mergeSubmitRecoveryOptions = (
-  deferEvidence: {
-    readonly key: string;
-    readonly dependencyKey: string;
-    readonly invalidationKey: string;
-  },
-  submitSlotSnapshot?: () => Effect.Effect<SubmitSlotSnapshot, unknown>,
-): NoInlineSubmitRecoveryOptions => ({
-  label: "merge",
-  confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
-  ...(submitSlotSnapshot === undefined
-    ? {}
-    : { slotSnapshot: submitSlotSnapshot }),
-  requireSlotForBoundedTx: true,
-  maxPreSubmitWaitMs: DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
-  inlineWaitPolicy: "defer_positive_wait",
-  noInlineSubmitDefer: deferEvidence,
-});
+export const mergeSubmitRecoveryOptions = (merge: {
+  readonly lucid: LucidEvolution;
+  readonly stateQueue: StateQueueContract;
+  readonly headerHash: string;
+  readonly validFromUnixTime: number;
+  readonly candidateIdentity?: string;
+  readonly submitSlotSnapshot?: () => Effect.Effect<
+    SubmitSlotSnapshot,
+    unknown
+  >;
+}): Effect.Effect<
+  NoInlineSubmitRecoveryOptions,
+  SDK.StateQueueError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const database = yield* Effect.context<Database>();
+    const { headerHash, candidateIdentity, submitSlotSnapshot } = merge;
+    const validFromSlot = yield* slotFromUnixTime(
+      merge.lucid,
+      merge.validFromUnixTime,
+    );
+    return {
+      label: "merge",
+      confirmationRetries: MERGE_CONFIRMATION_PROVIDER_RETRIES,
+      ...(submitSlotSnapshot === undefined
+        ? {}
+        : { slotSnapshot: submitSlotSnapshot }),
+      requireSlotForBoundedTx: true,
+      maxPreSubmitWaitMs: DEFAULT_MERGE_LOCAL_LEDGER_MAX_WAIT_MS,
+      inlineWaitPolicy: "defer_positive_wait",
+      noInlineSubmitDefer: mergeSubmitValidityEvidence({
+        headerHash,
+        validFromSlot,
+        candidateIdentity,
+      }),
+      intendedStateOnChain: () =>
+        requireLandedStateQueue(merge.stateQueue, "merge").pipe(
+          Effect.map(
+            (queue) => findLandedBlock(queue, headerHash) === undefined,
+          ),
+          Effect.orElseSucceed(() => false),
+          Effect.provide(database),
+        ),
+    };
+  });
 
 export const mergeNoInlineSubmitDueWorkFromDefer = ({
   defer,
