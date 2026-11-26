@@ -156,6 +156,7 @@ export const takeInLedger = <R>(input: {
     const { store, anchor, write } = input;
     const root = anchor.utxosRoot;
     yield* write(Staging.clear);
+    let from = "the empty ledger, no peer asked";
     if (root === EMPTY_LEDGER_ROOT)
       yield* Effect.tryPromise({
         try: () => store.admit([], root, { current: true }),
@@ -170,11 +171,13 @@ export const takeInLedger = <R>(input: {
         );
         if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
       };
+      let served = 0;
       async function* staged(
         entries: AsyncIterable<{ outRef: Buffer; output: Buffer }>,
       ) {
         let rows: Ledger.EntryNoTimeStamp[] = [];
         for await (const entry of entries) {
+          served += 1;
           rows.push(rowOf(entry));
           yield entry;
           if (rows.length === STAGE_BATCH) {
@@ -192,6 +195,7 @@ export const takeInLedger = <R>(input: {
           unserved.push(`${peer.identity} served a wrong ledger before`);
           continue;
         }
+        served = 0;
         const admitted = yield* Effect.either(
           Effect.tryPromise({
             try: (signal) =>
@@ -213,6 +217,7 @@ export const takeInLedger = <R>(input: {
         );
         if (admitted._tag === "Right") {
           taken = true;
+          from = `${served.toString()} entries from snapshot peer ${peer.identity}`;
           break;
         }
         const error = admitted.left;
@@ -237,4 +242,7 @@ export const takeInLedger = <R>(input: {
         );
     }
     yield* write(install(anchor));
+    yield* Effect.logInfo(
+      `ledger take-in: installed the ledger of ${anchor.headerHash} (${root}): ${from}`,
+    );
   });
