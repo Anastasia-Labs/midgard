@@ -624,6 +624,25 @@ const unownedNativeOwner = (
     return owner;
   });
 
+/**
+ * Starts this fixture's native owner, whose start installs the node's
+ * ledger. A node gives no L1 event a row before that install, so an unowned
+ * fixture runs this ahead of its event ingestion.
+ */
+const installUnownedLedger = (
+  fixture: EmulatorFixture,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  nodeConfig: NodeConfigDep,
+) =>
+  Effect.runPromise(
+    withEmulatorChain(lucidService.api)(
+      unownedNativeOwner(fixture.contracts, lucidService, nodeConfig),
+    ).pipe(
+      Effect.provide(Database.layer),
+      Effect.provideService(FollowerWriteFixture, true),
+    ),
+  );
+
 /** Publishes this fixture's unowned native owner to `globals`, as node
  * startup does, so merges and recoveries run against it. */
 const attachUnownedNativeOwner = (globals: Globals) =>
@@ -841,9 +860,11 @@ export const runCommitWorkerUntilSubmitted = async ({
     await production?.synchronize();
     // Without an owner, the driver's ingestion runs under the fixture gate;
     // an owned fixture's synchronize drives the follower itself.
-    if (production === undefined)
-      await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
     const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
+    if (production === undefined) {
+      await installUnownedLedger(fixture, lucidService, config);
+      await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
+    }
     const readsBefore = await Effect.runPromise(
       Metric.value(confirmedLedgerFullScanCounter),
     );
@@ -987,6 +1008,7 @@ export const runBarrierRefresherForTest = async (
   options: Readonly<{ projectToLedger?: boolean }> = {},
 ) => {
   const nodeConfig = await makeNodeConfigForFixture(fixture);
+  await installUnownedLedger(fixture, lucidService, nodeConfig);
   // The follower's event ingestion at the emulator tip (deposits due by now
   // projected on request).
   const barrierPass = ingestEmulatorEventsUnowned(fixture, {

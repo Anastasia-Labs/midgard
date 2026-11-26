@@ -34,6 +34,7 @@ import {
   writeFollowerTip,
 } from "./helpers/follower-view.js";
 import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
@@ -126,6 +127,8 @@ describe("authenticated commit window", () => {
     await run(
       Effect.gen(function* () {
         yield* resetApplicationTables;
+        // The orders below are included after the installed ledger's anchor.
+        yield* installEmptyLedger();
         yield* ingestFollowerViewUnowned(500);
       }),
     );

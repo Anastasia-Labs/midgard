@@ -63,6 +63,7 @@ import {
   UNCHANGED,
 } from "./helpers/forced-orders-node-store.js";
 import { realChain } from "./helpers/forced-orders-real-chain.js";
+import { installEmptyLedger } from "./helpers/ledger-install.js";
 import { resetApplicationTables } from "./utils.js";
 
 const K = 4;
@@ -70,6 +71,7 @@ const K = 4;
 const opened: FactStore[] = [];
 beforeEach(async () => {
   await db(resetApplicationTables);
+  await db(installEmptyLedger());
 });
 afterEach(async () => {
   await Promise.all(opened.splice(0).map((store) => store.close()));
