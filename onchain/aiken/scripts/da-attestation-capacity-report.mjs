@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const REPORT_VERSION = "1.0.0";
 const BENCHMARK_NAME = "da_attestation_add_signature_capacity_curve";
@@ -175,7 +176,7 @@ const getGitCommit = () => {
 };
 
 const getAikenVersion = () => {
-  const result = run("aiken", ["--version"], projectDir);
+  const result = run(aikenBinary(), ["--version"], projectDir);
   if (result.status !== 0) {
     return "unknown";
   }
@@ -253,9 +254,8 @@ const readCapacityMeasures = (aikenReport, budget) => {
 const computeSummary = (measures) => {
   const fitting = measures.filter((measure) => measure.fitsTransactionBudget);
   const maxFitting = fitting.at(-1) ?? null;
-  const firstExceeding = measures.find(
-    (measure) => !measure.fitsTransactionBudget,
-  ) ?? null;
+  const firstExceeding =
+    measures.find((measure) => !measure.fitsTransactionBudget) ?? null;
   const bindingBudget =
     firstExceeding === null
       ? null
@@ -295,7 +295,11 @@ const printSummary = (report) => {
 
 const main = () => {
   const options = parseArgs(process.argv.slice(2));
-  const benchResult = run("aiken", buildAikenBenchArgs(options), projectDir);
+  const benchResult = run(
+    aikenBinary(),
+    buildAikenBenchArgs(options),
+    projectDir,
+  );
 
   if (benchResult.status !== 0) {
     process.stdout.write(benchResult.stdout);

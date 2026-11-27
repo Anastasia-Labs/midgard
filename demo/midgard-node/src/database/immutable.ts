@@ -1,16 +1,16 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Tx from "./utils/tx.js";
 
 export const tableName = "immutable";
 

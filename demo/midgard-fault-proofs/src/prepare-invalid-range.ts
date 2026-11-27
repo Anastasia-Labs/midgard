@@ -1,53 +1,29 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { type NativeTxCompact as NativeTxCompactData } from "@al-ft/midgard-sdk/core";
 import {
   invalidRangeViolationReason,
-  type NativeTxCompact as NativeTxCompactData,
   type NormalizedTimeRange,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
+import type {
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import { requireTransactionsRootMatch } from "./prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
-  compatibilityReasons,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
-  nativeTrieItem,
-  type NodeTransactionPayload,
-  type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
-} from "./prepare-double-spend.js";
+  transactionSourceTrieItem,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 
 export type InvalidRangeViolationReason = NonNullable<
   ReturnType<typeof invalidRangeViolationReason>
 >;
-
-export type PrepareInvalidRangeCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
-  readonly expectedTransactionsRoot?: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareInvalidRangeFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
-  readonly expectedTransactionsRoot?: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
-};
 
 export type PreparedInvalidRangeTx = {
   readonly nodeTxId: string;
@@ -61,21 +37,13 @@ export type PreparedInvalidRangeTx = {
 export type PreparedInvalidRangeOutput = {
   readonly headerHash: string;
   readonly txCount: number;
-  readonly blockValidity: {
-    readonly validFrom: bigint;
-    readonly validTo: bigint;
-  };
-  readonly compatibility: {
-    readonly canUseSubmitStepCommands: boolean;
-    readonly reasons: readonly string[];
-  };
+  readonly blockSlot: bigint;
   readonly commitmentEncodings: {
     readonly nativeNode: {
       readonly transactionsRoot: string;
     };
     readonly expectedTransactionsRoot?: {
       readonly value: string;
-      readonly matchesNativeNodeRoot: boolean;
     };
   };
   readonly tx: PreparedInvalidRangeTx;
@@ -85,40 +53,13 @@ export type PreparedInvalidRangeOutput = {
   };
 };
 
-const parseBlockValidity = ({
-  blockValidFrom,
-  blockValidTo,
-}: {
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
-}): { readonly validFrom: bigint; readonly validTo: bigint } => {
-  const validFrom = parseSignedInteger(blockValidFrom, "--block-valid-from");
-  const validTo = parseSignedInteger(blockValidTo, "--block-valid-to");
-  if (validFrom > validTo) {
-    throw new Error(
-      "--block-valid-from must be less than or equal to --block-valid-to.",
-    );
-  }
-  return { validFrom, validTo };
-};
-
 const writePreparedFiles = async ({
   output,
   outputDir,
-  allowIncompatibleOutput,
 }: {
   readonly output: PreparedInvalidRangeOutput;
   readonly outputDir: string;
-  readonly allowIncompatibleOutput: boolean;
 }): Promise<PreparedInvalidRangeOutput["files"]> => {
-  if (
-    !output.compatibility.canUseSubmitStepCommands &&
-    !allowIncompatibleOutput
-  ) {
-    throw new Error(
-      "Refusing to write submit-step material because the selected block is not compatible with the current fault-proof ABI. Pass --allow-incompatible-output to write diagnostic files anyway.",
-    );
-  }
   await mkdir(outputDir, { recursive: true });
   const paths = {
     txInclusionPath: join(outputDir, "tx-inclusion.json"),
@@ -130,11 +71,10 @@ const writePreparedFiles = async ({
       paths.planPath,
       stringifyJson({
         headerHash: output.headerHash,
-        blockValidity: output.blockValidity,
+        blockSlot: output.blockSlot,
         txNodeTxId: output.tx.nodeTxId,
         normalizedValidityRange: output.tx.normalizedValidityRange,
         violationReason: output.tx.violationReason,
-        compatibility: output.compatibility,
         commitmentEncodings: output.commitmentEncodings,
       }),
     ),
@@ -145,24 +85,20 @@ const writePreparedFiles = async ({
 export const prepareInvalidRangeFromTransactions = async ({
   headerHash,
   transactions,
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   expectedTransactionsRoot,
   txId,
   outputDir,
-  allowIncompatibleOutput = false,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
+  readonly blockSlot: string | number | bigint;
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
-  readonly allowIncompatibleOutput?: boolean;
 }): Promise<PreparedInvalidRangeOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
-  const blockValidity = parseBlockValidity({ blockValidFrom, blockValidTo });
+  const normalizedBlockSlot = parseSignedInteger(blockSlot, "--block-slot");
   const normalizedExpectedRoot =
     expectedTransactionsRoot === undefined
       ? undefined
@@ -178,8 +114,7 @@ export const prepareInvalidRangeFromTransactions = async ({
         tx.nativeTxCompact.body,
       );
       const violationReason = invalidRangeViolationReason({
-        blockValidFrom: blockValidity.validFrom,
-        blockValidTo: blockValidity.validTo,
+        blockSlot: normalizedBlockSlot,
         normalizedRange: normalizedValidityRange,
       });
       return {
@@ -207,33 +142,32 @@ export const prepareInvalidRangeFromTransactions = async ({
       const exists = decoded.some((tx) => tx.nodeTxId === normalizedTxId);
       throw new Error(
         exists
-          ? `Requested --tx-id ${normalizedTxId} does not violate the block validity range.`
+          ? `Requested --tx-id ${normalizedTxId} is valid at --block-slot ${normalizedBlockSlot.toString()}.`
           : `Requested --tx-id ${normalizedTxId} was not found in the block.`,
       );
     }
     throw new Error(
-      "No invalid-range transaction found in the selected block.",
+      `No transaction with a validity interval excluding --block-slot ${normalizedBlockSlot.toString()} was found in the selected block.`,
     );
   }
 
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItem),
+  );
   const proofCbor = requireProof(
     nativeTrie,
-    nativeTrieItem(selected.tx).key,
+    transactionSourceTrieItem(selected.tx).key,
     "invalid-range tx",
   );
-  const reasons = compatibilityReasons({
-    nativeRoot: nativeTrie.root,
+  await requireTransactionsRootMatch({
+    sourceRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
+    count: BigInt(decoded.length),
   });
   const baseOutput: PreparedInvalidRangeOutput = {
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
-    blockValidity,
-    compatibility: {
-      canUseSubmitStepCommands: reasons.length === 0,
-      reasons,
-    },
+    blockSlot: normalizedBlockSlot,
     commitmentEncodings: {
       nativeNode: {
         transactionsRoot: nativeTrie.root,
@@ -243,7 +177,6 @@ export const prepareInvalidRangeFromTransactions = async ({
         : {
             expectedTransactionsRoot: {
               value: normalizedExpectedRoot,
-              matchesNativeNodeRoot: normalizedExpectedRoot === nativeTrie.root,
             },
           }),
     },
@@ -255,6 +188,7 @@ export const prepareInvalidRangeFromTransactions = async ({
         nativeTxId: selected.tx.nodeTxId,
         nativeTx: selected.tx.nativeTxCompact,
         nativeTxCompactCbor: selected.tx.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.tx.l2TransactionSourceCbor,
         transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },
@@ -268,46 +202,6 @@ export const prepareInvalidRangeFromTransactions = async ({
   const files = await writePreparedFiles({
     output: baseOutput,
     outputDir,
-    allowIncompatibleOutput,
   });
   return { ...baseOutput, files };
-};
-
-export const prepareInvalidRangeFromNode = async (
-  config: PrepareInvalidRangeCliConfig,
-): Promise<PreparedInvalidRangeOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return await prepareInvalidRangeFromTransactions({
-    headerHash,
-    transactions,
-    blockValidFrom: config.blockValidFrom,
-    blockValidTo: config.blockValidTo,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
-  });
-};
-
-export const prepareInvalidRangeFromFile = async (
-  config: PrepareInvalidRangeFromFileConfig,
-): Promise<PreparedInvalidRangeOutput> => {
-  const transactions = await readNodeTransactionPayloadsFile(
-    config.transactionsPath,
-  );
-  return await prepareInvalidRangeFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    blockValidFrom: config.blockValidFrom,
-    blockValidTo: config.blockValidTo,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-    allowIncompatibleOutput: config.allowIncompatibleOutput,
-  });
 };

@@ -9,17 +9,14 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import {
-  PhaseAValidatedTx,
-  QueuedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { PhaseAValidatedTx, QueuedTx } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as LedgerUtils from "@/database/utils/ledger.js";
-
+import * as LedgerUtils from "../../src/database/utils/ledger.js";
 import {
   buildBenchmarkMeta,
   formatMs,
@@ -152,7 +149,7 @@ const assertOrThrow = (condition: boolean, message: string) => {
 const loadInitialLedgerFixture = (): InitialLedgerStateFixture => {
   assertOrThrow(
     fs.existsSync(INITIAL_LEDGER_FIXTURE_PATH),
-    `Initial ledger fixture not found at ${INITIAL_LEDGER_FIXTURE_PATH}. Run: pnpm run bench:fixtures:generate`,
+    `Initial ledger fixture not found at ${INITIAL_LEDGER_FIXTURE_PATH}; it is not committed. Run: pnpm --dir demo/midgard-node run bench:fixtures:generate`,
   );
   return JSON.parse(
     fs.readFileSync(INITIAL_LEDGER_FIXTURE_PATH, "utf8"),
@@ -162,7 +159,7 @@ const loadInitialLedgerFixture = (): InitialLedgerStateFixture => {
 const loadTxSequenceFixture = (): GeneratedTxSequenceFixture => {
   assertOrThrow(
     fs.existsSync(TX_SEQUENCE_FIXTURE_PATH),
-    `Tx sequence fixture not found at ${TX_SEQUENCE_FIXTURE_PATH}. Run: pnpm run bench:fixtures:generate`,
+    `Tx sequence fixture not found at ${TX_SEQUENCE_FIXTURE_PATH}; it is not committed. Run: pnpm --dir demo/midgard-node run bench:fixtures:generate`,
   );
   return JSON.parse(
     fs.readFileSync(TX_SEQUENCE_FIXTURE_PATH, "utf8"),
@@ -238,6 +235,7 @@ const runPhaseB = async (
 ) => {
   const { accepted: phaseBAccepted, rejected } = await Effect.runPromise(
     runPhaseBValidationWithPatch(accepted, preState, {
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       nowCardanoSlotNo: 0n,
       bucketConcurrency: Math.max(1, Math.floor(PHASE_A_CONCURRENCY / 2)),
     }),

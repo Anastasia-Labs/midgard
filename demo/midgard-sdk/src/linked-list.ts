@@ -1,26 +1,12 @@
-import {
-  Assets,
-  type BuildTxWithRedeemer,
-  Data,
-  fromText,
-  LucidEvolution,
-  makeReturn,
-  toUnit,
-  TxBuilder,
-  TxSignBuilder,
-  UTxO,
-} from "@lucid-evolution/lucid";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { Assets, Data, fromText, UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
 import {
-  AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
-  LucidError,
   MissingDatumError,
-} from "@/common.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
-import { requireUniqueOutputIndex } from "@/tx-context-redeemer.js";
+} from "./common.js";
 
 export const NODE_ASSET_NAME = fromText("Node");
 export const STATE_QUEUE_NODE_ASSET_NAME_PREFIX = fromText("MBLC");
@@ -41,7 +27,7 @@ export const NodeKeySchema = Data.Enum([
   Data.Literal("Empty"),
 ]);
 export type NodeKey = Data.Static<typeof NodeKeySchema>;
-export const NodeKey = NodeKeySchema as unknown as NodeKey;
+export const NodeKey = asDataType<NodeKey>(NodeKeySchema);
 
 export const LinkedListElementDataSchema = Data.Enum([
   Data.Object({
@@ -58,16 +44,18 @@ export const LinkedListElementDataSchema = Data.Enum([
 export type LinkedListElementData = Data.Static<
   typeof LinkedListElementDataSchema
 >;
-export const LinkedListElementData =
-  LinkedListElementDataSchema as unknown as LinkedListElementData;
+export const LinkedListElementData = asDataType<LinkedListElementData>(
+  LinkedListElementDataSchema,
+);
 
 export const LinkedListDatumSchema = Data.Object({
   data: LinkedListElementDataSchema,
   link: Data.Nullable(Data.Bytes()),
 });
 export type LinkedListDatum = Data.Static<typeof LinkedListDatumSchema>;
-export const LinkedListDatum =
-  LinkedListDatumSchema as unknown as LinkedListDatum;
+export const LinkedListDatum = asDataType<LinkedListDatum>(
+  LinkedListDatumSchema,
+);
 
 export const LinkedListNodeViewSchema = Data.Object({
   key: NodeKeySchema,
@@ -75,8 +63,9 @@ export const LinkedListNodeViewSchema = Data.Object({
   data: Data.Any(),
 });
 export type LinkedListNodeView = Data.Static<typeof LinkedListNodeViewSchema>;
-export const LinkedListNodeView =
-  LinkedListNodeViewSchema as unknown as LinkedListNodeView;
+export const LinkedListNodeView = asDataType<LinkedListNodeView>(
+  LinkedListNodeViewSchema,
+);
 
 const extractSingletonAssetName = (assets: Assets): string => {
   const nonAdaUnits = Object.keys(assets).filter((unit) => unit !== "lovelace");
@@ -187,91 +176,3 @@ export const getLinkedListNodeViewFromUTxO = (
 export class LinkedListError extends EffectData.TaggedError(
   "LinkedListError",
 )<GenericErrorFields> {}
-
-export type LinkedListInitParams = {
-  validator: AuthenticatedValidator;
-  rootAssetName: string;
-  data?: Data;
-  redeemer: (outputIndex: bigint) => string;
-  lovelace?: bigint;
-};
-
-export const incompleteInitLinkedListTxProgram = (
-  lucid: LucidEvolution,
-  params: LinkedListInitParams,
-): Effect.Effect<TxBuilder> =>
-  Effect.gen(function* () {
-    const rootUnit = toUnit(params.validator.policyId, params.rootAssetName);
-    const assets: Assets = { [rootUnit]: 1n };
-
-    const rootData = params.data ?? Data.to([]);
-
-    const nodeDatum: LinkedListDatum = {
-      data: {
-        Root: {
-          data: rootData,
-        },
-      },
-      link: null,
-    };
-
-    const redeemer = ((ctx) =>
-      params.redeemer(
-        requireUniqueOutputIndex(
-          ctx.outputs,
-          (output) =>
-            output.address === params.validator.spendingScriptAddress &&
-            (output.assets[rootUnit] ?? 0n) === 1n,
-          "linked-list init root",
-        ),
-      )) satisfies BuildTxWithRedeemer;
-
-    return lucid
-      .newTx()
-      .mintAssets(assets, redeemer)
-      .pay.ToAddressWithData(
-        params.validator.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: Data.to<LinkedListDatum>(nodeDatum, LinkedListDatum),
-        },
-        {
-          ...(params.lovelace === undefined
-            ? {}
-            : { lovelace: params.lovelace }),
-          ...assets,
-        },
-      )
-      .attach.Script(params.validator.mintingScript);
-  });
-
-export const unsignedLinkedListTxProgram = (
-  lucid: LucidEvolution,
-  initParams: LinkedListInitParams,
-): Effect.Effect<TxSignBuilder, LucidError> =>
-  Effect.gen(function* () {
-    return yield* completeTxWithLocalUPLCEvalProgram(
-      yield* incompleteInitLinkedListTxProgram(lucid, initParams),
-      (e) =>
-        new LucidError({
-          message: `Failed to build the linked list initialization transaction: ${e}`,
-          cause: e,
-        }),
-    );
-  });
-
-/**
- * Builds completed tx for initializing all Midgard contracts.
- * This includes: Hub Oracle, State Queue, Settlement Queue,
- * Registered/Active/Retired Operators, Scheduler, Escape Hatch,
- * and Fraud Proof Catalogue.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for initializing all Midgard contracts.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedLinkedListTx = (
-  lucid: LucidEvolution,
-  initParams: LinkedListInitParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(unsignedLinkedListTxProgram(lucid, initParams)).unsafeRun();

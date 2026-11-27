@@ -23,12 +23,25 @@ export type ResolveTxStatusInput = {
   readonly inImmutable: boolean;
   readonly inMempool: boolean;
   readonly inProcessedMempool: boolean;
-  readonly localFinalizationPending: boolean;
+  /** Which block holds the tx: this node's own (`own_block`) or a landed
+   * block of any operator that includes a tx this node accepted
+   * (`landed_block`). */
+  readonly inclusion?: "own_block" | "landed_block";
   readonly headerHash?: string | null;
   readonly headerStatus?: string | null;
   readonly mergeStatus?: string | null;
   readonly confirmedLedgerFinalized?: boolean;
 };
+
+/** Every `committedMeaning` a `committed` status can carry: this node's own
+ * block holds the tx, or another operator's landed block includes it. */
+export const TX_STATUS_COMMITTED_MEANINGS = [
+  "immutable_db_inclusion_not_confirmed_ledger_merge",
+  "landed_block_inclusion_not_confirmed_ledger_merge",
+] as const;
+
+export type TxStatusCommittedMeaning =
+  (typeof TX_STATUS_COMMITTED_MEANINGS)[number];
 
 /**
  * Canonical transaction-status response exposed by the node.
@@ -49,11 +62,10 @@ export type ResolvedTxStatus =
         | "committed"
         | "accepted"
         | "pending_commit"
-        | "awaiting_local_recovery"
         | "validating"
         | "queued"
         | "not_found";
-      readonly committedMeaning?: "immutable_db_inclusion_not_confirmed_ledger_merge";
+      readonly committedMeaning?: TxStatusCommittedMeaning;
       readonly headerHash?: string;
       readonly headerStatus?: string;
       readonly mergeStatus?: string;
@@ -66,11 +78,17 @@ export type ResolvedTxStatus =
 export const resolveTxStatus = (
   input: ResolveTxStatusInput,
 ): ResolvedTxStatus => {
-  if (input.inImmutable) {
+  // Another operator's landed block included it: this node's immutable
+  // storage never holds it, and its inclusion mark names that block.
+  const inLandedBlock =
+    !input.inImmutable && input.inclusion === "landed_block";
+  if (input.inImmutable || inLandedBlock) {
     return {
       txId: input.txIdHex,
       status: "committed",
-      committedMeaning: "immutable_db_inclusion_not_confirmed_ledger_merge",
+      committedMeaning: inLandedBlock
+        ? "landed_block_inclusion_not_confirmed_ledger_merge"
+        : "immutable_db_inclusion_not_confirmed_ledger_merge",
       ...(input.headerHash === undefined || input.headerHash === null
         ? {}
         : { headerHash: input.headerHash }),
@@ -81,13 +99,6 @@ export const resolveTxStatus = (
         ? {}
         : { mergeStatus: input.mergeStatus }),
       confirmedLedgerFinalized: input.confirmedLedgerFinalized ?? false,
-    };
-  }
-
-  if (input.localFinalizationPending && input.inProcessedMempool) {
-    return {
-      txId: input.txIdHex,
-      status: "awaiting_local_recovery",
     };
   }
 
@@ -147,10 +158,10 @@ export type ResolveTxStatusBatchInput = {
   readonly immutableTxIds: ReadonlySet<string>;
   readonly mempoolTxIds: ReadonlySet<string>;
   readonly processedMempoolTxIds: ReadonlySet<string>;
-  readonly localFinalizationPending: boolean;
   readonly headerEvidenceByTxId?: ReadonlyMap<
     string,
     {
+      readonly inclusion?: "own_block" | "landed_block";
       readonly headerHash?: string;
       readonly headerStatus?: string;
       readonly mergeStatus?: string;
@@ -171,7 +182,6 @@ export const resolveTxStatusBatch = (
       inImmutable: input.immutableTxIds.has(txIdHex),
       inMempool: input.mempoolTxIds.has(txIdHex),
       inProcessedMempool: input.processedMempoolTxIds.has(txIdHex),
-      localFinalizationPending: input.localFinalizationPending,
       ...(headerEvidence === undefined ? {} : headerEvidence),
     });
   });

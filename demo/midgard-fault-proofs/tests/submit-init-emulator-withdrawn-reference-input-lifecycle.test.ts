@@ -1,0 +1,198 @@
+import { outRefLabel } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import { Data, toUnit } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildWithdrawnReferenceInputInit } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
+import { buildWithdrawnReferenceInputStep01 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
+import { buildWithdrawnReferenceInputStep02 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
+import { buildWithdrawnReferenceInputStep03 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
+import { buildAndSubmit, submitTurns } from "./support/submit-steps.js";
+import {
+  makeWithdrawnReferenceInputEmulatorHarness,
+  publishWithdrawnReferenceInputReferenceScripts,
+  setupWithdrawnReferenceInputScenario,
+} from "./support/withdrawn-reference-input-emulator.setup-withdrawn-reference-input-unchecked-scenario.js";
+
+describe("withdrawn-reference-input emulator lifecycle", () => {
+  it("proves the same-block conflict, mints permanent evidence, and removes the fraudulent block", async () => {
+    pinStepTranscript();
+    const harness = await makeWithdrawnReferenceInputEmulatorHarness();
+    const scenario = await setupWithdrawnReferenceInputScenario({ harness });
+    const [step01Ref, step02Ref, step03Ref] =
+      await publishWithdrawnReferenceInputReferenceScripts({
+        lucid: harness.funderLucid,
+        contracts: harness.family,
+      });
+
+    const init = await buildAndSubmit(buildWithdrawnReferenceInputInit, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: harness.family,
+      category: harness.category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
+      },
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+    expect(init.computationThreadAssetName).toBe(
+      `${harness.category.categoryId}${scenario.setup.headerHash}`,
+    );
+
+    const step01 = await buildAndSubmit(buildWithdrawnReferenceInputStep01, {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: init.nextThreadOutRef,
+      stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      txInclusion: scenario.prepared.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+    expect(step01.blocksWithdrawalsRoot).toBe(scenario.header.withdrawalsRoot);
+    expect(step01.blocksWithdrawalCount).toBe(1n);
+
+    const step02 = await submitTurns(buildWithdrawnReferenceInputStep02, {
+      lucid: harness.proverLucid,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step01.nextThreadOutRef,
+      referenceInputs: scenario.prepared.referenceInputs,
+      nativeTxCompactCbor: scenario.prepared.txInclusion.nativeTxCompactCbor,
+      badReferenceInputIndex: BigInt(scenario.prepared.badReferenceInputIndex),
+      referenceScriptUtxo: step02Ref,
+    });
+    expect(step02.missingReferenceInput).toStrictEqual(
+      scenario.prepared.missingReferenceInput,
+    );
+
+    const step03 = await buildAndSubmit(buildWithdrawnReferenceInputStep03, {
+      lucid: harness.proverLucid,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: step02.nextThreadOutRef,
+      withdrawalMembership: scenario.prepared.withdrawalMembership,
+      referenceScriptUtxo: step03Ref,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    });
+
+    for (const step of harness.family.steps) {
+      await expect(
+        harness.proverLucid.utxosAtWithUnit(
+          step.spendingScriptAddress,
+          init.computationThreadUnit,
+        ),
+      ).resolves.toHaveLength(0);
+    }
+    const fraudProof = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.family.fraudProof.spendingScriptAddress,
+      step03.fraudProofUnit,
+    );
+    expect(outRefLabel(fraudProof)).toBe(step03.fraudProofOutRef);
+    expect(
+      Data.from(fraudProof.datum!, SDKFraudProof.FraudProofTokenDatum),
+    ).toStrictEqual({ fraud_prover: harness.proverSigner.paymentKeyHash });
+
+    const removalReferences = await publishRemovalReferenceScripts({
+      lucid: harness.proverLucid,
+      contracts: harness.contracts,
+    });
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      harness.contracts,
+      harness.catalogue,
+      { removalReferenceScripts: removalReferences.published },
+    );
+    const now = BigInt(harness.emulator.now());
+    const removal = await submitRemoveFraudulentBlock({
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      deploymentInfo,
+      network,
+      signer: harness.proverSigner,
+      fraudCategory: "withdrawnReferenceInput",
+      fraudulentHeaderHash: scenario.setup.headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: true,
+      validFrom: now > 120_000n ? now - 120_000n : 0n,
+      validTo: now + 300_000n,
+    });
+    expect(removal.fraudCategory).toBe("withdrawnReferenceInput");
+    expect(removal.transactions).toHaveLength(1);
+    expect(removal.transactions[0]).toMatchObject({
+      kind: "remove-target",
+      slashingApproach: "SlashActiveOperator",
+      removedOperator: scenario.header.operatorVkey,
+    });
+    await expect(
+      harness.proverLucid.utxosAtWithUnit(
+        harness.contracts.stateQueue.spendingScriptAddress,
+        scenario.setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const [rootUtxo] = await harness.proverLucid.utxosAtWithUnit(
+      harness.contracts.stateQueue.spendingScriptAddress,
+      scenario.setup.stateQueueRootUnit,
+    );
+    expect(rootUtxo).toBeDefined();
+    const root = await Effect.runPromise(
+      SDKStateQueue.utxoToStateQueueUTxO(
+        rootUtxo!,
+        harness.contracts.stateQueue.policyId,
+      ),
+    );
+    expect(root.datum.next).toBe("Empty");
+    await expect(
+      harness.proverLucid.utxosAtWithUnit(
+        harness.contracts.activeOperators.spendingScriptAddress,
+        scenario.setup.activeOperatorNodeUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const [scheduler] = await harness.proverLucid.utxosAtWithUnit(
+      harness.contracts.scheduler.spendingScriptAddress,
+      toUnit(harness.contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
+    );
+    expect(Data.from(scheduler!.datum!, SDK.SchedulerDatum)).toBe(
+      "NoActiveOperators",
+    );
+    const retained = await expectSingleUtxoWithUnit(
+      harness.proverLucid,
+      harness.family.fraudProof.spendingScriptAddress,
+      step03.fraudProofUnit,
+    );
+    expect(outRefLabel(retained)).toBe(step03.fraudProofOutRef);
+    await expect(
+      submitRemoveFraudulentBlock({
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        deploymentInfo,
+        network,
+        signer: harness.proverSigner,
+        fraudCategory: "withdrawnReferenceInput",
+        fraudulentHeaderHash: scenario.setup.headerHash,
+        awaitConfirmation: true,
+        requireReferenceScripts: true,
+      }),
+    ).rejects.toThrow(/State queue does not contain block/);
+  }, 600_000);
+});

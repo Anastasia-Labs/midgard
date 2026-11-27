@@ -1,0 +1,69 @@
+use aiken/crypto.{ScriptHash}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/cek_context_chain as chain
+use midgard/cek_context_step as context
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/script_context_v1.{L1SlotConfigV1}
+
+/// `l1_slot_config` is the deployment's slot-to-time mapping, recorded in its
+/// manifest; it turns the committed slot interval into the POSIX `validRange`.
+validator main(
+  settle_script_hash: ScriptHash,
+  computation_thread_policy_id: PolicyId,
+  l1_slot_config: L1SlotConfigV1,
+) {
+  spend(
+    datum: Option<chain.StagedDatum>,
+    redeemer: chain.ContextRedeemer,
+    own_out_ref: OutputReference,
+    tx: Transaction,
+  ) {
+    when redeemer is {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(action) -> {
+        expect Some(step) = datum
+        expect Some(staged) = step.data
+        expect staged.context.stage == 12
+        expect chain.auxiliary_is_bound(staged.bound, action.auxiliary)
+        let next_context = context.next_tx_info(
+          l1_slot_config,
+          staged.bound.source_kind,
+          staged.context,
+          staged.native,
+          action.auxiliary,
+        )
+        let staged_data: Data = staged
+        let next: Data = chain.ContextVerified {
+          staged: staged_data,
+          successor: chain.ContinueContext { next: next_context },
+        }
+        continue_validation_trace(
+          computation_thread_policy_id,
+          step,
+          action.input_index,
+          action.output_index,
+          own_out_ref,
+          tx,
+          ProverOnly,
+          fn(_, _, _, _, hash, state) {
+            hash == settle_script_hash && state == next
+          },
+        )
+      }
+    }
+  }
+
+  else(_) {
+    fail
+  }
+}

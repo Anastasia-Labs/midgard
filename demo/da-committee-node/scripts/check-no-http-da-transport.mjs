@@ -3,6 +3,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { sourceFacetPaths } from "../../../scripts/lib/source-facets.mjs";
+
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const demoRoot = resolve(packageRoot, "..");
 const injectedTarget = process.argv[2];
@@ -12,7 +14,7 @@ const targets =
         join(packageRoot, "src/da/libp2p"),
         join(packageRoot, "src/da/payload.ts"),
         join(packageRoot, "src/da/source.ts"),
-        join(packageRoot, "src/watcher.ts"),
+        join(packageRoot, "src/committee-service.ts"),
         join(demoRoot, "midgard-node/src/da/libp2p-producer.ts"),
         join(demoRoot, "midgard-core/src/da-transport.ts"),
         join(demoRoot, "midgard-core/src/da-request-deadline.ts"),
@@ -43,7 +45,9 @@ const forbidden = [
 const listSourceFiles = async (target) => {
   const targetStat = await stat(target);
   if (targetStat.isFile()) {
-    return sourceExtensions.has(extname(target)) ? [target] : [];
+    return sourceExtensions.has(extname(target))
+      ? sourceFacetPaths(target)
+      : [];
   }
   const entries = await readdir(target, { withFileTypes: true });
   const nested = await Promise.all(
@@ -90,6 +94,6 @@ if (findings.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    `No forbidden HTTP/URL tokens found in ${files.length.toString()} migrated DA libp2p target file(s).\n`,
+    `No forbidden HTTP/URL tokens found in ${files.length.toString()} DA libp2p target file(s).\n`,
   );
 }

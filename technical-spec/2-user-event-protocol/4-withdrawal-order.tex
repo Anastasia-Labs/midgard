@@ -18,7 +18,7 @@ A user initiates a withdrawal from Midgard by submitting an L1 transaction that 
                 \T{inclusion\_time} : & \T{PosixTime}, \\
                 \T{witness} : & \T{ScriptHash}, \\
                 \T{refund\_address}: & \T{Address}, \\
-                \T{refund\_datum}: & \T{Option(Data)}
+                \T{refund\_datum}: & \T{CardanoDatum}
             \end{array}
             \right\}
         \end{equation*}
@@ -53,20 +53,20 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Let \code{l1\_id} be the Blake2b256 hash of serialized \code{l1\_nonce}.
         \item An NFT with own policy ID and asset name of \code{l1\_id} must be minted and included in the withdrawal order utxo.
         \item The witness staking script, instantiated with \code{l1\_id} must be registered in the transaction.
-        \item The redeemer used for registering the witness script must be equal to the \code{withdrawal} policy ID.
+        \item The redeemer used for registering the witness script must be \code{MintOrBurn} carrying the \code{withdrawal} policy ID.
         \item Let \code{withdrawal\_addr} be the address of the withdrawal contract from Midgard's hub oracle.
         \item Withdrawal order utxo must be produced at \code{withdrawal\_addr}.
         \item The withdrawal order's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
         \item The hash of the witness script must be correctly stored in the withdrawal datum.
         \item Validity of the withdrawal must be set to \code{WithdrawalIsValid}.
       \end{enumerate}
-    \item[Burn Withdrawal NFT.] Oversee start of the funding for a withdrawal order by requiring its NFTs to be burnt, and having the utxo reproduced at the \code{payout} contract.
+    \item[Burn Withdrawal NFT.] Require the event NFT burn and witness deregistration when the order either initializes payout or follows the invalid-order refund path.
     Conditions:
       \begin{enumerate}
         \item Let \code{l1\_id} be the corresponding ID of the target withdrawal order, provided via the redeemer.
         \item An NFT with own policy ID and asset name of \code{l1\_id} must be burnt.
         \item The witness staking script, instantiated with \code{l1\_id} must be unregistered in the transaction.
-        \item The redeemer used for unregistrering the witness script must be correct. Namely, it must be equal to the \code{withdrawal} policy ID.
+        \item The redeemer used for unregistrering the witness script must be correct. Namely, it must be \code{MintOrBurn} carrying the \code{withdrawal} policy ID.
       \end{enumerate}
 \end{description}
 
@@ -86,6 +86,7 @@ It's responsible for initializing the funding phase of a withdrawal order by rep
       \item The utxo produced at \code{payout\_addr} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{payout} NFT (same asset name) added.
       \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal utxo.
       \item The minting logic from \code{payout} must be invoked, minting an NFT with the same asset name as the withdrawal NFT being burnt in the transaction.
+      \item After removing the payout NFT, the initial accumulator must not exceed the target quantity of any asset or introduce an extra asset.
       \item The datum attached to the payout accumulator utxo must take over \code{l2\_value}, \code{l1\_address} and \code{l1\_datum} unchanged.
       \item No reference script must be attached to the payout accumulator utxo.
     \end{enumerate}
@@ -99,7 +100,7 @@ It's responsible for initializing the funding phase of a withdrawal order by rep
       \item Let \code{refund\_datum} be the datum information for the refund utxo retrieved from the withdrawal order utxo.
       \item The utxo produced at \code{refund\_address} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{refund\_datum} attached.
       \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal utxo.
-      \item No reference script must be attached to the payout accumulator utxo.
+      \item No reference script must be attached to the refund output.
     \end{enumerate}
 \end{description}
 

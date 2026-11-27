@@ -2,15 +2,17 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as DepositsDB from "@/database/deposits.js";
+import { Database } from "../services/database.js";
+import * as DepositsDB from "./deposits.js";
+import { orphanedAdmission } from "./l1-admission-identity.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
+import { retrievePendingLedgerOutRefHexes } from "./withdrawals.restore-corrected-classification.js";
 
 export const tableName = "mempool_ledger";
 const INSERT_ROW_CHUNK_SIZE = 10_000;
@@ -52,37 +54,6 @@ const normalizeEntry = (entry: Ledger.Entry | Entry): EntryNoTimeStamp => ({
       ? (entry[Columns.SOURCE_EVENT_ID] ?? null)
       : null,
 });
-
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-          ${sql(Columns.OUTREF)} BYTEA NOT NULL,
-          ${sql(Columns.OUTPUT)} BYTEA NOT NULL,
-          ${sql(Columns.ADDRESS)} TEXT NOT NULL,
-          ${sql(Columns.SOURCE_EVENT_ID)} BYTEA,
-          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-          PRIMARY KEY (${sql(Columns.OUTREF)}),
-          FOREIGN KEY (${sql(Columns.SOURCE_EVENT_ID)})
-            REFERENCES ${sql("deposits_utxos")}(${sql("event_id")})
-            ON DELETE RESTRICT
-        );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.ADDRESS}`,
-        )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
-        yield* sql`CREATE UNIQUE INDEX IF NOT EXISTS ${sql(
-          `uniq_${tableName}_${Columns.SOURCE_EVENT_ID}`,
-        )} ON ${sql(tableName)} (${sql(Columns.SOURCE_EVENT_ID)})
-          WHERE ${sql(Columns.SOURCE_EVENT_ID)} IS NOT NULL;`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
 
 export const insert = (
   entries: readonly (Ledger.Entry | Entry)[],
@@ -205,11 +176,19 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
 );
 
-const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
+/**
+ * SQL condition: the working-ledger row (joined to the deposit it projects,
+ * if any) is spendable: no deposit projects it, or its deposit is assigned
+ * to a header and its follower admission is still on the chain. A deposit
+ * whose admission left the chain (an orphan) projects no spendable output,
+ * so admission rejects a spend of it as a missing input.
+ */
+export const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
   (${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)} IS NULL
-    OR ${sql(DepositsDB.tableName)}.${sql(
+    OR (${sql(DepositsDB.tableName)}.${sql(
       DepositsDB.Columns.PROJECTED_HEADER_HASH,
-    )} IS NOT NULL)
+    )} IS NOT NULL
+      AND NOT (${orphanedAdmission(sql, DepositsDB.tableName, "deposit")})))
 `;
 
 export const retrieveSpendable: Effect.Effect<
@@ -254,6 +233,12 @@ export const retrieveByAddress = (
     ),
   );
 
+/**
+ * The wallet view of an address: its spendable entries, minus every outref a
+ * pending withdrawal names. Admission refuses any spend of those
+ * (`retrievePendingLedgerOutRefHexes` is the set it checks), so offering one
+ * to a wallet only yields a transaction that is certain to be rejected.
+ */
 export const retrieveSpendableByAddress = (
   address: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -262,7 +247,7 @@ export const retrieveSpendableByAddress = (
       `${tableName} db: attempt to retrieve spendable Ledger UTxOs`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<EntryWithTimeStamp>`SELECT ${sql(
+    const entries = yield* sql<EntryWithTimeStamp>`SELECT ${sql(
       tableName,
     )}.* FROM ${sql(tableName)}
       LEFT JOIN ${sql(DepositsDB.tableName)}
@@ -270,6 +255,15 @@ export const retrieveSpendableByAddress = (
          = ${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)}
       WHERE ${sql(tableName)}.${sql(Columns.ADDRESS)} = ${address}
         AND ${spendablePredicate(sql)}`;
+    if (entries.length === 0) return entries;
+    const pendingWithdrawalOutRefHexes =
+      yield* retrievePendingLedgerOutRefHexes;
+    return entries.filter(
+      (entry) =>
+        !pendingWithdrawalOutRefHexes.has(
+          entry[Columns.OUTREF].toString("hex"),
+        ),
+    );
   }).pipe(
     Effect.withLogSpan(`retrieveSpendableByAddress ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -329,6 +323,27 @@ export const retrieveSpendableByTxOutRefs = (
       "Failed to retrieve spendable UTxOs for the given outrefs",
     ),
   );
+
+/**
+ * The spendable outputs at the hex outrefs `keys`, read in chunks; a key with
+ * no spendable row is absent from the result.
+ */
+export const spendableAt = (
+  keys: ReadonlySet<string>,
+): Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const outRefs = [...keys].map((key) => Buffer.from(key, "hex"));
+    const spendable = new Map<string, Buffer>();
+    for (let start = 0; start < outRefs.length; start += 1_000)
+      for (const row of yield* retrieveSpendableByTxOutRefs(
+        outRefs.slice(start, start + 1_000),
+      ))
+        spendable.set(
+          row[Columns.OUTREF].toString("hex"),
+          Buffer.from(row[Columns.OUTPUT]),
+        );
+    return spendable;
+  });
 
 export const retrieveBySourceEventIds = (
   eventIds: readonly Buffer[],

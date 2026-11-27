@@ -1,0 +1,319 @@
+/**
+ * One installed-application objective driven to conviction: the committed
+ * block, the watcher's classification of it, then watcher turns until the
+ * proof token is minted. A turn either pends or pauses until a fresh
+ * observation; anything else fails the run.
+ *
+ * The calling test mocks the manifest binding and the L1 observation port
+ * with `hooks` (both are hoisted into the test file).
+ */
+import { toUnit, type UTxO } from "@lucid-evolution/lucid";
+import { expect } from "vitest";
+
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/output-reference-script-decoding/authenticated-workflow.output-reference-script-decoding-family-definition.js";
+import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/witness-script-decoding/workflow.create-manifest-bound-witness-script-decoding-workflow.js";
+import {
+  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+} from "../../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { installedWorkflowEmulatorClock } from "./installed-workflow.advance-emulator-observation.js";
+import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
+import { installApplicationClock } from "./script-decode-installed-host.js";
+import {
+  commitScriptDecodeBlock,
+  type InstalledFamily,
+  installScriptDecodeApplication,
+} from "./script-decode-installed-workflow.js";
+
+const MAX_TURNS = 400;
+
+/** The witness family (kind 0), as the watcher admits it. */
+export const INSTALLED_WITNESS = {
+  definition: WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION as never,
+  replayer: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  contractOptions: {
+    realWitnessScriptDecoding: true,
+    alwaysFraudProofCatalogue: true,
+  },
+  violationId: "witness-plutus-script-undecodable",
+} as const;
+
+/** The output-reference family (kind 1), as the watcher admits it. */
+export const INSTALLED_OUTPUT_REFERENCE = {
+  definition: OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION as never,
+  replayer: OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  contractOptions: {
+    realOutputReferenceScriptDecoding: true,
+    alwaysFraudProofCatalogue: true,
+  },
+  violationId: "output-reference-plutus-script-undecodable",
+} as const;
+
+export type InstalledHooks = {
+  binding: unknown;
+  authority: unknown;
+};
+
+export type InstalledScenario = Readonly<{
+  definition: InstalledFamily;
+  replayer: Parameters<typeof installScriptDecodeApplication>[0]["replayer"];
+  contractOptions: NonNullable<
+    Parameters<typeof makeFaultProofEmulatorHarness>[0]
+  >["contractOptions"];
+  referenceScriptAuthTimelockMs?: number;
+  nativeTx: () => Parameters<typeof commitScriptDecodeBlock>[0]["nativeTx"];
+  violationId: string;
+}>;
+
+type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
+type Application = Awaited<ReturnType<typeof installScriptDecodeApplication>>;
+type TurnResult = Awaited<ReturnType<Application["turn"]>>;
+
+/** What a test sees between two turns, and may act on. */
+export type InstalledTurnContext = Readonly<{
+  harness: Harness;
+  application: Application;
+  clock: ReturnType<typeof installApplicationClock>;
+  turn: number;
+  result: TurnResult;
+}>;
+
+export type InstalledRunOptions = Readonly<{
+  /**
+   * Turns the run may take to convict (at most the harness budget): a run
+   * that spins across turns fails fast instead of after the whole budget.
+   */
+  maxTurns?: number;
+  /** Runs once before the first turn; may return its cleanup. */
+  beforeTurns?: (
+    context: Omit<InstalledTurnContext, "result" | "turn">,
+  ) => Promise<(() => void) | void> | (() => void) | void;
+  /** Runs after each turn that did not convict; "stop" ends the run there. */
+  afterTurn?: (
+    context: InstalledTurnContext,
+  ) => Promise<"stop" | void> | "stop" | void;
+  /**
+   * A turn that throws is a stopped process: restart it (the default
+   * fails the run).
+   */
+  onStopped?: (
+    error: unknown,
+    context: Omit<InstalledTurnContext, "result">,
+  ) => Promise<void>;
+}>;
+
+/** The record's footprint: the UTxOs the record left on chain. */
+export type InstalledRecordFootprint = Readonly<{
+  /** Outputs at the script-decode validator (runs and records). */
+  recordOutputs: number;
+  /** Datum-bearing outputs at the prover's address (staging chunks). */
+  stagingOutputs: number;
+}>;
+
+const isStaging = (utxo: UTxO): boolean =>
+  utxo.scriptRef == null && (utxo.datum != null || utxo.datumHash != null);
+
+export const runInstalled = async (
+  scenario: InstalledScenario,
+  hooks: InstalledHooks,
+  options: InstalledRunOptions = {},
+) => {
+  const recorder = recordCrossBlockRawEmulator();
+  let clock: ReturnType<typeof installApplicationClock> | undefined;
+  let close: (() => Promise<void>) | undefined;
+  let cleanup: (() => void) | undefined;
+  try {
+    // Each capture is an observation of the application's clock.
+    hooks.authority = {
+      ...recorder.authority,
+      capture: async (request) => {
+        await clock?.observation();
+        return await recorder.authority.capture(request);
+      },
+    } satisfies typeof recorder.authority;
+    const harness = await makeFaultProofEmulatorHarness({
+      ...(scenario.referenceScriptAuthTimelockMs === undefined
+        ? {}
+        : {
+            referenceScriptAuthTimelockMs:
+              scenario.referenceScriptAuthTimelockMs,
+          }),
+      contractOptions: scenario.contractOptions,
+    });
+    const committed = await commitScriptDecodeBlock({
+      harness,
+      definition: scenario.definition,
+      nativeTx: scenario.nativeTx(),
+    });
+    const workflowClock = installedWorkflowEmulatorClock(harness.emulator);
+    workflowClock.awaitReleaseDepth();
+    clock = installApplicationClock(harness.emulator);
+    const application = await installScriptDecodeApplication({
+      harness,
+      definition: scenario.definition,
+      replayer: scenario.replayer,
+      committed,
+      recorder,
+      setBinding: (binding) => {
+        hooks.binding = binding;
+      },
+    });
+    close = application.close;
+    expect(application.decision).toMatchObject({
+      decision: "fault_detected",
+      category: scenario.definition.category,
+      violationId: scenario.violationId,
+    });
+    const categoryId =
+      harness.catalogue.categories[scenario.definition.category]!.categoryId;
+    const convictions = async () =>
+      await harness.proverLucid.utxosAtWithUnit(
+        harness.contracts.fraudProof.spendingScriptAddress,
+        toUnit(
+          harness.contracts.fraudProof.policyId,
+          categoryId + committed.headerHash,
+        ),
+      );
+    // Conviction is the proof token. Removal after it is not driven here: a
+    // bond-backed slash needs the finalized manifest's slash authority, which
+    // this harness's deployment lacks.
+    cleanup =
+      (await options.beforeTurns?.({ harness, application, clock })) ??
+      undefined;
+    const reasons: string[] = [];
+    let turns = 0;
+    let convicted = false;
+    for (;;) {
+      let result: TurnResult | undefined;
+      let stopped: { readonly error: unknown } | undefined;
+      try {
+        // A process stopped at an observation never ends its turn.
+        result = await Promise.race([application.turn(), clock.stopped()]);
+      } catch (error) {
+        stopped = { error };
+      }
+      turns += 1;
+      if ((await convictions()).length > 0) {
+        convicted = true;
+        break;
+      }
+      expect(
+        turns,
+        `conviction within the turn budget (last: ${reasons.at(-1) ?? "none"})`,
+      ).toBeLessThan(Math.min(options.maxTurns ?? MAX_TURNS, MAX_TURNS));
+      if (stopped !== undefined) {
+        if (options.onStopped === undefined) throw stopped.error;
+        await options.onStopped(stopped.error, {
+          harness,
+          application,
+          clock,
+          turn: turns,
+        });
+        continue;
+      }
+      // Only a run that resumes by itself on a fresh observation continues.
+      expect(
+        result!.kind === "pending" ||
+          (result!.kind === "stalled" && result!.resumeOnObservation === true),
+        JSON.stringify(result!.reason ?? result!.kind),
+      ).toBe(true);
+      if (result!.reason !== undefined) reasons.push(result!.reason);
+      const next = await options.afterTurn?.({
+        harness,
+        application,
+        clock,
+        turn: turns,
+        result: result!,
+      });
+      if (next === "stop") break;
+      await workflowClock.advance(result!);
+    }
+    if (convicted) expect(await convictions()).toHaveLength(1);
+    const deployment = scriptDecodeDeploymentOf(harness.emulator);
+    const footprint: InstalledRecordFootprint = {
+      recordOutputs: (
+        await harness.proverLucid.utxosAt(
+          deployment.validator.spendingScriptAddress,
+        )
+      ).length,
+      stagingOutputs: (
+        await harness.proverLucid.utxosAt(
+          harness.proverSigner.proofMaterialsAddress,
+        )
+      ).filter(isStaging).length,
+    };
+    return {
+      convicted,
+      turns,
+      sent: application.sent(),
+      reasons,
+      footprint,
+    } as const;
+  } finally {
+    cleanup?.();
+    clock?.restore();
+    recorder.restore();
+    await close?.();
+  }
+};
+
+/** The prover's staging outputs at its proof-materials address, as a test
+ * sees them. */
+export const stagingOutputsOf = async (harness: Harness) =>
+  (
+    await harness.proverLucid.utxosAt(
+      harness.proverSigner.proofMaterialsAddress,
+    )
+  ).filter(isStaging);
+
+/**
+ * A process that stops once, at the observation after
+ * `stopAtNextObservation()`, and is restarted. `during` takes the run's
+ * context, `onStopped` restarts it, `stops()` counts the stops.
+ */
+export const stopsOnceAndRestarts = () => {
+  let context: Omit<InstalledTurnContext, "result" | "turn"> | undefined;
+  let stops = 0;
+  return {
+    during: (run: Omit<InstalledTurnContext, "result" | "turn">) => {
+      context = run;
+    },
+    harness: () => context!.harness,
+    stopAtNextObservation: () => {
+      context!.clock.state.stopAtNextObservation = true;
+    },
+    onStopped: async (
+      error: unknown,
+      { application }: Omit<InstalledTurnContext, "result">,
+    ) => {
+      expect(String(error)).toContain("installed application process stopped");
+      stops += 1;
+      application.restart();
+    },
+    stops: () => stops,
+  };
+};
+
+/**
+ * How far one transaction's fee may move between two runs that build the
+ * same transactions. Each run's chain has its own keys, so the out-ref order
+ * of a transaction's reference inputs, which its redeemers index, differs
+ * from run to run, and the fee by a few hundred lovelace with it.
+ */
+const FEE_SPREAD = 2_000n;
+
+/** The same transactions as the baseline, in the same order, at its fees. */
+export const expectBaselineCost = (
+  cost: readonly Readonly<{ kind: string; fee: bigint }>[],
+  baseline: readonly Readonly<{ kind: string; fee: bigint }>[],
+) => {
+  expect(cost.map(({ kind }) => kind)).toEqual(
+    baseline.map(({ kind }) => kind),
+  );
+  cost.forEach(({ fee }, index) => {
+    const spread = fee - baseline[index]!.fee;
+    expect(spread < 0n ? -spread : spread).toBeLessThanOrEqual(FEE_SPREAD);
+  });
+};

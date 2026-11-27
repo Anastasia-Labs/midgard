@@ -1,0 +1,10 @@
+{
+  "targetDays": 180,
+  "margin": 5,
+  "planningFeeLovelace": 20000000,
+  "operationalTransactionsPerDay": 4320,
+  "userTransactionsPerDay": 24,
+  "totalSupplyLovelace": 4000000000000000,
+  "delegatedSupplyLovelace": 1000000000000000,
+  "collateralLovelace": 50000000
+}

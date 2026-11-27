@@ -1,0 +1,405 @@
+# State queue invariants
+
+Scope: `onchain/aiken/validators/state-queue.ak`,
+`onchain/aiken/lib/midgard/state-queue.ak`, the removal and merge tests next
+to them, and the operator-directory arms the removal path calls into.
+
+Each entry gives the rule, where it is enforced, and a status:
+
+- **VERIFIED**: the code site and at least one refusing test were read when
+  the entry was written. Re-read the named symbol or test before relying on
+  it.
+- **PARTIAL**: the code site was read, but a test or part of the rule is
+  missing. The missing part is named.
+
+Entries cite files, symbols and test titles, not line numbers.
+
+## SQ1. A node's block time is the commit's inclusive upper bound
+
+Status: VERIFIED.
+
+Rule: a committed node's `block_time` equals the inclusive upper bound of the
+commit transaction's validity range, and the header's interval ends no later:
+
+- R1: `block_time` equals the inclusive upper bound, and
+  `start_time < end_time <= block_time`;
+- R2: a header with L2 transactions has `end_time == block_time`; an
+  event-only catch-up block may end earlier;
+- R3: `slot_to_posix_time_v1(block_slot) + slot_length - 1 == block_time`,
+  under the slot mapping the commit yield is parameterised with, so the
+  hashed header names its commit time.
+
+`block_time` is fixed at commit: every arm that continues a node pins it.
+Maturity, the attestation timeout and the fraud-record window run from
+`block_time`, not `end_time`.
+
+Enforced: `commit_bound_header_time_is_valid`
+(`lib/midgard/state-queue.ak`), called from the commit arm
+(`validators/state-queue.ak`)
+`[aiken-test: midgard/state-queue.test/]`. The boundary tests in
+`lib/midgard/state-queue.test.ak` accept a normal block and an
+event-only catch-up block, and refuse a backdated or future `block_time`, an
+end after `block_time`, a non-advancing interval, an L2 block ending before
+`block_time`, a `block_slot` that disagrees and a `block_time` inside a slot.
+The commit arm refuses a backdated `block_time`, an L2 block ending
+before it, a disagreeing `block_slot` and a re-commit of a
+header at a later time `[aiken-test: state-queue-commit.test/]`.
+
+Easy to miss when an off-chain change edits the commit arm: deleting the
+equality leaves every off-chain test green.
+
+## SQ2. The node key is the hash of the serialised header
+
+Status: PARTIAL (no validator-level test pins the derivation).
+
+Rule: a state-queue node's key is `blake2b_224` of the serialised header, the
+same derivation at commit and at every reader.
+
+Enforced: the commit arm and every reader in `validators/state-queue.ak` and
+`lib/midgard/state-queue.ak` `[review]`.
+
+Blind spot: a new reader that hashes a different encoding of the header (for
+example, `un_b_data` applied to a constructor) would pass every existing
+test.
+
+## SQ3. Appends continue the previous head exactly
+
+Status: VERIFIED.
+
+Rule: an appended header carries the previous head's hash, its UTxO root, a
+`start_time` equal to the previous `end_time`, and the same protocol version.
+The genesis protocol sentinel is never copied into an ordinary header.
+
+Enforced: `validators/state-queue.ak`
+`[aiken-test: state-queue/]` (`previous_header_control_and_independent_mutations`, `confirmed_genesis_control_and_independent_mutations`, `confirmed_ordinary_control_and_independent_mutations`); sentinel refusal in `lib/midgard/state-queue.test.ak`
+`[aiken-test: midgard/state-queue.test/]`.
+
+## SQ4. Merge takes only a matured, available, unproven head
+
+Status: PARTIAL (merge refusals for DA status and the correction lock are
+tested only off-chain).
+
+Rule: merge consumes only the head that has matured, whose DA status is
+Attested or Published, whose `proven_fraud` marker is `None`, and whose
+redeemer roots equal the header. A settlement is spawned if and only if the
+header carries L2 material. The correction lock must be Idle.
+
+Enforced: the merge arm of `validators/state-queue.ak` (unproven and matured,
+DA status, roots, settlement with `header_carries_l2_material`, Idle lock)
+`[aiken-test: state-queue-merge.test/]`. Off-chain readiness refusals:
+`demo/midgard-node/tests/merge-readiness.test.ts`.
+
+Easy to miss: a merge that reads roots from its redeemer without equating
+them to the header, and a merge that races a terminal fraud proof (the
+completed-fraud marker, SQ8, closes the race).
+
+## SQ5. Every slash names the operator of the block it removes
+
+Status: VERIFIED.
+
+Rule: the operator slashed by `RemoveFraudulentBlockHeader` is the operator of
+the block that transaction removes. When the removed node is a descendant,
+that is the descendant's own operator, which may differ from the fraud-proved
+block's after scheduler rotation; the fraud proof stays bound to the anchor.
+
+Enforced: both removal arms in `validators/state-queue.ak` decode the removed
+node's header and require
+`removed_header_view.operator_vkey == fraudulent_operator`:
+`remove_fraudulent_blocks_link_v1` for a descendant and
+`remove_last_fraudulent_block_v1` for the fraud-proved block itself.
+`fraudulent_operator` is a redeemer field (`validate_remove_fraudulent_v1`),
+and the slashing arms require the operator-directory redeemer's
+`slashed_operator` to equal it (`cross_validate_slashing_reason`,
+`lib/midgard/operator-directory.ak`).
+
+Pinned by `state_queue_removal_rejects_wrong_descendant_operator`,
+`state_queue_removal_rejects_wrong_target_operator` and
+`state_queue_removal_prunes_transitive_descendant_from_rotated_operator`
+(`validators/state-queue-removal.test.ak`)
+`[aiken-test: state-queue-removal.test/]`.
+
+Review action: a change to either removal arm or to the slashing path keeps the
+operator taken from the removed node's own header.
+
+## SQ6. The prover reward is exact and paid once per bond
+
+Status: VERIFIED.
+
+Rule: the arm that consumes an operator bond pays exactly
+`env.fraud_prover_reward` to the prover named in the fraud-proof datum. The
+already-slashed arm and the validation-trace descendant exemption pay nothing.
+
+Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
+(`lib/midgard/operator-directory.ak`, also used by the
+duplicate-registration and bad-settlement slashes) on the bond-consuming arms
+of `validators/state-queue.ak`, and
+`no_output_pays_fraud_prover_reward_v1` on the already-slashed arm
+and the exemption arm `[aiken-test: state-queue/]`
+(`d3_reward_output_exactness_control_and_mutations`,
+`d3_reward_routing_control_and_mutations`,
+`d4_reward_exclusivity_control_and_double_claim`; through the whole
+handler in `validators/state-queue-removal.test.ak`,
+`bad_state_reward_routing_does_not_require_the_prover_signature` and the
+`bad_state_{active,retired}_slash_rejects_*` refusals); SDK side
+`demo/midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts`.
+
+The reward does not require the prover's signature (#643 item 1, open);
+`bad_state_reward_routing_does_not_require_the_prover_signature` pins that.
+
+## SQ7. Fraud-proof tokens are permanent
+
+Status: PARTIAL (code and tests verified; no design record states the
+rationale).
+
+Rule: a fraud-proof token can never be spent. Proving fraud mints exactly one
+proof token and burns exactly one computation-thread token.
+
+Enforced: `validators/fraud-proof.ak` (spend always fails; mint shape) `[aiken-test: fraud-proof/]`.
+
+## SQ8. The completed-fraud marker is written once and blocks progress
+
+Status: VERIFIED.
+
+Rule: `proven_fraud` is set once, from `None`, in a transaction that either
+mints the proof or cites an authenticated proof token for the same header by
+reference (`m_fraud_proof_ref_input_index`), and a head carrying it can
+neither be appended to nor merged. The by-reference record is pinned by
+`completed_fraud_by_reference_*` `[aiken-test: state-queue-removal.test/]` and
+by the emulator suite
+`demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts`.
+
+Enforced: `validate_completed_fraud_record`
+(`lib/midgard/state-queue.ak`, which requires `None` before and
+`Some(proof_asset)` after) and its reader; the append guard
+`head.proven_fraud == None` in `validators/state-queue.ak`, the merge guard,
+and the commit output `[aiken-test: state-queue-removal.test/]`.
+
+## SQ9. Cross-validator redeemer lookups use the right purpose
+
+Status: PARTIAL (no test would fail on a wrong purpose).
+
+Rule: a validator reading another script's redeemer looks it up under that
+script's actual purpose; `CommitBlockHeader` is a Mint redeemer.
+
+Enforced: `[review]`.
+
+## SQ10. Every state-queue element output carries no reference script
+
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28).
+
+Rule: every block node and the confirmed-state root is created with
+`reference_script == None`, and every arm that continues one pins `None`
+again, so by induction no element ever carries a script. It matters because
+`validate_completed_fraud_record` requires `None` on the fraud node, before
+and after: a node carrying a script made fraud unprovable, and the fraudulent
+block would merge.
+
+Enforced: one predicate, `element_output_has_no_reference_script`
+(`lib/midgard/state-queue.ak`). Creation: the `InitV1` genesis root
+(`validators/state-queue.ak`) and the commit arm's new node.
+Continuation: the commit arm's anchor, the merge root,
+the fraud link and last removals, the unattested prune and
+last removals, the unavailable prune and head removals, and the DA core used by Apply, Open and Close
+(`da_availability_status_transition`, `lib/midgard/state-queue.ak`).
+`validate_completed_fraud_record` pins `None` itself. Refused,
+each beside its honest control, all fail:
+
+- commit `[aiken-test: state-queue-commit.test/]`:
+  `state_queue_commit_rejects_new_node_reference_script_on_root_anchor`,
+  `..._on_node_anchor`,
+  `state_queue_commit_rejects_continued_root_anchor_reference_script`,
+  `..._continued_tail_anchor_reference_script`,
+  `state_queue_init_rejects_root_reference_script`;
+- merge `[aiken-test: state-queue-merge.test/]`:
+  `merge_rejects_continued_root_reference_script`;
+- removals `[aiken-test: state-queue-removal.test/]`: the six
+  `*_rejects_continued_anchor_reference_script` tests (fraud link, fraud
+  last, unattested prune, unattested last, unavailable prune, unavailable
+  head);
+- the DA core `[aiken-test: midgard/state-queue.test/]`:
+  `da_core_apply_rejects_node_output_reference_script`,
+  `da_core_open_...`, `da_core_close_...`, and through each
+  user (Apply, Open, Close) as listed under DA6 in
+  [invariants-da.md](invariants-da.md).
+
+Review action: a new arm that creates or continues an element must call the
+predicate `[review]`.
+
+## SQ11. Every queued node holds the lovelace floor, and a committed header has a bounded width
+
+Status: PARTIAL (tests and mutation runs read).
+
+Rule: every state-queue node, from creation until it leaves the queue, holds
+at least `state_queue_node_min_lovelace_v1` (5 ADA), and that floor covers the
+ledger minimum of the largest admissible node (`Challenged` status, a
+proven-fraud mark, a link, a header at every width bound). It is inductive: a
+node is created at or above the floor, a continued node never loses lovelace,
+and the DA status transitions keep the node's value exactly. It matters
+because Open grows a node's datum (`Attested` to `Challenged`) and must keep
+its value exactly: a node below the minimum of its `Challenged` shape cannot
+be opened, and an unavailable attested block would merge unslashed. The floor
+only has a largest shape to cover if the committed header's width is bounded,
+so the commit arm bounds every header field it does not pin by carry-over.
+The confirmed-state root carries no DA status and is outside the floor, but a
+commit on the root links it, which grows its datum, so the commit arm lets a
+root anchor gain lovelace: merge and the unavailable-head removal leave the
+root's lovelace free, and an exact pin there would let whoever empties the
+queue leave the root too poor to relink and halt every later commit.
+
+Enforced: the constant (`lib/midgard/state-queue.ak`). Creation: the
+commit arm's new node `output_header_lovelace >=
+state_queue_node_min_lovelace_v1` (`validators/state-queue.ak`).
+Continuation, per arm that continues an element:
+
+- commit anchor: a node anchor `== 0`, a root anchor `>= 0`;
+- fraud link and last removals: `>= 0`, because their
+  builders fold the removed node's lovelace into the continued anchor;
+- unattested prune and last removal: `== 0`;
+- unavailable prune: `== 0`;
+- merge root and unavailable-head removal: free (`_confirmed_state_lovelace_change`, `_root_lovelace_change`); both continue the root only;
+- the DA core used by Apply, Open and Close: value equality
+  (`lib/midgard/state-queue.ak`, DA6 in [invariants-da.md](invariants-da.md)).
+
+Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak`)
+requires a 32-byte `utxos_root` and `min_fee_a`,
+`min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64).
+`block_slot` is bounded by R3 instead (SQ1): it must name the commit's slot. Tests `[aiken-test: state-queue-commit.test/]`: the constant pinned at
+5 ADA and the bound at 2^64; fixtures at exactly the floor; above the floor
+accepted; floor − 1 refused on a root anchor and a node anchor; a root anchor
+losing one lovelace, a node anchor losing one and a tail anchor gaining one,
+all refused; a root anchor topped up after a drain accepted; every bounded Int
+at 2^64 − 1 accepted; a 33- and a 31-byte `utxos_root` and `min_fee_a`,
+`min_fee_b` at the bound, all refused. Removals `[aiken-test: state-queue-removal.test/]`:
+fraud link and last gains accepted and losses refused,
+unattested and unavailable prune loss and gain refused. The
+SDK codec test `demo/midgard-sdk/tests/state-queue-node-min-lovelace.test.ts`
+measures the largest admissible node against the floor with CML min-UTxO and
+pins the SDK constant at `5_000_000n`.
+
+Review action: a new arm that creates
+a node must require the floor; a new arm that continues a node must pin its
+lovelace change to `== 0` or `>= 0`; a new arm that continues the root must
+not forbid the gain a relink needs; a new header field needs a width bound in
+the commit arm `[review]`.
+
+## SQ12. Append is refused while the queue head is Challenged
+
+Status: VERIFIED (code and tests re-read at the cited lines as of
+2026-09-28; a fence mutant with the `Challenged` arm returning `True` fails
+both refusals below and passes both controls).
+
+Rule: a commit appends only while the queue head, the oldest unmerged block,
+allows it. The head's header must be valid and carry no proven fraud, and its
+DA status decides the rest:
+
+- `Unattested`: the commit's inclusive upper bound must be strictly before
+  `head.block_time + da_attestation_timeout_v1`. Append is refused once the
+  head is past its attestation timeout.
+- `Attested` or `Published`: append is allowed.
+- `Challenged`: append is refused.
+
+A challenged head ends either published by Close or removed by a timeout that
+prunes every block after it, so a block appended behind it could be built on
+data nobody can check. An unattested head past its timeout is waiting to be
+removed, with the same result.
+
+Enforced: `state_queue_head_allows_append_v1`
+(`validators/state-queue.ak`), called from the commit arm
+on the head the root names. Refused:
+`state_queue_commit_rejects_node_anchor_behind_challenged_head`
+(`validators/state-queue-commit.test.ak`, fails at the fence)
+`[aiken-test: state-queue-commit.test/]`; `append_fence_refuses_challenged_head`
+(`validators/state-queue-removal.test.ak`), with the controls
+`append_fence_accepts_attested_head` and
+`append_fence_accepts_published_head`, and the timeout boundary and
+marker identity pinned by
+`attestation_timeout_append_fence_pins_boundary_and_marker_identity`
+`[aiken-test: state-queue-removal.test/]`.
+
+Spec #685 §4.4 says append is allowed on `Challenged`; that wording is wrong,
+and the code is authoritative. Review action: a change to the DA status type
+must give every new status an explicit arm here `[review]`.
+
+## SQ13. A validation-trace conviction prunes its descendants without slashing them
+
+Status: PARTIAL (code and tests read at the cited lines; the emulator pairs
+below are the refusing transactions; the double-conviction residual is
+open).
+
+Rule: when the authenticated fraud-proof token's 4-byte category prefix is
+`00000006` (validation-trace dispute), every descendant removed with
+`RemoveFraudulentBlocksLink` takes `DescendantOfValidationTraceConviction`.
+The arm consumes no bond, burns no directory node and pays no reward. The
+exemption is mandatory: under that prefix the link refuses
+`SlashActiveOperator` and `SlashRetiredOperator`; `OperatorAlreadySlashed`
+stays valid. Every other category refuses the exemption, and
+`RemoveLastFraudulentBlock` refuses it under every category, so the convicted
+block's own operator is always slashed.
+
+Enforced:
+
+- `slashing_approach_admits_removal_v1` (`lib/midgard/state-queue.ak`),
+  called from `validate_remove_fraudulent_v1`
+  (`validators/state-queue.ak`) after the header equality. The prefix is
+  read only from the asset name of the token under the fraud-proof policy
+  parameter (`get_proven_fraud_record_with_identity`), by
+  `is_validation_trace_dispute` (`lib/midgard/fraud-proof-catalogue.ak`).
+  The arm itself checks `no_output_pays_fraud_prover_reward_v1`
+  (`validators/state-queue.ak`), as `OperatorAlreadySlashed` does. The check stays although neither arm consumes a bond: a
+  directory spend in the same transaction that releases a bond
+  (`SlashDuplicateOperator` and `SlashOperatorForBadSettlement`, which pay
+  their own claimant, or `RecoverOperatorBond`) could otherwise fund an
+  output of the reward's exact shape to the prover. The guard refuses only
+  that exact shape: such a spend can still move lovelace to the prover in any
+  other shape (one lovelace more than the reward, or change), so the guard
+  states D4 and protects no bond. Because those slashes pay their claimant an
+  exact reward-shaped bounty, one whose claimant is the fraud prover cannot
+  share a transaction with a 2c or 2d removal; the two go through as separate
+  transactions `[aiken-test: state-queue/]`
+  (`d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover`,
+  `validators/state-queue.ak`).
+- The operator directory's `SlashOperatorForBadState` reads the state-queue
+  redeemer's `slashing_approach` and requires its own slash arm
+  (`bad_state_slashing_approach_matches_directory`,
+  `lib/midgard/operator-directory.ak`), so a directory
+  slash is never paired with a removal whose arm slashes nothing.
+- Refused `[aiken-test: state-queue-removal.test/]`:
+  `descendant_of_validation_trace_conviction_must_use_the_exemption`,
+  `descendant_of_other_conviction_refuses_the_exemption`,
+  `convicted_block_refuses_the_exemption_under_every_category`,
+  `bad_state_directory_slash_requires_its_own_slash_arm`, and the
+  prefix read `validation_trace_prefix_is_read_from_the_first_four_bytes`.
+- Refused in built transactions `[runtime: expectOnchainRefusal]`:
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-descendant-exemption.test.ts`,
+  each refusal paired with the transaction that verifies from the same
+  queue state. Red-checked on scratch builds: removing the admission call
+  turns B4 and B2 red, admitting the exemption on the convicted block turns
+  B6 red, and removing the directory call turns B5 red. B8 and the
+  already-slashed removal add an exact reward-shaped output to an exempt
+  prune and to an `OperatorAlreadySlashed` removal; both are refused at
+  `no_output_pays_fraud_prover_reward_v1`, and both go red on a scratch
+  build without that check in arms 2c and 2d.
+- Exemption keyed on the removed header's operator
+  `[runtime: expectOnchainRefusal]`:
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-rotated-descendants.test.ts`.
+  Successors committed by a second operator after the scheduler rotated
+  are pruned unslashed with that operator's node and bond intact, slashing
+  them is refused, and the convicted block's removal slashes its own
+  operator and pays the prover.
+
+Review action: a new `SlashingApproach` arm, or a new directory caller of
+`slash_fraudulent_operator_and_get_info`, must say which removals it admits
+and which directory it matches `[review]`.
+
+## Miss patterns in this subtree
+
+- A check present in one arm and missing from its sibling (SQ9): each
+  arm reads correctly on its own.
+- A consensus check deleted inside an unrelated change, such as an off-chain
+  PR (SQ1): nobody reviews it as a consensus change.
+- "Trust the other validator's redeemer" with no equality on the other side
+  (SQ4's redeemer roots): each side assumes the other checks.
+- Tests that collect nothing or leave a mutant alive (SQ1): they look green.
+- An on-chain invariant tested only off-chain (SQ4).
+- A spec sentence that contradicts the enforced code (SQ12).

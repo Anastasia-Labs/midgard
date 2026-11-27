@@ -1,0 +1,184 @@
+import {
+  FraudProofComputationThreadStepDatum,
+  WitnessScriptDecodingStep02DatumSchema,
+  WitnessScriptDecodingStep03DatumSchema,
+  WitnessScriptDecodingStep04DatumSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
+
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import type { CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
+} from "../workflow/family-definition.family-definition.js";
+import {
+  assembleBoundManifestBoundFamilyWorkflow,
+  bindManifestBoundFamilyWorkflow,
+} from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import {
+  executeManifestBoundFamilyRecovery,
+  type ManifestBoundFamilyWorkflowWithRecovery,
+  withManifestBoundFamilyRecovery,
+} from "../workflow/manifest-bound-family-recovery.js";
+import {
+  SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeDeploymentFromReferences,
+} from "../workflow/script-decode-prerequisite.deployment.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
+import {
+  type BoundContext,
+  createWitnessScriptDecodingRecoveryPorts,
+  type ManifestBoundWitnessScriptDecodingInstallation,
+  type ManifestBoundWitnessScriptDecodingWorkflowConfig,
+  type RunContext,
+  runs,
+  WITNESS_ROLES,
+} from "./workflow.create-witness-script-decoding-recovery-ports.js";
+import {
+  WITNESS_SCRIPT_DECODING_WORKFLOW,
+  witnessScriptDecodingConfigFromBinding,
+} from "./workflow.witness-script-decoding-config-from-binding.js";
+import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "./workflow-spec.js";
+
+/** Production installation factory; no evidence object is accepted here. */
+export const createManifestBoundWitnessScriptDecodingWorkflow = async (
+  input: ManifestBoundWitnessScriptDecodingWorkflowConfig,
+): Promise<ManifestBoundWitnessScriptDecodingWorkflow> => {
+  const deployment = await bindManifestBoundFamilyWorkflow(
+    WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
+    {
+      ...input,
+      referenceScripts: {
+        steps: [
+          input.referenceScripts.step01,
+          input.referenceScripts.step02,
+          input.referenceScripts.step03,
+          input.referenceScripts.step04,
+        ],
+        witnesses: input.referenceScripts.witnesses,
+        fieldPreimageCertificateMint:
+          input.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammarCertificateSpend:
+          input.referenceScripts.fieldGrammarCertificateSpend,
+      },
+    },
+  );
+  const config = witnessScriptDecodingConfigFromBinding({
+    binding: deployment.binding,
+    lucid: deployment.lucid,
+    signer: deployment.signer,
+    referenceScripts: {
+      step01: deployment.references.steps[0],
+      step02: deployment.references.steps[1],
+      step03: deployment.references.steps[2],
+      step04: deployment.references.steps[3],
+      witnesses: deployment.references.witnesses,
+      fieldPreimageCertificateMint:
+        deployment.references.fieldPreimageCertificateMint,
+      fieldGrammarCertificateSpend:
+        input.referenceScripts.fieldGrammarCertificateSpend,
+    },
+    scriptDecode: scriptDecodeDeploymentFromReferences({
+      blueprint: deployment.binding.blueprint,
+      network: deployment.binding.network,
+      references: deployment.auxiliaryReferences,
+    }),
+  });
+  return withManifestBoundFamilyRecovery(
+    Object.freeze({
+      deployment,
+      workflowVersion: WITNESS_SCRIPT_DECODING_WORKFLOW,
+      config,
+      binding: deployment.binding,
+      l1: deployment.l1,
+      stateQueueMutationLeaseCoordinator:
+        input.stateQueueMutationLeaseCoordinator,
+      decisionDigest: input.decisionDigest,
+    }),
+    createWitnessScriptDecodingRecoveryAdapter,
+  );
+};
+
+const runFor = (context: BoundContext) => {
+  const existing = runs.get(context);
+  if (existing !== undefined) return existing;
+  const created = createWitnessScriptDecodingRecoveryPorts(
+    context.runtime.workflow,
+  );
+  runs.set(context, created);
+  return created;
+};
+
+export const WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
+  "witnessScriptDecoding",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  4,
+  RunContext
+>({
+  category: "witnessScriptDecoding",
+  stepDatumSchemas: [
+    FraudProofComputationThreadStepDatum,
+    WitnessScriptDecodingStep02DatumSchema,
+    WitnessScriptDecodingStep03DatumSchema,
+    WitnessScriptDecodingStep04DatumSchema,
+  ],
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  fieldGrammarCertificate: true,
+  replayer: () => WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
+    stepContractNames: cursorStepContractNames(
+      WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
+    ),
+    transactionPort: (context) => runFor(context).transactions,
+  },
+  auxiliaryReferenceScripts: SCRIPT_DECODE_REFERENCE_SCRIPTS,
+  scriptDecodeRecord: (context, input) =>
+    runFor(context).scriptDecodeItemForAction(input),
+  fieldCarriage: [
+    {
+      requirementForAction: (context, input) =>
+        runFor(context).requirementForAction(input),
+    },
+  ],
+});
+
+export const createWitnessScriptDecodingRecoveryAdapter = (
+  workflow: ManifestBoundWitnessScriptDecodingInstallation,
+) => {
+  const assembled = assembleBoundManifestBoundFamilyWorkflow(
+    WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
+    workflow.deployment,
+    { workflow },
+  );
+  return {
+    ...assembled,
+    transactions:
+      assembled.transactions as CursorFamilyTransactionPort<"witnessScriptDecoding">,
+  };
+};
+
+export type ManifestBoundWitnessScriptDecodingWorkflow =
+  ManifestBoundFamilyWorkflowWithRecovery<
+    ManifestBoundWitnessScriptDecodingInstallation,
+    ReturnType<typeof createWitnessScriptDecodingRecoveryAdapter>
+  >;
+
+export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
+  workflow,
+  sources,
+  run,
+}: {
+  readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly run: WorkflowRun;
+}) =>
+  await executeManifestBoundFamilyRecovery({
+    ...workflow,
+    sources,
+    run,
+  });

@@ -22,8 +22,8 @@ version = "v1.4.0"
 source = "github"
 
 [[requirements]]
-name = "aiken-lang/merkle-patricia-forestry"
-version = "2.0.0"
+name = "anastasia-labs/merkle-patricia-forestry"
+version = "ff9a33ce1b6e25170703f6eab67368c1ec6028c7"
 source = "github"
 
 [[packages]]
@@ -51,8 +51,8 @@ requirements = []
 source = "github"
 
 [[packages]]
-name = "aiken-lang/merkle-patricia-forestry"
-version = "2.0.0"
+name = "anastasia-labs/merkle-patricia-forestry"
+version = "ff9a33ce1b6e25170703f6eab67368c1ec6028c7"
 requirements = []
 source = "github"
 

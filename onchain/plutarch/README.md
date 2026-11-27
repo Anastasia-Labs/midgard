@@ -1,11 +1,12 @@
 # Midgard Plutarch Merkle Helpers
 
-Status: Legacy supporting package. Aiken under `onchain/aiken` is the primary
+Status: unmaintained reference package. Aiken under `onchain/aiken` is the primary
 on-chain implementation; this package supplies Plutarch Merkle Patricia
-Forestry helpers and generated membership/non-membership scripts used by proof
-work.
+Forestry experiments and generated membership/non-membership scripts retained
+for reference. The current Aiken membership route is `../aiken/validators/phas.ak`;
+the presence of these generated scripts does not establish deployment use.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-11-23
 
 ## Code map
 
@@ -26,8 +27,7 @@ cabal build all
 cabal test all --test-show-details=direct
 ```
 
-The Plutarch suite is not currently part of the primary Midgard node CI
-workflow. A proof or release claim that depends on these helpers must record a
+No workflow in `.github/workflows/` builds or tests this package. A proof or release claim that depends on these helpers must record a
 successful run and verify the generated script hashes against the deployment
 manifest. Regenerating files under `generated/` requires review of the resulting
 script bytes and hashes; do not treat generated changes as formatting output.

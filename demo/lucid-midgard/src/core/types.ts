@@ -1,4 +1,5 @@
-import type { LedgerEntry } from "@al-ft/midgard-validation";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import type { LedgerEntry } from "@al-ft/midgard-validation/ledger";
 
 import type { ProtocolScriptLanguage } from "../provider.js";
 import type { Assets } from "./assets.js";
@@ -65,6 +66,7 @@ export type MidgardProtocolParameters = {
   readonly networkId: bigint;
   readonly maxSubmitTxCborBytes?: number;
   readonly strictnessProfile?: string;
+  readonly hubOraclePolicyId?: string;
 };
 
 export type WalletInputSource =
@@ -85,6 +87,12 @@ export type CompleteOptions = {
   readonly localPreState?: LocalValidationPreState;
   readonly localPreStateSource?: LocalValidationPreStateSource;
   readonly nowCardanoSlotNo?: bigint | number;
+  /**
+   * The deployment manifest's L1 slot mapping (`l1SlotConfig`). Phase-B
+   * preflight needs it to build Plutus contexts whose `validRange` is in POSIX
+   * time, as the deployment builds them.
+   */
+  readonly l1SlotConfig?: L1SlotConfig;
   readonly validationConcurrency?: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxFeeIterations?: number;
@@ -181,7 +189,6 @@ export type TxStatus =
         | "accepted"
         | "committed"
         | "pending_commit"
-        | "awaiting_local_recovery"
         | "not_found";
       readonly txId: string;
     }

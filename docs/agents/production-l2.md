@@ -1,52 +1,60 @@
 # Production L2 Principles
 
-Midgard is intended to be a production-grade L2. Interpret prompts, design
-choices, code changes, and review feedback through that lens.
+Read before adding a guard, retry, hold, stored record, status, alert, config
+knob or layer.
 
-## Decision Standard
+## What production-grade means here
 
-Prefer options that maximize:
+- A validator accepts only valid transitions, whatever inputs, ordering and
+  timing an adversary (anyone but us) chooses.
+- Every fraud can be proven, every honest party keeps its funds and bond, and
+  the protocol keeps moving.
+- The same inputs give the same result, on chain and in both codec twins.
+- Configuration and migrations of shipped state are explicit.
 
-- Protocol correctness and state integrity
-- Safety under adversarial conditions
-- Determinism and reproducibility
-- Operational reliability and failure recovery
-- Auditability, traceability, and clear observability
-- Explicit, auditable migrations and explicit configuration
+It does not mean bookkeeping for every imaginable failure of our own
+process: extra machinery is itself a risk to the four lines above.
 
-## Priority Order
+## The test a mechanism has to pass
 
-When tradeoffs are required, prioritize:
+Write the answers in the change description; a reviewer rejects a mechanism
+that lacks one. [review]
 
-1. Correctness
-2. Safety
-3. Liveness
-4. Performance
-5. Convenience
+1. **Trigger.** Who does what, in a sequence that really occurs. A chain of
+   coincidences (a restart at one instant while a peer still holds a
+   transaction and a rebuild picks other coins) is not a trigger.
+2. **Cost.** A protocol failure as the root `AGENTS.md` defines it. Fees, a
+   rebuilt transaction or a repeated read are not a cost.
+3. **Nothing else covers it.** Not the ledger rules, a validator, an earlier
+   layer, or the chain read again.
+4. **Smallest form.** Bound the work under the existing limit; never raise a
+   limit or add a knob to make a case fit. [review]
+
+A specification row or review finding that asks for a mechanism failing this
+test is wrong: change the row instead of building the mechanism.
+
+## Facts that remove whole classes of handling
+
+- **The chain is the record.** A transaction we sent is in a block or in our
+  node's mempool; if it is in neither, we did not send it. Derive progress
+  from the ledger plus the mempool on every pass: no journal, remembered
+  sends, reservations, reconciliation, or waiting for confirmation before
+  building on a pending output. A restart is one more read. [review]
+- **Our transaction cannot land script-invalid.** The node rejects it in
+  phase 1 unless we set the validity flag false, which we never do. No
+  handling, accounting, alert or test for forfeited collateral. [review]
+
+## Observability
+
+A log line, metric, readiness reason or alert exists for a condition that
+occurs and that an operator acts on; otherwise delete it. [review]
 
 ## Non-Goals
 
-Unless explicitly requested and isolated, do not introduce:
+Unless explicitly requested and isolated, do not introduce: [review]
 
-- Benchmark shortcuts that weaken correctness guarantees
+- Benchmark, demo or throughput shortcuts that weaken a guarantee by default
 - Silent data rewrites that hide integrity issues
-- Demo-only behavior as default production behavior
-- Throughput optimizations that compromise safety or liveness guarantees
-- Backward compatibility for unlaunched runtime formats, local state files,
-  scaffold APIs, previous in-repo shapes, legacy UTxO layouts, alias fields, or
-  compatibility shims
-
-## Temporary Code
-
-Temporary or debug-only code, configuration, and instrumentation may be used
-during testing and diagnosis, but must be removed or cleaned up before
-finalizing work.
-
-If a temporary workaround is unavoidable, it must be isolated, explicitly
-documented, and unavailable as the default path.
-
-## Benchmark and Demo Behavior
-
-If a change improves benchmarks but weakens production guarantees, do not make
-it the default. Keep strict behavior as the default and isolate non-production
-behavior behind clearly named controls.
+- Backward compatibility for anything unlaunched (formats, state files,
+  previous in-repo shapes, alias fields, shims)
+- Temporary or diagnostic code left in finished work

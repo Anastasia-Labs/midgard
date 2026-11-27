@@ -1,0 +1,146 @@
+import {
+  forcedLeafMembershipV1,
+  type ForcedTransactionSourceMembershipProof,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import { requireInitialStepDatum } from "../step-support.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
+import {
+  classifyProtectedOutputSignerMissingFinding,
+  type ProtectedOutputSignerMissingEvidence,
+} from "./protected-output-signer-missing.js";
+import {
+  ProtectedOutputSignerStep01RedeemerSchema,
+  ProtectedOutputSignerStep02DatumSchema,
+} from "./schemas.js";
+
+export const buildProtectedOutputSignerMissingStep01Forced = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  forcedSource,
+  referenceScriptUtxo,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: ProtectedOutputSignerMissingContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: ProtectedOutputSignerMissingEvidence;
+  readonly forcedSource: Readonly<Record<string, unknown>>;
+  readonly referenceScriptUtxo: UTxO;
+}) => {
+  classifyProtectedOutputSignerMissingFinding(evidence);
+  const stepIndex = 0;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: "protected-output-signer-missing",
+    stepIndex,
+    threadOutRef,
+  });
+  requireInitialStepDatum({ threadUtxo, signer });
+  signer.selectWallet(lucid);
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[0].spendingScriptHash,
+    family: "protected-output-signer-missing",
+    stepIndex,
+  });
+  const nextDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: {
+        bound: {
+          subject: evidence.subject,
+          output_index: evidence.outputIndex,
+        },
+        witness_set_hash: evidence.witnessSetHashHex,
+      },
+    } as never,
+    ProtectedOutputSignerStep02DatumSchema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[1].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(
+      ctx,
+      threadUtxo,
+      "protected-output-signer-missing forced step-01",
+    );
+    const inputIndex = requireInputIndex(
+      ctx,
+      threadUtxo,
+      "protected-output-signer-missing",
+    );
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      "protected-output-signer-missing forced output",
+    );
+    return Data.to(
+      {
+        Continue: [
+          {
+            source: {
+              ForcedSource: {
+                ...forcedSource,
+                membership: forcedLeafMembershipV1(
+                  forcedSource.membership as ForcedTransactionSourceMembershipProof,
+                ),
+                input_index: inputIndex,
+                output_index: outputIndex,
+              },
+            },
+            output_index: evidence.outputIndex,
+          },
+        ],
+      } as never,
+      ProtectedOutputSignerStep01RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const transaction = await buildLinearFaultContinue({
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[0].spendingScript,
+    stepRole: "protected-output-signer-missing step-01 forced",
+    nextAddress: contracts.steps[1].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+  });
+  if (outputIndex === undefined)
+    throw new Error(
+      "protected-output-signer-missing: forced layout unresolved",
+    );
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
+};

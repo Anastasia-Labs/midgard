@@ -1,10 +1,8 @@
 # Midgard Runtime Structure
 
-Status: Current high-level orientation. The Excalidraw files beside this page
-are design/transaction diagrams and may describe target flows; verify them
-against the technical specification, Aiken validators, and current builders.
+Status: Current high-level orientation.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-11-23
 
 ```mermaid
 flowchart LR
@@ -15,13 +13,11 @@ flowchart LR
   F --> MPF["Native MPF state owner"]
   F --> DA["DA payload and committee transport"]
   F --> L1["Cardano L1 state queue, settlement, reserve, and payout"]
-  DA --> W["DA committee / future independent watcher"]
+  DA --> W["DA committee and independent watcher"]
   L1 --> W
 ```
 
-The node is not organized around the former `GET /reset`, `GET /tx`, or
-`GET /block` sketch. Current route and command references live in the
-documentation site:
+Route and command references live in the documentation site:
 
 - `docs-site/content/docs/operators/node/server-http-api.mdx`
 - `docs-site/content/docs/operators/node/cli-reference.mdx`

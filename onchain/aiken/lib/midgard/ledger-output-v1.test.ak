@@ -1,0 +1,152 @@
+use aiken/builtin
+use aiken/cbor
+use aiken/primitive/bytearray
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardAddress, MidgardTxOutput, MidgardV1Script, MidgardValue,
+  MidgardVersionedScript, PubKeyCredential,
+}
+use midgard/ledger_output_v1
+
+const pub_key_hash = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+fn simple_output() -> MidgardTxOutput {
+  MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(pub_key_hash),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 2_000_000, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+}
+
+test canonical_ledger_output_v1_round_trips() {
+  let output = simple_output()
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+test canonical_ledger_output_v1_supports_datum_and_reference_script() {
+  let base = simple_output()
+  let output = MidgardTxOutput {
+    ..base,
+    datum_cbor: Some(#"d87980"),
+    script_ref: Some(
+      MidgardVersionedScript {
+        language: MidgardV1Script,
+        script_bytes: #"010203",
+      },
+    ),
+  }
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+test ledger_output_v1_rejects_malformed_cbor_without_aborting() {
+  and {
+    ledger_output_v1.decode_canonical_output(#"") == None,
+    ledger_output_v1.decode_canonical_output(#"a100") == None,
+    ledger_output_v1.decode_canonical_output(#"bf00ff") == None,
+  }
+}
+
+test ledger_output_v1_rejects_unsorted_asset_names() {
+  let policy_id = #"01010101010101010101010101010101010101010101010101010101"
+  let output_cbor = #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c"
+    |> bytearray.concat(policy_id)
+    |> bytearray.concat(#"a2410201410102")
+  ledger_output_v1.decode_canonical_output(output_cbor) == None
+}
+
+fn mixed_width_output_cbor(asset_map: ByteArray) -> ByteArray {
+  #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c01010101010101010101010101010101010101010101010101010101"
+    |> bytearray.concat(asset_map)
+}
+
+/// `4141` precedes the shorter `42` in plain byte order, as on Cardano.
+test ledger_output_v1_accepts_byte_ordered_mixed_width_names() {
+  ledger_output_v1.decode_canonical_output(
+    mixed_width_output_cbor(#"a242414101414202"),
+  ) != None
+}
+
+/// `42` before `4141` ascends only under a length-first order.
+test ledger_output_v1_rejects_length_first_asset_names() {
+  ledger_output_v1.decode_canonical_output(
+    mixed_width_output_cbor(#"a241420142414102"),
+  ) == None
+}
+
+test ledger_output_v1_rejects_noncanonical_embedded_datum() {
+  // 0x18 0x17 is a non-minimal encoding of integer 23.
+  let output_cbor = #"a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a002421817"
+  ledger_output_v1.decode_canonical_output(output_cbor) == None
+}
+
+test ledger_output_v1_rejects_unknown_reference_script_language() {
+  let output_cbor = #"a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a00382184140"
+  ledger_output_v1.decode_canonical_output(output_cbor) == None
+}
+
+/// `n` bytes of `0xab`.
+fn payload(n: Int) -> ByteArray {
+  if n <= 0 {
+    #""
+  } else {
+    bytearray.push(payload(n - 1), 171)
+  }
+}
+
+/// A datum over 64 bytes is canonical in its chunked spelling. The output
+/// wire carries the whole datum as one definite byte string, which the output
+/// decoder reads as Midgard's own encoding rather than as Plutus Data.
+test ledger_output_v1_accepts_a_chunked_datum_over_64_bytes() {
+  let output = MidgardTxOutput {
+    ..simple_output(),
+    datum_cbor: Some(cbor.serialise(builtin.b_data(payload(100)))),
+  }
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+test ledger_output_v1_accepts_a_reference_script_over_64_bytes() {
+  let output = MidgardTxOutput {
+    ..simple_output(),
+    script_ref: Some(
+      MidgardVersionedScript {
+        language: MidgardV1Script,
+        script_bytes: payload(100),
+      },
+    ),
+  }
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+/// Inside the datum the Plutus Data rules still hold: a byte string over 64
+/// bytes must be chunked, at the top level and nested alike.
+test ledger_output_v1_rejects_an_unchunked_datum_byte_string_over_64_bytes() {
+  let rejects = fn(datum_cbor: ByteArray) -> Bool {
+    ledger_output_v1.decode_canonical_output(
+      encode_midgard_tx_output(
+        MidgardTxOutput { ..simple_output(), datum_cbor: Some(datum_cbor) },
+      ),
+    ) == None
+  }
+  and {
+    rejects(bytearray.concat(#"5841", payload(65))),
+    rejects(
+      #"d8799f5841"
+        |> bytearray.concat(payload(65))
+        |> bytearray.concat(#"ff"),
+    ),
+  }
+}

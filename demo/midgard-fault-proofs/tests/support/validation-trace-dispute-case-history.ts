@@ -1,0 +1,29 @@
+/** The case history a runner on the Open scene reads its threads from: the
+ * production strict-admission history over the scene's recorded raw L1. */
+import {
+  createValidationTraceCaseHistory,
+  type ValidationTraceCaseHistory,
+} from "../../src/validation-trace-dispute/case-history.js";
+import type { Scene } from "./validation-trace-dispute-open-scene.js";
+import {
+  HUB_ORACLE_POLICY_ID,
+  releaseFinalityAuthority,
+} from "./workflow-authorities.js";
+
+export const sceneCaseHistory = (
+  scene: Scene,
+  hubOraclePolicyId: string = HUB_ORACLE_POLICY_ID,
+): ValidationTraceCaseHistory => {
+  const history = releaseFinalityAuthority()
+    .verifyForWorkflow({ hubOraclePolicyId })
+    .then((releaseFinality) =>
+      createValidationTraceCaseHistory({
+        authority: scene.l1.authority,
+        releaseFinality,
+      }),
+    );
+  return {
+    transactions: async (input) => await (await history).transactions(input),
+    snapshot: async (input) => await (await history).snapshot!(input),
+  };
+};

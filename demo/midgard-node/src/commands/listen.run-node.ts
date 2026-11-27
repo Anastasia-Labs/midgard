@@ -1,0 +1,384 @@
+import { NodeSdk } from "@effect/opentelemetry";
+import { SqlClient } from "@effect/sql";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { Effect, Option, pipe, Ref } from "effect";
+
+import type { DaLedgerSnapshotLookup } from "../da/libp2p-producer.parse-committee-peers.js";
+import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.publication-transport.js";
+import {
+  assertDaHardeningProviderStartup,
+  daProviderAssertionsWaitReason,
+  prepareDaHardeningStartup,
+  runDaIdentityGatedStartupSequence,
+} from "../da/startup.js";
+import { DaPayloadsDB } from "../database/index.js";
+import type { NodeDeploymentMismatch } from "../database/node-deployment.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  refreshAdmissionBacklogGauge,
+  refreshAdmissionBacklogGaugeOnStartup,
+} from "../fibers/admission-backlog-gauge.js";
+import { requestTxQueueProcessorWakeup } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import { untilOperatorRemoved } from "../l1-operator-set/membership.js";
+import { rebuildAdmissionInputClaimsOnStartup } from "../services/admission-input-claims.rebuild.js";
+import { AdmissionWriter } from "../services/admission-writer.validate-options.js";
+import {
+  admissionAsDefaultSqlLayer,
+  AdmissionSql,
+  BatchSql,
+  DatabaseInitializationError,
+} from "../services/database.js";
+import { Globals } from "../services/globals.globals.js";
+import {
+  ConfigError,
+  Database,
+  mempoolLedgerCacheLayer,
+  NodeConfig,
+  validationPoolLayer,
+} from "../services/index.js";
+import {
+  IntentJournal,
+  makeIntentJournal,
+} from "../services/intent-journal.js";
+import { startL1Follower } from "../services/l1-follower.js";
+import { nodeDatabaseConnectionString } from "../services/l1-provider.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
+import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
+import { settlementWalletAddress } from "../services/settlement.js";
+import type { StartupStepFailedError } from "../services/startup-waiting.js";
+import { acquireSubmitCheckPool } from "../services/submit-check-pool.acquire-submit-check-pool.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
+import { buildListenRouter } from "./http/router.js";
+import { makeSubmitRequestHandler } from "./http/submit.js";
+import { scopedWithExitDeadline } from "./listen.exit-deadline.js";
+import { runNodeFiberSet } from "./listen.node-fibers.js";
+import {
+  logStartupFailure,
+  retainedPayloadServerThread,
+  runStartupProviderStepWithRetry,
+} from "./listen.retained-payload-server-thread.js";
+import type { StartupHttp } from "./listen.startup-http.js";
+import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
+import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
+import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-ledger-signature-verifier.js";
+import { ensureProtocolInitializedOnStartup } from "./listen-startup.ensure-protocol-initialized-on-startup.js";
+import { initializeNodeDatabase } from "./listen-startup.initialize-database.js";
+import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
+
+/**
+ * Boots the long-running Midgard node runtime.
+ *
+ * The effect wires database initialization, protocol startup checks, optional
+ * genesis bootstrapping, the HTTP server, and the background fibers that keep
+ * the node progressing.
+ */
+export const runNode = (
+  startup: StartupHttp,
+  withMonitoring?: boolean,
+): Effect.Effect<
+  void,
+  | ConfigError
+  | DatabaseError
+  | DatabaseInitializationError
+  | NodeDeploymentMismatch
+  | StartupStepFailedError
+  | import("../services/validation-pool.js").ValidationWorkerError,
+  | NodeConfig
+  | Database
+  | AdmissionSql
+  | AdmissionWriter
+  | BatchSql
+  | import("../services/database.js").HttpReadSql
+  | import("../services/midgard-contracts.js").ContractDeploymentIdentity
+  | MidgardContracts
+  | Lucid
+  | WriteBehind
+  | Globals
+> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const globals = yield* Globals;
+
+    yield* startup.setStage("local_preflight");
+    yield* Effect.try({
+      try: () => settlementWalletAddress(nodeConfig),
+      catch: (cause) =>
+        new ConfigError({
+          message: "Automatic settlement wallet configuration is invalid",
+          cause,
+          fieldsAndValues: [],
+        }),
+    });
+
+    // The ledger MPF is always the Architecture G owner. Refuse to start before
+    // any durable work when its binary is not pinned.
+    yield* requirePinnedNativeOwnerBinary(nodeConfig).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ConfigError({
+            message: cause.message,
+            cause,
+            fieldsAndValues: [
+              [
+                "MPF_NATIVE_OWNER_BINARY_PATH",
+                nodeConfig.MPF_NATIVE_OWNER_BINARY_PATH,
+              ],
+            ],
+          }),
+      ),
+    );
+    // Every Ed25519 verdict waits on the ledger signature verifier: refuse
+    // to start, before any durable work or the L1 follower, until it can
+    // answer. A failure exits the process for its supervisor to restart.
+    yield* awaitLedgerSignatureVerifierOnStartup().pipe(
+      Effect.tapError(
+        logStartupFailure("Startup ledger signature verifier failed"),
+      ),
+    );
+    // The single-process exclusion: every startup step after this one, the
+    // follower's lease release, mutation-job classification and driver
+    // included, runs after this process took the lock. A second process
+    // waits here, unready under a named reason. A lock lost later holds the
+    // operator duties as `node-instance-lock.ts` describes.
+    yield* startup.setStage("instance_lock");
+    const instanceLock = yield* acquireNodeInstanceLock({
+      connectionString: nodeDatabaseConnectionString(nodeConfig),
+      globals,
+      waiting: (reasons) => startup.setStage("instance_lock", reasons),
+    });
+    // The DA identity preflight below is local, too. No step before
+    // `followL1` reads L1 through the follower: the node's L1 reader answers
+    // a protocol address only from the follower's facts, and a fresh
+    // database has no follower cursor before the follower runs.
+    yield* startup.setStage("local_preflight");
+    const intentJournal = yield* runDaIdentityGatedStartupSequence({
+      localPreflight: prepareDaHardeningStartup.pipe(
+        Effect.tapError(
+          logStartupFailure("Startup DA identity preflight failed"),
+        ),
+      ),
+      // The schema gate, then the deployment record: a database bound to
+      // another deployment fails startup here, before anything below
+      // publishes, follows or writes under the configured deployment.
+      initializeDatabase: startup
+        .setStage("database_initialization")
+        .pipe(
+          Effect.zipRight(
+            initializeNodeDatabase.pipe(Effect.provide(Database.layer)),
+          ),
+          Effect.tapErrorTag(
+            "NodeDeploymentMismatch",
+            logStartupFailure("Startup database initialization failed"),
+          ),
+        ),
+      // The node never deploys: the deployment's manifest must exist, and
+      // nothing here submits. Its reward-account reads go over local state
+      // query, not through the follower.
+      initializeProtocol: startup
+        .setStage("protocol_initialization")
+        .pipe(Effect.zipRight(ensureProtocolInitializedOnStartup)),
+      followL1: Effect.gen(function* () {
+        // The native MPF owner the driver's first recompute starts closes
+        // with this scope.
+        yield* Effect.addFinalizer(() =>
+          Effect.gen(function* () {
+            const owned = yield* Ref.get(globals.NATIVE_MPF_OWNER);
+            if (owned !== undefined) {
+              yield* Effect.promise(() => owned.close());
+              yield* Ref.set(globals.NATIVE_MPF_OWNER, undefined);
+            }
+          }),
+        );
+        // One journal for the node process, opened once its database is:
+        // its refusals are `/readyz` holds.
+        const intentJournal = yield* makeIntentJournal;
+        // The L1 follower: its driver writes the event rows, and its
+        // first recompute runs the startup preparation, starts the native
+        // MPF owner and recomputes the node's derived state from the
+        // follower's view. Its intent stage (S6) may resend transactions an
+        // earlier run journaled before the DA provider assertions below
+        // pass; a resend publishes nothing to DA.
+        yield* startL1Follower({
+          startupPreparation: prepareNodeOnStartup,
+          writerLease: instanceLock.followerWriterLease,
+        }).pipe(Effect.provideService(IntentJournal, intentJournal));
+        // Startup recovery seeds the commit base from the landed state queue:
+        // wait, unready, until the follower is at the tip and the queue
+        // is healthy there. A transient database failure is ridden out
+        // within `STARTUP_DATABASE_BUDGET`; past it, or on any other read
+        // failure, startup fails by step and reason.
+        yield* startup.setStage("l1_follower_catch_up");
+        yield* awaitLandedStateQueueOnStartup((reasons) =>
+          startup.setStage("l1_follower_catch_up", reasons),
+        );
+        return intentJournal;
+      }),
+      // At the follower's tip, its reader holds the DA params UTxO. These
+      // assertions pass before any DA publication, block production or
+      // other duty starts: a threshold mismatch fails startup at once, a
+      // pending capability quorum waits under its named reason.
+      providerAssertions: (preflight) =>
+        startup.setStage("provider_assertions").pipe(
+          Effect.zipRight(
+            runStartupProviderStepWithRetry(
+              "da_provider_assertions",
+              assertDaHardeningProviderStartup(preflight),
+              {
+                maxAttempts:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+                retryDelayMs:
+                  nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+                reason: daProviderAssertionsWaitReason,
+              },
+            ).pipe(
+              Effect.tapError(
+                logStartupFailure("Startup DA provider assertions failed"),
+              ),
+            ),
+          ),
+        ),
+    });
+
+    // Then until the driver published its first view: what holds it is
+    // named. A driver failure that is not transient fails startup at once;
+    // a transient one held past `STARTUP_DATABASE_BUDGET` fails it too.
+    yield* startup.setStage("follower_view_apply");
+    yield* awaitFollowerViewOnStartup((reasons) =>
+      startup.setStage("follower_view_apply", reasons),
+    );
+
+    yield* refreshAdmissionBacklogGaugeOnStartup(refreshAdmissionBacklogGauge);
+    // Before the node serves or validates: a backlog tx's inputs stay
+    // claimed across the restart.
+    yield* rebuildAdmissionInputClaimsOnStartup();
+
+    const sql = yield* SqlClient.SqlClient;
+    const retrieveRetainedDaPayload = (headerHash: Buffer) =>
+      Effect.runPromise(
+        DaPayloadsDB.retrieveByHeaderHash(headerHash).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.map((payload) =>
+            Option.isSome(payload) ? payload.value : undefined,
+          ),
+        ),
+      );
+    // `ledger-snapshot` pages from the native MPF owner's ledger store; none
+    // until the follower's first recompute has started the owner.
+    const ledgerSnapshotEntries: DaLedgerSnapshotLookup = async (
+      utxosRoot,
+      after,
+    ) => {
+      const owner = Effect.runSync(Ref.get(globals.NATIVE_MPF_OWNER));
+      if (owner === undefined) return undefined;
+      const ledger = await owner.ledger(utxosRoot);
+      return ledger.entries(after === undefined ? {} : { after });
+    };
+
+    // `/submit` and `/peer/txs` check on one pool.
+    const publishHttp = Effect.flatMap(acquireSubmitCheckPool, (checkPool) =>
+      startup.publish(
+        buildListenRouter(checkPool),
+        makeSubmitRequestHandler({
+          wakeTxQueueProcessor: requestTxQueueProcessorWakeup,
+          checkPool,
+        }),
+      ),
+    ).pipe(Effect.provide(admissionAsDefaultSqlLayer));
+
+    // Membership comes from the follower's operator-set hook; no duty waits
+    // on its first run. A removed operator's duties are held through
+    // `HaltSource.operatorMembership`, and the node then shuts down.
+    const program = publishHttp.pipe(
+      Effect.zipRight(
+        untilOperatorRemoved(
+          Effect.all(
+            runNodeFiberSet({
+              nodeConfig,
+              withMonitoring,
+              startupFibers: {
+                retainedPayloadServer: retainedPayloadServerThread({
+                  retrieveByHeaderHash: retrieveRetainedDaPayload,
+                  ledgerEntries: ledgerSnapshotEntries,
+                }),
+              },
+            }),
+            {
+              concurrency: "unbounded",
+            },
+          ),
+        ),
+      ),
+      Effect.provideService(IntentJournal, intentJournal),
+    );
+
+    if (withMonitoring) {
+      const prometheusExporter = new PrometheusExporter(
+        {
+          port: nodeConfig.PROM_METRICS_PORT,
+        },
+        () => {
+          console.log(
+            `Prometheus metrics available at http://0.0.0.0:${nodeConfig.PROM_METRICS_PORT}/metrics`,
+          );
+        },
+      );
+
+      const originalStop = prometheusExporter.stopServer;
+      prometheusExporter.stopServer = async function () {
+        Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
+        return originalStop();
+      };
+
+      const MetricsLive = NodeSdk.layer(() => ({
+        resource: { serviceName: "midgard-node" },
+        metricReader: prometheusExporter,
+        spanProcessor: new BatchSpanProcessor(
+          new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
+        ),
+      }));
+
+      yield* pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.provide(MetricsLive),
+        // One fiber's failure fails the whole group; the process must exit
+        // non-zero on it, so the cause is surfaced to the runtime, not logged
+        // and dropped.
+        Effect.orDie,
+        Effect.ensuring(
+          Effect.all(
+            [
+              Effect.promise(closeDaLibp2pPublicationTransport).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+            ],
+            { discard: true },
+          ),
+        ),
+      );
+    } else {
+      yield* pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.orDie,
+        Effect.ensuring(
+          Effect.all(
+            [
+              Effect.promise(closeDaLibp2pPublicationTransport).pipe(
+                Effect.catchAll(() => Effect.void),
+              ),
+            ],
+            { discard: true },
+          ),
+        ),
+      );
+    }
+  }).pipe(
+    scopedWithExitDeadline,
+    Effect.provide(validationPoolLayer),
+    Effect.provide(mempoolLedgerCacheLayer),
+  );

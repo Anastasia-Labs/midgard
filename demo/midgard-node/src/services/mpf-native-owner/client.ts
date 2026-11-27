@@ -1,5 +1,10 @@
 import { type MessagePort } from "node:worker_threads";
 
+import type {
+  NodeHash,
+  StoredNode,
+} from "@al-ft/midgard-fault-proofs/ledger-store";
+
 import {
   type NativeMpfApplyResult,
   type NativeMpfGenerationHandle,
@@ -52,6 +57,16 @@ export class NativeMpfWorkerPortClient implements NativeMpfOwnerClient {
     handle: NativeMpfGenerationHandle,
   ): Promise<void> {
     await this.request("retainForJournal", { handle });
+  }
+
+  /** The owner's ledger-store nodes with `hashes`, in order; `undefined`
+   * for a hash the store does not hold. */
+  public readNodes(
+    hashes: readonly NodeHash[],
+  ): Promise<(StoredNode | undefined)[]> {
+    return this.request("readNodes", { hashes }) as Promise<
+      (StoredNode | undefined)[]
+    >;
   }
 
   public close(): void {

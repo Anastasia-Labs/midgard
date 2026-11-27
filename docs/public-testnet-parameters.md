@@ -1,0 +1,293 @@
+# Public testnet parameters
+
+Status: Reference and review. Reviewed 2026-10-27 against the
+`preprod-public` profile; the values set outside the profile rechecked
+2026-11-23. The value table is generated from the profile and
+checked in CI; the prose is reviewed by hand.
+
+This page lists every parameter of the first public preprod deployment
+(`preprod-public`): its value and unit, where it is set, what it governs, and
+the decision or measurement behind it. It covers the deployment profile
+[`preprod-public.yaml`](../config/deployments/preprod-public.yaml) and the
+values set outside it (node defaults and deploy-time manifest values). The
+derivations and the validation rules each profile must pass are in the
+[deployment profiles guide](../config/deployments/README.md); the compiled
+consensus limits are in the [consensus profile](consensus-profile-v1.md).
+[Public-testnet readiness](public_testnet_readiness.md) owns the launch decision.
+
+To change a value, edit the profile, then regenerate the environments and this
+table:
+
+```sh
+# From the repository root; preprod-testing stays the selected profile.
+pnpm --dir demo deployment:generate preprod-testing
+pnpm --dir demo/midgard-core run docs:public-testnet-parameters:sync
+```
+
+The sync command fails when this page's prose never names a parameter the
+profile sets, so a new parameter needs its entry below.
+
+## Profile values
+
+Durations are in milliseconds and amounts in lovelace (1 ADA = 1,000,000
+lovelace); the readable column converts them. "Set at" links the profile line.
+
+<!-- BEGIN PUBLIC_TESTNET_PARAMETERS_GENERATED: do not edit -->
+
+| Parameter                                            | Value                                                      | Unit              | Readable    | Set at                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------- | ----------------- | ----------- | ------------------------------------------------------ |
+| `name`                                               | `preprod-public`                                           | text              |             | [L1](../config/deployments/preprod-public.yaml#L1)     |
+| `network`                                            | `Preprod`                                                  | text              |             | [L2](../config/deployments/preprod-public.yaml#L2)     |
+| `l1_finality.confirmation_depth`                     | `30`                                                       | blocks            |             | [L4](../config/deployments/preprod-public.yaml#L4)     |
+| `l1_finality.commit_event_depth`                     | `22`                                                       | blocks            |             | [L7](../config/deployments/preprod-public.yaml#L7)     |
+| `l1_finality.security_parameter`                     | `2160`                                                     | blocks            |             | [L9](../config/deployments/preprod-public.yaml#L9)     |
+| `l1_finality.active_slot_coeff`                      | `0.05`                                                     | ratio             |             | [L10](../config/deployments/preprod-public.yaml#L10)   |
+| `l1_finality.slot_length_ms`                         | `1000`                                                     | ms                | 1 s         | [L11](../config/deployments/preprod-public.yaml#L11)   |
+| `timing.block_maturity_ms`                           | `604800000`                                                | ms                | 7 d         | [L13](../config/deployments/preprod-public.yaml#L13)   |
+| `timing.ledger_retention_ms`                         | `734400000`                                                | ms                | 8 d 12 h    | [L17](../config/deployments/preprod-public.yaml#L17)   |
+| `timing.dispute_side_clock_ms`                       | `86400000`                                                 | ms                | 1 d         | [L28](../config/deployments/preprod-public.yaml#L28)   |
+| `timing.dispute_max_validity_range_ms`               | `120000`                                                   | ms                | 2 min       | [L29](../config/deployments/preprod-public.yaml#L29)   |
+| `timing.dispute_resolution_allowance_ms`             | `21600000`                                                 | ms                | 6 h         | [L30](../config/deployments/preprod-public.yaml#L30)   |
+| `timing.operator_shift_ms`                           | `3600000`                                                  | ms                | 1 h         | [L31](../config/deployments/preprod-public.yaml#L31)   |
+| `timing.registration_ms`                             | `30000`                                                    | ms                | 30 s        | [L32](../config/deployments/preprod-public.yaml#L32)   |
+| `timing.event_wait_ms`                               | `1800000`                                                  | ms                | 30 min      | [L33](../config/deployments/preprod-public.yaml#L33)   |
+| `timing.user_events_negligence_timeout_ms`           | `1200000`                                                  | ms                | 20 min      | [L34](../config/deployments/preprod-public.yaml#L34)   |
+| `timing.new_shift_inactivity_grace_period_ms`        | `480000`                                                   | ms                | 8 min       | [L35](../config/deployments/preprod-public.yaml#L35)   |
+| `timing.max_validity_range_ms`                       | `480000`                                                   | ms                | 8 min       | [L36](../config/deployments/preprod-public.yaml#L36)   |
+| `timing.max_event_validity_range_ms`                 | `600000`                                                   | ms                | 10 min      | [L37](../config/deployments/preprod-public.yaml#L37)   |
+| `timing.da_attestation_timeout_ms`                   | `3600000`                                                  | ms                | 1 h         | [L38](../config/deployments/preprod-public.yaml#L38)   |
+| `timing.da_small_response_window_ms`                 | `3600000`                                                  | ms                | 1 h         | [L39](../config/deployments/preprod-public.yaml#L39)   |
+| `timing.da_full_response_window_ms`                  | `172800000`                                                | ms                | 2 d         | [L40](../config/deployments/preprod-public.yaml#L40)   |
+| `timing.da_challenge_window_ms`                      | `86400000`                                                 | ms                | 1 d         | [L46](../config/deployments/preprod-public.yaml#L46)   |
+| `timing.da_slash_grace_ms`                           | `172800000`                                                | ms                | 2 d         | [L47](../config/deployments/preprod-public.yaml#L47)   |
+| `timing.da_bond_withdraw_delay_ms`                   | `778080000`                                                | ms                | 9 d 8 min   | [L51](../config/deployments/preprod-public.yaml#L51)   |
+| `da_transport.retention_days`                        | `120`                                                      | days              |             | [L54](../config/deployments/preprod-public.yaml#L54)   |
+| `da_bond.da_bond_lovelace`                           | `100000000000`                                             | lovelace          | 100,000 ADA | [L56](../config/deployments/preprod-public.yaml#L56)   |
+| `da_bond.da_slash_penalty_lovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L57](../config/deployments/preprod-public.yaml#L57)   |
+| `da_bond.da_bond_min_top_up_lovelace`                | `1000000000`                                               | lovelace          | 1,000 ADA   | [L58](../config/deployments/preprod-public.yaml#L58)   |
+| `da_bond.da_bond_pool_floor_lovelace`                | `5000000`                                                  | lovelace          | 5 ADA       | [L59](../config/deployments/preprod-public.yaml#L59)   |
+| `da_bond.challenge_record_lovelace`                  | `27000000`                                                 | lovelace          | 27 ADA      | [L65](../config/deployments/preprod-public.yaml#L65)   |
+| `limits.max_bisection_rounds`                        | `32`                                                       | rounds            |             | [L67](../config/deployments/preprod-public.yaml#L67)   |
+| `limits.max_inactivity_strikes`                      | `1000000`                                                  | strikes           | 1,000,000   | [L69](../config/deployments/preprod-public.yaml#L69)   |
+| `limits.coins_per_utxo_byte`                         | `4310`                                                     | lovelace per byte |             | [L70](../config/deployments/preprod-public.yaml#L70)   |
+| `limits.max_dispute_move_fee_lovelace`               | `1200000`                                                  | lovelace          | 1.2 ADA     | [L74](../config/deployments/preprod-public.yaml#L74)   |
+| `limits.fraud_proof_output_lovelace`                 | `2000000`                                                  | lovelace          | 2 ADA       | [L78](../config/deployments/preprod-public.yaml#L78)   |
+| `economics.profile`                                  | `public-preprod-launch-v1`                                 | text              |             | [L80](../config/deployments/preprod-public.yaml#L80)   |
+| `economics.requiredBondLovelace`                     | `100000000000`                                             | lovelace          | 100,000 ADA | [L81](../config/deployments/preprod-public.yaml#L81)   |
+| `economics.slashingPenaltyLovelace`                  | `25000000000`                                              | lovelace          | 25,000 ADA  | [L82](../config/deployments/preprod-public.yaml#L82)   |
+| `economics.inactivitySlashingPenaltyLovelace`        | `10000000000`                                              | lovelace          | 10,000 ADA  | [L83](../config/deployments/preprod-public.yaml#L83)   |
+| `economics.fraudProverRewardLovelace`                | `75000000000`                                              | lovelace          | 75,000 ADA  | [L84](../config/deployments/preprod-public.yaml#L84)   |
+| `economics.proverCollateralFloorLovelace`            | `5000000`                                                  | lovelace          | 5 ADA       | [L85](../config/deployments/preprod-public.yaml#L85)   |
+| `protocol_treasury_native_script.type`               | `atLeast`                                                  | text              |             | [L92](../config/deployments/preprod-public.yaml#L92)   |
+| `protocol_treasury_native_script.required`           | `2`                                                        | signatures        |             | [L93](../config/deployments/preprod-public.yaml#L93)   |
+| `protocol_treasury_native_script.scripts[0].type`    | `sig`                                                      | text              |             | [L95](../config/deployments/preprod-public.yaml#L95)   |
+| `protocol_treasury_native_script.scripts[0].keyHash` | `f1fb1abc10fc4d90b367c7f994b87aeeb4db60fa8a42ee43a159256c` | payment key hash  |             | [L96](../config/deployments/preprod-public.yaml#L96)   |
+| `protocol_treasury_native_script.scripts[1].type`    | `sig`                                                      | text              |             | [L97](../config/deployments/preprod-public.yaml#L97)   |
+| `protocol_treasury_native_script.scripts[1].keyHash` | `9ac54f4b18dcdbaeb981b9acbb4e79b590315eb508a08b3a50509cb9` | payment key hash  |             | [L98](../config/deployments/preprod-public.yaml#L98)   |
+| `protocol_treasury_native_script.scripts[2].type`    | `sig`                                                      | text              |             | [L99](../config/deployments/preprod-public.yaml#L99)   |
+| `protocol_treasury_native_script.scripts[2].keyHash` | `65a0683b5ca28e4a8fed2b5a443210741faad5ed43802d20fd329a53` | payment key hash  |             | [L100](../config/deployments/preprod-public.yaml#L100) |
+| `allow_lists.operators[0]`                           | `041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424` | payment key hash  |             | [L105](../config/deployments/preprod-public.yaml#L105) |
+| `allow_lists.operators[1]`                           | `089282d30b55fee0d97ad5c24034a6d7afd390a59f7a467379afc5bf` | payment key hash  |             | [L106](../config/deployments/preprod-public.yaml#L106) |
+| `allow_lists.operators[2]`                           | `4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6` | payment key hash  |             | [L107](../config/deployments/preprod-public.yaml#L107) |
+| `allow_lists.operators[3]`                           | `f9e6484e0ef75bb127589916d54920cdeec2ee0f3d43e8d320f5e7f3` | payment key hash  |             | [L108](../config/deployments/preprod-public.yaml#L108) |
+
+<!-- END PUBLIC_TESTNET_PARAMETERS_GENERATED -->
+
+## What each parameter governs
+
+Below, N is `user_events_negligence_timeout_ms`, L is `max_validity_range_ms`,
+W is `event_wait_ms`, d is `commit_event_depth` and M is `block_maturity_ms`.
+
+### Identity
+
+- `name` and `network`: the profile name and the Cardano network. Both are
+  part of the profile digest that the finalized deployment manifest binds.
+- `coins_per_utxo_byte` (4,310 lovelace per byte): the minimum-ADA rate of L2
+  outputs, the Cardano Preprod Conway value. It is compiled into the consensus
+  profile, so changing it is a redeploy.
+
+### L1 finality
+
+- `confirmation_depth` (30 blocks): how deep an L1 transaction must be before
+  the off-chain parties act on it. Validation budgets it at twice the 20-second
+  mean block time (20 minutes). Accepted for public launch on the condition
+  that a deeper rollback, within k, is recovered automatically
+  ([economics record](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md) §3).
+- `commit_event_depth` (d = 22 blocks): an event is committed only once it is d
+  blocks below the view a commit is planned at. The profile binds it. 22 is the largest d all the bounds admit; the production bound
+  W − L ≥ 3d·slot/f is the tight one.
+- `security_parameter` (k = 2,160), `active_slot_coeff` (f = 0.05) and
+  `slot_length_ms` (1 s): the Cardano Preprod consensus parameters the depth
+  and timing bounds assume. Recorded facts, not choices. One block takes at
+  most 3/f slots, 60 seconds, under the guaranteed chain-growth bound.
+
+### Block maturity and the execution dispute
+
+- `block_maturity_ms` (7 days): how long a committed block stays open to fraud
+  proofs before it can merge. The canonical V1 maturity, with the execution
+  dispute on at launch. It must be at least
+  2 D_case + 1 = 420,960,001 ms, and an execution-dispute case must be able to
+  open by M / 2 = 302,400,000 ms, after the latest DA answer at 259,680,000 ms.
+- `ledger_retention_ms` (8 d 12 h): how long each L2 block's ledger root stays
+  readable off-chain, in the watcher and the node. Off-chain only: it is not
+  compiled into Aiken. It must be at least M; here M plus
+  36 hours, 3k/f slots, the longest span of the deepest automatic L1 rollback.
+- `dispute_side_clock_ms` (24 h): each side's total time in an execution
+  dispute, a chess clock. This is the real move timer.
+- `dispute_max_validity_range_ms` (2 min): the widest validity range a dispute
+  move may carry.
+- `dispute_resolution_allowance_ms` (6 h): time after the game for the
+  one-step resolution chain. Measured on the emulator (2026-10-21): the longest
+  chain is 19 transactions, 3,420 s per thread, so 6 h covers six threads
+  played one move at a time.
+- `max_bisection_rounds` (32): the most bisection rounds of an execution
+  dispute.
+- `max_dispute_move_fee_lovelace` (1.2 ADA): the most a dispute move may take
+  from its thread for its fee; larger one-step hops are paid by the wallet.
+  At least twice the largest measured reveal (377,315 lovelace at depth 32,
+  measured 2026-10-21).
+- `fraud_proof_output_lovelace` (2 ADA): the lovelace of an execution-dispute
+  fraud-proof output, above its measured minimum ADA (1,327,480 lovelace).
+
+### Operators and shifts
+
+- `operators` (four payment key hashes): the curated operator allow-list,
+  each operator's wallet and its merge wallet. Only these keys may register
+  or sign as an operator, with one merge key per operator. Fault provers and
+  DA challengers are permissionless.
+- `operator_shift_ms` (1 h): the length of one operator's shift, the one-hour
+  shift the node schedules.
+- `registration_ms` (30 s): how long after its registration an operator
+  becomes active (`registration_duration` in
+  `onchain/aiken/validators/operator-directory/registered-operators.ak`).
+- `user_events_negligence_timeout_ms` (N = 20 min): how long a deposit,
+  withdrawal or forced transaction may wait for inclusion before the shift's
+  operator can be struck. A strike always cites such an event. N must be shorter than the shift and at least L.
+- `new_shift_inactivity_grace_period_ms` (8 min): the earliest a new shift's
+  operator can be struck for an event already overdue at the shift boundary.
+  Must be at least L; set equal to L.
+- `max_inactivity_strikes` (1,000,000): the strike count that ejects an
+  operator. Set out of reach, so on this testnet a strike skips the shift but never
+  ejects.
+
+### Event timing
+
+- `event_wait_ms` (W = 30 min): the delay between a user event's L1 validity
+  end and its L2 inclusion time. The worst case for 30 blocks, 3N/f slots.
+  Deposits and orders become eligible on
+  L2 that much later.
+- `max_validity_range_ms` (L = 8 min): the widest validity range of a commit,
+  deposit or withdrawal.
+- `max_event_validity_range_ms` (10 min): the widest closed validity range a
+  tx-order may carry, enforced at the tx-order mint
+  (`onchain/aiken/validators/user-events/tx-order-v1.ak`). About 10 minutes, so
+  orders do not go invalid in flight.
+
+The commit-timing relations hold on this profile: N ≥ L (20 ≥ 8 min);
+W + N = 50 min ≥ 3(d + 1)·slot/f + L = 31 min; W − L = 22 min = 3d·slot/f;
+grace = L.
+
+### Data availability timing
+
+- `da_attestation_timeout_ms` (1 h): how long a committed block may stay
+  unattested before timeout removal. Timeout removal does not slash.
+- `da_small_response_window_ms` (1 h) and `da_full_response_window_ms` (2 d):
+  the committee's deadline to answer an availability challenge for a small
+  payload (up to 64 KiB) or a full one, counted from the challenge's open.
+- `da_challenge_window_ms` (24 h): an availability challenge must open within
+  this window after the block's end time. It exceeds the
+  attestation timeout by 23 h, more than the required 36 min.
+- `da_slash_grace_ms` (2 d): how long the challenger has to land the timeout
+  slash once it is possible. See [open items](#open-items).
+- `da_bond_withdraw_delay_ms` (9 d 8 min): the delay between the two steps of a
+  committee bond withdrawal. Derived, not chosen: L + max(challenge window +
+  full response window, M) + slash grace = 480,000 + 604,800,000 +
+  172,800,000 ms. It covers the latest possible slash of any block the pool
+  still backs.
+- `retention_days` (120 days): how long the committee retains DA payloads.
+  A joining node or watcher takes the confirmed ledger from a node and replays
+  only the blocks above it from retained payloads. It exceeds both maturity and the
+  withdrawal delay, and the 15-day minimum the node enforces. Node
+  housekeeping takes its retention from the manifest.
+
+### Data availability bond
+
+One pooled bond backs every block the committee attests; an attestation applies only while the pool holds at least one DA bond of
+backing.
+
+- `da_bond_lovelace` (100,000 ADA): one DA bond, the backing the pool must hold.
+- `da_slash_penalty_lovelace` (25,000 ADA): burned as fee by each lost
+  availability challenge; the rest of one DA bond goes to the challenger.
+- `da_bond_min_top_up_lovelace` (1,000 ADA): the smallest permissionless top-up.
+- `da_bond_pool_floor_lovelace` (5 ADA): stays in the pool UTxO for its minimum
+  ADA and never counts as backing.
+- `challenge_record_lovelace` (27 ADA): the exact lovelace of a challenge
+  record, the measured minimum ADA of the largest admitted record, rounded up
+  to a whole ADA.
+
+### Operator economics
+
+- `profile` (`public-preprod-launch-v1`): the economics schedule identifier,
+  recorded in the manifest.
+- `requiredBondLovelace` (100,000 ADA): the bond an operator posts to register;
+  slashing penalty plus prover reward.
+- `slashingPenaltyLovelace` (25,000 ADA): the part of a fraudulent operator's
+  bond that is not paid to the prover.
+- `fraudProverRewardLovelace` (75,000 ADA): what a successful fault prover is
+  paid from the slashed bond.
+- `inactivitySlashingPenaltyLovelace` (10,000 ADA): the penalty of a forced
+  retirement for inactivity. Dormant on this testnet, because strikes never eject.
+- `proverCollateralFloorLovelace` (5 ADA): the least collateral a fault prover
+  reserves for a script transaction.
+
+These figures come from the
+[economics record](midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md)
+§2.1.
+
+### Protocol treasury
+
+- `protocol_treasury_native_script`: where forfeited execution-dispute bonds
+  go, separate from the reserve. Its `type` is `atLeast`,
+  `required` 2 of the three listed Preprod treasury keys, the deployment's
+  owner quorum. The generator derives its hash.
+
+### Excluded fault-proof families
+
+- `excluded_fraud_proof_categories`: the families left out of the fraud-proof
+  catalogue; Computation-Thread Init refuses them. The list is empty, so the
+  table above has no row for it: every category is in the catalogue. The
+  execution dispute (`validationTraceDispute`) is in it at launch. The nine
+  trace-relative families prove their fault from the committed transaction,
+  and each has an installed off-chain workflow.
+
+## Values set outside the profile
+
+Line numbers are as of this review; the symbol names are the stable reference.
+
+| Parameter                       | Value                                                                                                                                                                                                                                                                                        | Set at                                                                                                                                                                                                                                                                                                                                 | Governs and why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Block ex-units budget           | 33,000,000 memory, 20,000,000,000 steps per block                                                                                                                                                                                                                                            | `DEFAULT_BLOCK_EX_UNITS_BUDGET`, `demo/midgard-node/src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.ts` line 101; overrides `BLOCK_EX_UNITS_BUDGET_MEMORY` and `BLOCK_EX_UNITS_BUDGET_STEPS` (`demo/midgard-node/src/services/config.block-ex-units-budget.ts` line 22)                                           | The execution units the node packs into one block: twice the consensus per-transaction cap, so a block holds at least two transactions at the cap. A node-local planning bound, not consensus. Forced transactions are never budget-gated.                                                                                                                                                                                                                                                                                                                      |
+| Import-check opener margin      | 600,000 ms on `preprod-public`                                                                                                                                                                                                                                                               | `OPENER_MARGIN_MS_BY_PROFILE`, `demo/midgard-node/src/services/config.import-check.ts` line 83; override `IMPORT_CHECK_OPENER_MARGIN_MS`                                                                                                                                                                                               | Room before the case open deadline (block end plus half the block maturity) for a challenge opener's Init, Open and VerifySource transactions to land. Node-local and alarm-only: the import check's backlog alarms when it cannot finish an entry this long before its deadline.                                                                                                                                                                                                                                                                               |
+| HTTP rate limits                | Per client (an IPv4 address or IPv6 /56): health 20 burst / 5 per s; admin 30 / 10; read 30 / 10; batch 4 / 1; write 100 / 20 per transaction; evaluate 2 / 0.2; peer 40 / 20. Per IPv4 /24 or IPv6 /48: write 1,000 / 200. Global: read 200 / 100; batch 16 / 4; evaluate 8 / 1; write none | `DEFAULT_HTTP_RATE_LIMITS`, `demo/midgard-node/src/services/http-rate-limits.ts` line 70; overrides `HTTP_RATE_LIMIT_<CLASS>` and `HTTP_RATE_LIMIT_ENABLED` (`demo/midgard-node/src/services/config.http-proxy-peers.ts`)                                                                                                              | The public node's request limits. The public classes keep their buckets in fixed hashed arrays, so no number of distinct clients can fill a table or evict a quota. Submissions have no global bucket: load shedding on queue state bounds the total. The TLS ingress in front of the node sets no request rate on submit or read routes, so these limits decide them; it caps each address at 4 requests in flight and rate limits only the health and admin routes. Body and page limits are in the [public HTTP guide](../demo/midgard-node/PUBLIC_HTTP.md). |
+| Admission backlog and shedding  | 300,000 rows and 307,200,000 bytes (provisional until the throughput gate, #877); `/submit` sheds at 80 % of either bound, `/peer/txs` at 100 %; readiness fails at 95 % of the rows                                                                                                         | `DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG`, `DEFAULT_MAX_DURABLE_ADMISSION_BACKLOG_BYTES` and `ANONYMOUS_ADMISSION_SHED_PERCENT`, `demo/midgard-node/src/services/config.admission-backlog.ts` lines 5–20; overrides `MAX_DURABLE_ADMISSION_BACKLOG` and `MAX_DURABLE_ADMISSION_BACKLOG_BYTES`                                            | How many acknowledged submissions may wait in Postgres for the tx-queue processor: 60 s at 5,000 TPS, at 1 KiB per transaction for the bytes. Users shed first so forwarded peer transactions still land while the node is busy, and the node keeps answering `/readyz` ready until user traffic is already shed. The values are the smallest meeting the 60 s rule; The throughput gate sets the final ones.                                                                                                                                                   |
+| Submit fail-fast checks         | `/submit` and `/peer/txs` refuse Phase A's `E_INVALID_SIGNATURE`, `E_MIN_FEE` and `E_NETWORK_ID_MISMATCH` and a validity interval that ended 60 s or more before the wall clock (`E_VALIDITY_INTERVAL_MISMATCH`); fee rule 1 lovelace per byte plus 2,000                                    | `SUBMIT_EXPIRY_CLOCK_MARGIN_MS`, `demo/midgard-node/src/commands/http/transaction-admission.ts` line 80; `MIN_FEE_A` and `MIN_FEE_B`, `demo/midgard-node/config.preprod-public.example.yaml` lines 119–123                                                                                                                             | Junk a stateless check catches never takes a backlog slot or reaches Postgres, and ingress refuses only what validation would refuse, with its code. The margin keeps a node clock running ahead from refusing a tx validation would still accept.                                                                                                                                                                                                                                                                                                              |
+| Submit check workers            | 4 worker threads; one checks about 4,400 txs a second of 1 input and 2 outputs (0.19 ms each), 2,100 of 4/4 (0.44 ms), 650 of 16/16 (1.52 ms)                                                                                                                                                | `SUBMIT_INGRESS_WORKER_POOL_SIZE`, `demo/midgard-node/src/services/config.ingress.ts` line 44                                                                                                                                                                                                                                          | Every node checks every cluster transaction once (its own users' on `/submit`, the rest on `/peer/txs`, both on this pool), so the pool is sized for cluster TPS, not the node's share. Four cover about 8,400 4-in/4-out txs a second, room over 5,000 TPS; two stopped near 4,200. Run one more worker than cluster TPS ÷ the per-worker rate, on cores the validation workers do not need.                                                                                                                                                                   |
+| HTTP in-flight caps             | `/submit` 256 (the check pool's queue); other public routes 64; health and admin 8; 4 per client; nginx 4 per address                                                                                                                                                                        | `SUBMIT_INGRESS_WORKER_QUEUE`, `demo/midgard-node/src/services/config.ingress.ts` line 51; `PUBLIC_ACTIVE_MAX`, `SUBMIT_ACTIVE_MAX` and `LIVENESS_ACTIVE_MAX`, `demo/midgard-node/src/commands/listen-http-ingress.ts`; `CLIENT_ACTIVE_MAX`, `listen-http-rate-limit.ts`; `limit_conn`, `demo/midgard-node/scripts/public-ingress.mjs` | `/submit` has a bound of its own, the same as the check queue it feeds, so at 3,000–5,000 req/s a short main-thread pause does not refuse submissions, and reads keep 64 slots for their database load. The shared in-flight byte budget stays the memory bound. nginx buffers bodies whole before forwarding, so slow uploads hold no node slot.                                                                                                                                                                                                               |
+| Availability challenger bond    | 10,000 ADA                                                                                                                                                                                                                                                                                   | `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`, `demo/midgard-node/.env.example` line 194, read at `demo/midgard-node/src/environment.ts` line 93                                                                                                                                                                                  | A deploy-time manifest value. A DA challenger posts it, and it alone must cover the committee's maximum publication, settlement and terminal fees. The execution-dispute bond equals it (owner, 2026-10-12); the figure is owner-approved (2026-10-22).                                                                                                                                                                                                                                                                                                         |
+| DA fee caps                     | open 0.5 ADA, publication 0.5 ADA, settlement 0.5 ADA, close 1 ADA, timeout 1.2 ADA                                                                                                                                                                                                          | `MIDGARD_DA_AVAILABILITY_MAX_*_FEE_LOVELACE`, `demo/midgard-node/.env.example` lines 195–198 and 208                                                                                                                                                                                                                                   | Deploy-time manifest values: the most each availability-challenge transaction may pay in fees.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| DA retention minimum            | 15 days                                                                                                                                                                                                                                                                                      | `DA_TRANSPORT_LIMITS.minimumRetentionDays`, `demo/midgard-core/src/da-transport.da-libp2p-runtime-manifest.ts` line 50                                                                                                                                                                                                                 | The least retention a profile or manifest may declare; maturity plus worst-case proof time plus margin. The public profile declares 120 days.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Consensus limits                | Per-transaction execution floor 16,500,000 memory and 10,000,000,000 CPU; at most 10,000 L2 transactions, withdrawals, forced transactions and deposits per block                                                                                                                            | `MIDGARD_CONSENSUS_LIMITS`, `demo/midgard-core/src/consensus-profile.ts` lines 281–287 and 326–331                                                                                                                                                                                                                                     | Compiled into the consensus profile and its digest; the [consensus profile](consensus-profile-v1.md) lists them all.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Installed fault-proof workflows | none uninstalled                                                                                                                                                                                                                                                                             | `UNINSTALLED_FRAUD_PROOF_CATEGORIES`, `demo/midgard-fault-proofs/src/workflow/installed-categories.ts` line 11                                                                                                                                                                                                                         | Catalogue families with no off-chain workflow. Empty: every catalogue family has one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+## Open items
+
+These need an owner decision or a follow-up; none blocks the table above.
+
+- `da_slash_grace_ms` (2 d) and `da_bond_pool_floor_lovelace` (5 ADA) are
+  confirmed for the public testnet and revisited before mainnet.
+  `da_bond_withdraw_delay_ms` follows from the grace.
+- The challenger bond and the DA fee caps are deploy-time manifest values, not
+  profile values, so profile validation does not pin them.
+- The block ex-units budget is to be re-measured on an idle machine.
+- The admission backlog bounds (300,000 rows, 307,200,000 bytes) are
+  provisional until the throughput gate (#877) measures the node.

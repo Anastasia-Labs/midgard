@@ -1,0 +1,324 @@
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldOpening,
+  resolveFaultProofFieldCarriagePublications,
+} from "../field-opening.publish-fault-proof-field-carriage.js";
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
+import type {
+  MintDeclaredAssetLimitEvidence,
+  MintDeclaredAssetLimitFoldStateData,
+} from "./family.advance-mint-declared-fold.js";
+import {
+  MINT_DECLARED_OUTCOME_CROSSING,
+  MINT_DECLARED_OUTCOME_SCANNING,
+} from "./family.begin-mint-declared-policy.js";
+import {
+  mintDeclaredFoldDataMatches,
+  mintDeclaredFoldStateData,
+} from "./family.mint-declared-fold-state-data.js";
+import {
+  MintDeclaredAssetLimitStep03DatumSchema,
+  MintDeclaredAssetLimitStep03RedeemerSchema,
+  MintDeclaredAssetLimitStep04DatumSchema,
+} from "./schemas.js";
+import {
+  encodeMintDeclaredWalkCheckpoint,
+  hashMintDeclaredWalkCheckpoint,
+  initialMintDeclaredFoldSnapshot,
+  type MintDeclaredAssetLimitStagedPlan,
+  type MintDeclaredFoldSnapshot,
+} from "./staged-plan.js";
+
+/**
+ * Builds one step-03 transaction from explicit wire inputs. The plan-driven
+ * builder below derives every input from the staged plan; the explicit form
+ * exists so a lifecycle can present the validator with a substituted
+ * checkpoint, budget, successor or claimed state and observe its refusal.
+ */
+export const buildMintDeclaredAssetLimitStep03Raw = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  priorData,
+  checkpointBytesHex,
+  budget,
+  next,
+  nextStepIndex = next.kind === "decision" ? 3 : 2,
+  referenceScriptUtxo,
+  stepRole,
+  materials,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintDeclaredAssetLimitContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly nativeTxCompactCbor: string;
+  /** The fold datum the thread is expected to carry now. */
+  readonly priorData: MintDeclaredAssetLimitFoldStateData;
+  readonly checkpointBytesHex: string;
+  readonly budget: bigint;
+  readonly next:
+    | Readonly<{ kind: "fold"; data: MintDeclaredAssetLimitFoldStateData }>
+    | Readonly<{ kind: "decision"; crossing: boolean }>;
+  /** Successor step index; the honest value is 2 (fold) or 3 (decision). */
+  readonly nextStepIndex?: 0 | 1 | 2 | 3;
+  readonly referenceScriptUtxo: UTxO;
+  readonly stepRole: string;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
+}) => {
+  const stepIndex = 2;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: "mint-declared-asset-limit",
+    stepIndex,
+    threadOutRef,
+  });
+  const state =
+    requireLinearFaultStepState<MintDeclaredAssetLimitFoldStateData>({
+      threadUtxo,
+      signer,
+      schema: MintDeclaredAssetLimitStep03DatumSchema as never,
+      family: "mint-declared-asset-limit",
+      stepIndex,
+    });
+  if (!mintDeclaredFoldDataMatches(state, priorData))
+    throw new Error("mintDeclaredAssetLimit: fold datum/checkpoint changed");
+  const items = decodeMidgardFieldPreimage(
+    Buffer.from(evidence.fieldPreimageHex, "hex"),
+  );
+  const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+    fieldIndex: 5,
+    anchorTxId: evidence.subject.transaction_id,
+    nativeTxCompactCbor,
+    itemCbors: items,
+    owner: signer.paymentKeyHash,
+    publish: true,
+    label: "mintDeclaredAssetLimit fold field 5",
+  });
+  const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
+    materials,
+    lucid,
+    publisherAddress: signer.proofMaterialsAddress,
+    planned,
+  });
+  if (carriageUtxos === undefined)
+    throw new Error("mintDeclaredAssetLimit: field carriage disappeared");
+  const certificateUtxo = await resolveFaultProofFieldPreimageCertificate({
+    lucid,
+    network: lucid.config().network!,
+    planned,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+  });
+  if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
+    throw new Error("mintDeclaredAssetLimit: field certificate disappeared");
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[2].spendingScriptHash,
+    family: "mint-declared-asset-limit",
+    stepIndex,
+  });
+  const nextData =
+    next.kind === "decision"
+      ? {
+          subject: evidence.subject,
+          policy_index: evidence.policyIndex,
+          crossing: next.crossing,
+        }
+      : next.data;
+  const nextDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: nextData } as never,
+    (next.kind === "decision"
+      ? MintDeclaredAssetLimitStep04DatumSchema
+      : MintDeclaredAssetLimitStep03DatumSchema) as never,
+  );
+  const nextStep = contracts.steps[nextStepIndex];
+  const outputMatches = computationThreadOutputPredicate({
+    address: nextStep.spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "mintDeclaredAssetLimit fold field 5",
+    });
+    requireOwnSpendPurpose(ctx, threadUtxo, "mintDeclaredAssetLimit step-03");
+    const inputIndex = requireInputIndex(
+      ctx,
+      threadUtxo,
+      "mintDeclaredAssetLimit",
+    );
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      "mintDeclaredAssetLimit step-03 output",
+    );
+    return Data.to(
+      {
+        Continue: [
+          {
+            input_index: inputIndex,
+            output_index: outputIndex,
+            opening,
+            checkpoint_bytes: checkpointBytesHex,
+            budget,
+          },
+        ],
+      } as never,
+      MintDeclaredAssetLimitStep03RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const transaction = await buildLinearFaultContinue({
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[2].spendingScript,
+    stepRole,
+    nextAddress: nextStep.spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs:
+      certificateUtxo === undefined ? [] : [certificateUtxo],
+  });
+  if (outputIndex === undefined)
+    throw new Error("mintDeclaredAssetLimit: step-03 layout unresolved");
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
+};
+
+/** The fold datum committed by snapshot `ordinal` of the plan (-1: initial). */
+export const mintDeclaredFoldSnapshotData = ({
+  evidence,
+  staged,
+  snapshot,
+}: {
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly snapshot: MintDeclaredFoldSnapshot;
+}): MintDeclaredAssetLimitFoldStateData =>
+  mintDeclaredFoldStateData({
+    subject: evidence.subject,
+    target: staged.target,
+    cursor: snapshot.cursor,
+    checkpointHash: hashMintDeclaredWalkCheckpoint(snapshot.checkpoint),
+  });
+
+export const buildMintDeclaredAssetLimitStep03 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  staged,
+  walkOrdinal,
+  referenceScriptUtxo,
+  materials,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintDeclaredAssetLimitContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: MintDeclaredAssetLimitEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly staged: MintDeclaredAssetLimitStagedPlan;
+  readonly walkOrdinal: number;
+  readonly referenceScriptUtxo: UTxO;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
+}) => {
+  const nextSnapshot = staged.walk[walkOrdinal];
+  if (nextSnapshot === undefined)
+    throw new Error("mintDeclaredAssetLimit: walk ordinal is outside plan");
+  const priorSnapshot =
+    walkOrdinal === 0
+      ? initialMintDeclaredFoldSnapshot(staged)
+      : staged.walk[walkOrdinal - 1]!;
+  if (
+    BigInt(staged.target.policyIndex) !== evidence.policyIndex ||
+    staged.target.targetPolicyId !== evidence.targetPolicyId ||
+    staged.target.targetDeclaredCount !== evidence.targetDeclaredCount
+  )
+    throw new Error("mintDeclaredAssetLimit: staged plan target changed");
+  const terminal =
+    nextSnapshot.cursor.outcome !== MINT_DECLARED_OUTCOME_SCANNING;
+  return await buildMintDeclaredAssetLimitStep03Raw({
+    materials,
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+    evidence,
+    nativeTxCompactCbor,
+    priorData: mintDeclaredFoldSnapshotData({
+      evidence,
+      staged,
+      snapshot: priorSnapshot,
+    }),
+    checkpointBytesHex: encodeMintDeclaredWalkCheckpoint(
+      priorSnapshot.checkpoint,
+    ).toString("hex"),
+    budget: BigInt(staged.foldBudget),
+    next: terminal
+      ? {
+          kind: "decision",
+          crossing:
+            nextSnapshot.cursor.outcome === MINT_DECLARED_OUTCOME_CROSSING,
+        }
+      : {
+          kind: "fold",
+          data: mintDeclaredFoldSnapshotData({
+            evidence,
+            staged,
+            snapshot: nextSnapshot,
+          }),
+        },
+    referenceScriptUtxo,
+    stepRole: `mintDeclaredAssetLimit step-03 walk ${walkOrdinal.toString()}`,
+  });
+};

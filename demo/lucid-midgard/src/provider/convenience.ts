@@ -15,6 +15,7 @@ export const knownNetworkId = (network: string): bigint => {
       return 1n;
     case "Preprod":
     case "Preview":
+    case "Custom":
       return 0n;
     default:
       throw new ProviderPayloadError(
@@ -40,6 +41,9 @@ export const protocolInfoToParameters = (
   networkId: knownNetworkId(info.network),
   maxSubmitTxCborBytes: info.submissionLimits.maxSubmitTxCborBytes,
   strictnessProfile: info.validation.strictnessProfile,
+  ...(info.hubOraclePolicyId === undefined
+    ? {}
+    : { hubOraclePolicyId: info.hubOraclePolicyId }),
 });
 
 export const requireAddressQueryUtxos = (

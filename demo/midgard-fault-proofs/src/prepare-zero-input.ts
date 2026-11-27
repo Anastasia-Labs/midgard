@@ -1,44 +1,37 @@
+/**
+ * `zero-input` evidence builder.
+ *
+ * This module emits *evidence* — canonical item lists, compact structures and
+ * inclusion proofs — and constructs no datum or redeemer. The submitters that
+ * consume it also take the disputed transaction's compact CBOR, which this
+ * module emits as part of its inclusion argument.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
   commitCountedRootProgram,
-  EMPTY_SPEND_INPUTS_HASH,
-  nativeTxBodyHasZeroInputViolation,
   type NativeTxCompact as NativeTxCompactData,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  EMPTY_SPEND_INPUTS_HASH,
+  nativeTxBodyHasZeroInputViolation,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
+import type {
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
-  nativeTrieItem,
-  type NodeTransactionPayload,
-  type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
-} from "./prepare-double-spend.js";
-
-export type PrepareZeroInputCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareZeroInputFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-};
+  transactionSourceTrieItem,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 
 export type PreparedZeroInputTx = {
   readonly nodeTxId: string;
@@ -139,15 +132,17 @@ export const prepareZeroInputFromTransactions = async ({
     throw new Error("No zero-input transaction found in the selected block.");
   }
 
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItem),
+  );
   const proofCbor = requireProof(
     nativeTrie,
-    nativeTrieItem(selected).key,
+    transactionSourceTrieItem(selected).key,
     "zero-input tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: nativeTrie.root,
       count: BigInt(decoded.length),
     }),
@@ -175,6 +170,7 @@ export const prepareZeroInputFromTransactions = async ({
         nativeTxId: selected.nodeTxId,
         nativeTx: selected.nativeTxCompact,
         nativeTxCompactCbor: selected.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.l2TransactionSourceCbor,
         transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },
@@ -189,37 +185,4 @@ export const prepareZeroInputFromTransactions = async ({
     outputDir,
   });
   return { ...baseOutput, files };
-};
-
-export const prepareZeroInputFromNode = async (
-  config: PrepareZeroInputCliConfig,
-): Promise<PreparedZeroInputOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return await prepareZeroInputFromTransactions({
-    headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
-};
-
-export const prepareZeroInputFromFile = async (
-  config: PrepareZeroInputFromFileConfig,
-): Promise<PreparedZeroInputOutput> => {
-  const transactions = await readNodeTransactionPayloadsFile(
-    config.transactionsPath,
-  );
-  return await prepareZeroInputFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
 };

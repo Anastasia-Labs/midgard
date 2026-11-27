@@ -6,7 +6,7 @@
 \label{h:offchain-data-architecture}
 
 Midgard operators only commit block headers to the L1 state queue.
-They store their actual blocks temporarily in Midgard's data availability layer for at least the maturity period, and then permanently on Midgard's archive nodes.
+They retain their actual blocks in the data availability layer through the required challenge and correction lifecycle. Pruning requires expiry and an authenticated terminal L1 outcome with the required finality depth; unknown or mismatched authority retains the data. Permanent archival service is a separate design expectation, not an automatic consequence of maturity.
 
 
 \end{document}

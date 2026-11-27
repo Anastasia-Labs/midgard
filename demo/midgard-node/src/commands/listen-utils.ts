@@ -1,4 +1,8 @@
-import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { timingSafeEqual } from "node:crypto";
+
+import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
+import { decodeMidgardSubmittedNativeTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
+import type { MidgardSubmittedTx } from "@al-ft/midgard-validation/ledger-tx/types";
 
 /**
  * Paths that require explicit admin-key authorization.
@@ -6,11 +10,11 @@ import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-valida
 export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/init",
   "/commit",
-  "/merge",
   "/stateQueue",
-  "/stateQueueMutationLease",
   "/logBlocksDB",
   "/logGlobals",
+  "/operator/status",
+  "/admin/session",
 ]);
 
 /**
@@ -52,7 +56,11 @@ export const authorizeAdminRoute = (
       error: "Admin endpoints are disabled",
     };
   }
-  if (providedAdminKey !== expected) {
+  if (
+    providedAdminKey === undefined ||
+    Buffer.byteLength(providedAdminKey) !== Buffer.byteLength(expected) ||
+    !timingSafeEqual(Buffer.from(providedAdminKey), Buffer.from(expected))
+  ) {
     return {
       authorized: false,
       status: 401,
@@ -126,30 +134,58 @@ export type NormalizedSubmitTx =
     };
 
 /**
+ * A submitted tx payload decoded once: the core full decode and the
+ * submitted-tx envelope built from it.
+ */
+export type DecodedSubmitTx =
+  | {
+      readonly ok: true;
+      readonly nativeTx: MidgardNativeTxFull;
+      readonly submittedTx: MidgardSubmittedTx;
+    }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly detail: string;
+    };
+
+/**
+ * Decodes submitted canonical Midgard-native bytes once, keeping the native
+ * decode for the consensus check. Any decode failure, at the canonical or
+ * the ledger stage, is the same invalid-payload result.
+ */
+export const decodeSubmitTxCanonicalCbor = (
+  txCanonicalCbor: Uint8Array,
+): DecodedSubmitTx => {
+  try {
+    return {
+      ok: true,
+      ...decodeMidgardSubmittedNativeTxFromCanonicalCbor(txCanonicalCbor),
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "Invalid canonical transaction CBOR payload",
+      detail: "canonical native transaction decode failed",
+    };
+  }
+};
+
+/**
  * Normalizes a submitted tx payload into canonical Midgard-native bytes and
  * derives the canonical tx id from the materialized compact form.
  */
 export const normalizeSubmitTxCanonicalCborToNative = (
   txCanonicalCbor: Uint8Array,
 ): NormalizedSubmitTx => {
-  const submittedTxCanonicalCbor = Buffer.from(txCanonicalCbor);
-  try {
-    const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(
-      submittedTxCanonicalCbor,
-    );
-    const txId = submittedTx.ledgerTx.txId;
-    return {
-      ok: true,
-      txId,
-      txIdHex: txId.toString("hex"),
-      txCanonicalCbor: submittedTx.txCbor,
-      source: "native",
-    };
-  } catch (nativeDecodeError) {
-    return {
-      ok: false,
-      error: "Invalid canonical transaction CBOR payload",
-      detail: `canonical native transaction decode failed: ${String(nativeDecodeError)}`,
-    };
-  }
+  const decoded = decodeSubmitTxCanonicalCbor(txCanonicalCbor);
+  if (!decoded.ok) return decoded;
+  const txId = decoded.submittedTx.ledgerTx.txId;
+  return {
+    ok: true,
+    txId,
+    txIdHex: txId.toString("hex"),
+    txCanonicalCbor: decoded.submittedTx.txCbor,
+    source: "native",
+  };
 };

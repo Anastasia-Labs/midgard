@@ -1,0 +1,7 @@
+import { inputExistenceForcedArtifacts } from "../input-existence/forced-artifact.js";
+import { NO_REFERENCE_INPUT_KIND } from "./wrongful-rejection.js";
+
+export const {
+  write: noReferenceInputForcedArtifact,
+  admit: admitNoReferenceInputForcedArtifact,
+} = inputExistenceForcedArtifacts(NO_REFERENCE_INPUT_KIND);

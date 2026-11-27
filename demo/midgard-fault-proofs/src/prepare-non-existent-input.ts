@@ -1,4 +1,13 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+/**
+ * `non-existent-input` evidence builder.
+ *
+ * This module emits *evidence* — canonical item lists, compact structures and
+ * inclusion proofs — and constructs no datum or redeemer. The submitters that
+ * consume it also take the disputed transaction's compact CBOR, which this
+ * module emits as part of its inclusion argument.
+ */
+
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -14,62 +23,36 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   type MidgardTxInput,
   type NativeTxCompact as NativeTxCompactData,
-  Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
+import type { Ledger } from "./ledger-store/index.js";
 import {
   buildMembershipProof,
   buildNonMembershipProof,
   computeTrieRoot,
   type TrieEntry,
 } from "./ne-proofs.js";
-import { type NeInputPreimageEntry } from "./ne-submit-step-02.js";
-import { ledgerKeyBytesHex } from "./ne-submit-step-03.js";
+export type NeInputPreimageEntry = {
+  readonly txId: string;
+  readonly index: bigint;
+};
+import { predecessorNonMembershipProof } from "./predecessor-non-membership.js";
 import {
-  type FetchLike,
-  fetchNodeBlockTransactions,
+  deriveL2TransactionSourceCbor,
   type NodeTransactionPayload,
-  readNodeTransactionPayloadsFile,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
-import { nativeTxFromCoreCompact } from "./submit-step-01.js";
-import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
-import { reconstructDaPayloadV2 } from "./transition-trace/reconstruct.js";
-
-type LucidDataSchema = Parameters<typeof Data.to>[1];
-
-export type PrepareNonExistentInputCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly badTxId?: string;
-  readonly badInputIndex?: string | number;
-  readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadPath?: string;
-  readonly expectedTransactionsRoot?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareNonExistentInputFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly badTxId?: string;
-  readonly badInputIndex?: string | number;
-  readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadPath?: string;
-  readonly expectedTransactionsRoot?: string;
-  readonly outputDir?: string;
-};
+import { ledgerKeyBytesHex, nativeTxFromCoreCompact } from "./step-support.js";
 
 /** step-01 material: the bad tx and its membership proof in the txs trie. */
 export type PreparedNeTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -108,6 +91,7 @@ type DecodedTx = {
   readonly nodeTxId: string;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly nativeCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   readonly inputs: readonly MidgardTxInput[];
 };
 
@@ -140,6 +124,9 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
     nativeCompactCbor: encodeMidgardNativeTxCompact(nativeTx.compact).toString(
       "hex",
     ),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCbor(
+      Buffer.from(txCbor, "hex"),
+    ),
     inputs: spendInputsWitnessFromCbors(spendInputCbors, "spend_inputs").inputs,
   };
 };
@@ -158,66 +145,10 @@ const parseBadInputIndex = (value: string | number | undefined): number => {
 };
 
 /**
- * Ledger non-membership proof CBOR for the missing input against the block's
- * `prevUtxosRoot`.
- *
- * - Empty genesis ledger: built locally against an empty trie (the first-block
- *   NEI drill path).
- * - Non-empty ledger: reconstructed from the **previous** block's DA payload,
- *   whose `utxos_root` is exactly this block's `prev_utxos_root`. The payload
- *   carries the full post-block ledger snapshot (`materializeUtxoPayloadEntries`
- *   on the node), so its utxos trie is the historical ledger at that root. We
- *   verify the reconstruction opens `prevUtxosRoot` before proving exclusion.
- *
- * The `utxos_root` is a raw PHAS/MPF root (unlike the counted `transactions_root`),
- * so this exclusion proof verifies directly against `prev_utxos_root` on-chain via
- * `plutarch_pexcludes_raw`.
- */
-const resolveLedgerNonMembershipProof = async ({
-  prevUtxosRoot,
-  missingInput,
-  prevBlockPayloadCbor,
-}: {
-  readonly prevUtxosRoot: string;
-  readonly missingInput: MidgardTxInput;
-  readonly prevBlockPayloadCbor?: Uint8Array;
-}): Promise<string> => {
-  const ledgerKey = Buffer.from(ledgerKeyBytesHex(missingInput), "hex");
-  if (prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) {
-    return await buildNonMembershipProof([], ledgerKey);
-  }
-  if (prevBlockPayloadCbor === undefined) {
-    throw new Error(
-      `The block sits over a non-empty prev-utxos ledger (root ${prevUtxosRoot}). ` +
-        "Supply the previous block's DA payload via --prev-block-payload-file so " +
-        "the ledger trie at that root can be reconstructed and the non-membership " +
-        "proof built. (Only the empty-genesis first block needs no payload.)",
-    );
-  }
-  const reconstruction = await reconstructDaPayloadV2({
-    payloadCbor: prevBlockPayloadCbor,
-  });
-  if (reconstruction.roots.utxosRoot !== prevUtxosRoot) {
-    throw new Error(
-      `--prev-block-payload-file reconstructs utxos_root ${reconstruction.roots.utxosRoot}, ` +
-        `which does not match --prev-utxos-root ${prevUtxosRoot}. The supplied payload is ` +
-        "not the block immediately preceding the fraudulent one.",
-    );
-  }
-  // Throws if the input is actually present in the ledger (then it is not a
-  // non-existent input) and verifies the proof opens `prevUtxosRoot`.
-  const proof = await keyValuePhasNonMembershipProof(
-    reconstruction.rootData.utxos,
-    ledgerKey,
-  );
-  return Data.to(proof, Proof as unknown as LucidDataSchema);
-};
-
-/**
  * Builds the four non-existent-input submit-step artifacts from a block the node
  * actually committed. The transactions trie is reconstructed with the node's
- * native encoding (`encodeMidgardNativeTxCompact` keyed by the raw 32-byte tx
- * id), so its root matches the committed `transactions_root` by construction.
+ * exact canonical `Data(L2TransactionSourceV1)` values keyed by raw tx id, so
+ * its root matches the committed `transactions_root` by construction.
  */
 export const prepareNonExistentInputFromTransactions = async ({
   headerHash,
@@ -225,7 +156,7 @@ export const prepareNonExistentInputFromTransactions = async ({
   badTxId,
   badInputIndex,
   prevUtxosRoot = EMPTY_MERKLE_TREE_ROOT,
-  prevBlockPayloadCbor,
+  prevLedger,
   expectedTransactionsRoot,
   outputDir,
 }: {
@@ -233,8 +164,10 @@ export const prepareNonExistentInputFromTransactions = async ({
   readonly transactions: readonly NodeTransactionPayload[];
   readonly badTxId?: string;
   readonly badInputIndex?: string | number;
+  /** The challenged header's `prev_utxos_root`. */
   readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadCbor?: Uint8Array;
+  /** The ledger the block starts from; omitted over the empty genesis ledger. */
+  readonly prevLedger?: Ledger;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
 }): Promise<PreparedNonExistentInputOutput> => {
@@ -277,10 +210,10 @@ export const prepareNonExistentInputFromTransactions = async ({
   }
   const missingInput = bad.inputs[resolvedBadInputIndex]!;
 
-  // --- Transactions trie (native encoding, matches the node) ----------------
+  // --- Transactions trie (exact source values, matches the node) ------------
   const txsEntries: TrieEntry[] = decoded.map((tx) => ({
     key: Buffer.from(tx.nodeTxId, "hex"),
-    value: Buffer.from(tx.nativeCompactCbor, "hex"),
+    value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
   }));
   const transactionsRoot = await computeTrieRoot(txsEntries);
   const txMembershipProofCbor = await buildMembershipProof(
@@ -296,15 +229,16 @@ export const prepareNonExistentInputFromTransactions = async ({
 
   // step-03 ledger non-membership: the missing input is absent from the block's
   // prev-utxos ledger trie (keyed by the Cardano `TransactionInput` CBOR).
-  const ledgerNonMembershipProofCbor = await resolveLedgerNonMembershipProof({
-    prevUtxosRoot: normalizedPrevUtxosRoot,
-    missingInput,
-    prevBlockPayloadCbor,
+  const ledgerNonMembershipProofCbor = await predecessorNonMembershipProof({
+    ledger: prevLedger,
+    utxosRoot: normalizedPrevUtxosRoot,
+    key: Buffer.from(ledgerKeyBytesHex(missingInput), "hex"),
+    label: "non-existent-input predecessor ledger",
   });
 
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
-      domain: ROOT_DOMAINS.transactions,
+      domain: ROOT_DOMAINS.transactionsV1,
       phasRoot: transactionsRoot,
       count: BigInt(decoded.length),
     }),
@@ -347,6 +281,7 @@ export const prepareNonExistentInputFromTransactions = async ({
       nativeTxId: bad.nodeTxId,
       nativeTx: bad.nativeTxCompact,
       nativeTxCompactCbor: bad.nativeCompactCbor,
+      l2TransactionSourceCbor: bad.l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor,
     },
@@ -391,61 +326,4 @@ export const prepareNonExistentInputFromTransactions = async ({
     ),
   ]);
   return { ...base, files };
-};
-
-/**
- * Reads a previous-block DA payload file: the `DaPayloadV2` canonical CBOR as a
- * hex string (whitespace tolerated). Returns `undefined` when no path is given.
- */
-const readPrevBlockPayloadCbor = async (
-  path: string | undefined,
-): Promise<Uint8Array | undefined> => {
-  if (path === undefined) {
-    return undefined;
-  }
-  const raw = (await readFile(path, "utf8")).trim();
-  return Buffer.from(parseHex(raw, "--prev-block-payload-file"), "hex");
-};
-
-export const prepareNonExistentInputFromNode = async (
-  config: PrepareNonExistentInputCliConfig,
-): Promise<PreparedNonExistentInputOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const [transactions, prevBlockPayloadCbor] = await Promise.all([
-    fetchNodeBlockTransactions({
-      midgardNodeUrl: config.midgardNodeUrl,
-      headerHash,
-      fetchImpl: config.fetchImpl,
-    }),
-    readPrevBlockPayloadCbor(config.prevBlockPayloadPath),
-  ]);
-  return await prepareNonExistentInputFromTransactions({
-    headerHash,
-    transactions,
-    badTxId: config.badTxId,
-    badInputIndex: config.badInputIndex,
-    prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadCbor,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    outputDir: config.outputDir,
-  });
-};
-
-export const prepareNonExistentInputFromFile = async (
-  config: PrepareNonExistentInputFromFileConfig,
-): Promise<PreparedNonExistentInputOutput> => {
-  const [transactions, prevBlockPayloadCbor] = await Promise.all([
-    readNodeTransactionPayloadsFile(config.transactionsPath),
-    readPrevBlockPayloadCbor(config.prevBlockPayloadPath),
-  ]);
-  return await prepareNonExistentInputFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    badTxId: config.badTxId,
-    badInputIndex: config.badInputIndex,
-    prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadCbor,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    outputDir: config.outputDir,
-  });
 };

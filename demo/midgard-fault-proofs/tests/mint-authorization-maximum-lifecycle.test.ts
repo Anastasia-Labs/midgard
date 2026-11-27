@@ -1,0 +1,345 @@
+import { inspect } from "node:util";
+
+import {
+  computeHash28,
+  decodeMidgardNativeScript,
+  deriveMidgardNativeTxProofSource,
+  encodeMidgardFieldPreimage,
+  encodeMidgardVersionedScript,
+} from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+import { expect, it } from "vitest";
+
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
+import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
+import { buildMintAuthorizationEvaluate } from "../src/mint-authorization/submit-mint-authorization-evaluate.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep05 } from "../src/mint-authorization/submit-mint-authorization-step-05.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
+import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import {
+  addressWitnessItemCbors,
+  buildMintAuthorizationSubject,
+  directionBNativeScript,
+  makeMintAuthorizationEmulatorHarness,
+  mintItemCborV1,
+  publishMintAuthorizationReferenceScripts,
+  setupMintAuthorizationScenario,
+} from "./support/mint-authorization-emulator.js";
+import {
+  buildAndSubmit,
+  certifyFieldCarriage,
+  publishFieldCarriage,
+  submitTurns,
+} from "./support/submit-steps.js";
+
+it.each(["signers", "native", "cancel"])(
+  "measures maximum %s through the real registered native-policy path",
+  async (shape) => {
+    try {
+      const h = await makeMintAuthorizationEmulatorHarness();
+      const nativePayload = Buffer.from(
+        "8202991554" + "820280".repeat(5460),
+        "hex",
+      );
+      const nativeHash = computeHash28(
+        Buffer.concat([Buffer.from([0]), nativePayload]),
+      );
+      const policy =
+        shape !== "native"
+          ? directionBNativeScript()
+          : {
+              script: decodeMidgardNativeScript(nativePayload).script,
+              scriptBytesHex: nativePayload.toString("hex"),
+              mintItemCbor: mintItemCborV1({
+                policyId: nativeHash,
+                assetName: Buffer.from("beef", "hex"),
+              }),
+            };
+      const sourceScript = encodeMidgardVersionedScript({
+        language: "NativeCardano",
+        nativeScript: policy.script,
+        scriptBytes: Buffer.from(policy.scriptBytesHex, "hex"),
+      });
+      const witnesses = addressWitnessItemCbors(shape !== "native" ? 318 : 0);
+      const subject = buildMintAuthorizationSubject({
+        mintItemCbors: [policy.mintItemCbor],
+        scriptWitnessItemCbors: [sourceScript.toString("hex")],
+        addrWitnessItemCbors: witnesses,
+      });
+      const scenario = await setupMintAuthorizationScenario({
+        harness: h,
+        subject,
+      });
+      const { block, setup } = scenario;
+      if (block.txInclusion === null) throw new Error("missing inclusion");
+      const refs = await publishMintAuthorizationReferenceScripts({
+        lucid: h.funderLucid,
+        contracts: h.family,
+      });
+      const init = await buildAndSubmit(buildResolvedInit, {
+        label: MINT_AUTHORIZATION_CATEGORY_LABEL,
+        lucid: h.proverLucid,
+        blueprint: h.realBlueprint,
+        network,
+        contracts: h.family,
+        category: h.category,
+        catalogue: {
+          policyId: h.contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            h.contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: h.catalogue.root,
+        },
+        signer: h.proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const common = {
+        lucid: h.proverLucid,
+        contracts: h.family,
+        categoryId: h.category.categoryId,
+        signer: h.proverSigner,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        witnessSet: subject.witnessSetCompact,
+      };
+      const one = await buildAndSubmit(buildMintAuthorizationStep01, {
+        ...common,
+        blueprint: h.realBlueprint,
+        network,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: block.txInclusion,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      const two = await submitTurns(buildMintAuthorizationStep02, {
+        ...common,
+        threadOutRef: one.nextThreadOutRef,
+        reconstruction: block.reconstruction,
+        policyIndex: 0n,
+        direction: 1n,
+        mintItemCbors: subject.mintItemCbors,
+        referenceScriptUtxo: refs[1],
+      });
+      const planned = planFaultProofFieldOpening({
+        anchorSourceKind: 0n,
+        fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.addressWitnesses,
+        anchorTxId: block.nativeTxId,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        itemCbors: witnesses.map((item) => Buffer.from(item, "hex")),
+        owner: h.proverSigner.paymentKeyHash,
+        witnessSet: subject.witnessSetCompact,
+        anchorWitnessSetHash: two.step03State.bad_tx_witness_set_hash,
+        label: "mint maximum signer field",
+      });
+      expect(planned.preimage.length).toBe(
+        encodeMidgardFieldPreimage(
+          witnesses.map((item) => Buffer.from(item, "hex")),
+        ).length,
+      );
+      if (shape === "signers") expect(planned.plan.tier).toBe("Certified");
+      const publishedCarriageUtxos = await publishFieldCarriage({
+        lucid: h.proverLucid,
+        signer: h.proverSigner,
+        planned,
+        publisherAddress: h.proverSigner.proofMaterialsAddress,
+        label: "mint maximum signers",
+      });
+      const certificateReference = await publishPlainReferenceScriptUtxo({
+        lucid: h.funderLucid,
+        script: h.contracts.fieldPreimageCertificate.mintingScript,
+        label: "mint field certificate",
+      });
+      const certified =
+        planned.plan.tier !== "Certified"
+          ? { certificateUtxo: undefined }
+          : await certifyFieldCarriage({
+              lucid: h.proverLucid,
+              network,
+              signer: h.proverSigner,
+              planned,
+              certificatePolicyId:
+                h.contracts.fieldPreimageCertificate.policyId,
+              certificateMintingScript:
+                h.contracts.fieldPreimageCertificate.mintingScript,
+              certificateReferenceScriptUtxo: certificateReference.utxo,
+              chunkUtxos: publishedCarriageUtxos,
+              compactCbor: block.nativeTxCompactCbor,
+              witnessSetCompactCbor: deriveMidgardNativeTxProofSource(
+                subject.nativeTx,
+              ).witnessSetCompactCbor.toString("hex"),
+            });
+      // Every shape takes the bounded StartUnsatisfied path the installed
+      // workflow takes: the direct EvaluateUnsatisfied arm folds the whole
+      // signer field in one transaction, which 318 signers do not fit.
+      const rawPreimageUtxos: UTxO[] = [];
+      for (const datum of createRawDatumPreimageRequirement({
+        preimage: mintAuthorizationEvaluationPreimage(
+          Buffer.from(policy.scriptBytesHex, "hex"),
+          encodeMidgardFieldPreimage(
+            witnesses.map((item) => Buffer.from(item, "hex")),
+          ),
+        ),
+      }).publicationDatums) {
+        const unsigned = await h.proverLucid
+          .newTx()
+          .pay.ToAddressWithData(
+            h.proverSigner.proofMaterialsAddress,
+            { kind: "inline", value: datum },
+            { lovelace: 80_000_000n },
+          )
+          .complete();
+        const txHash = await (
+          await unsigned.sign.withWallet().complete()
+        ).submit();
+        await h.proverLucid.awaitTx(txHash);
+        const utxo = (
+          await h.proverLucid.utxosAt(h.proverSigner.proofMaterialsAddress)
+        ).find((item) => item.txHash === txHash && item.datum === datum);
+        if (utxo === undefined)
+          throw new Error("missing published native preimage");
+        rawPreimageUtxos.push(utxo);
+      }
+      const three = await submitTurns(
+        buildMintAuthorizationStep03EvaluateUnsatisfied,
+        {
+          ...common,
+          threadOutRef: two.nextThreadOutRef,
+          scriptBytesHex: policy.scriptBytesHex,
+          rawPreimageUtxos,
+          addrTxWitsItemCbors: witnesses,
+          referenceScriptUtxo: refs[2],
+          publishedCarriageUtxos,
+          certificateUtxo: certified.certificateUtxo,
+        },
+      );
+      if (shape === "cancel") {
+        const [txHash, outputIndex] = three.nextThreadOutRef.split("#");
+        const [thread] = await h.proverLucid.utxosByOutRef([
+          { txHash: txHash!, outputIndex: Number(outputIndex) },
+        ]);
+        if (thread === undefined)
+          throw new Error("missing staged native thread");
+        const finalDatum = Data.to(
+          {
+            fraud_prover: h.proverSigner.paymentKeyHash,
+            data: { policy_id: two.step03State.policy_id, direction: 1n },
+          },
+          SDKFraudProof.MintAuthorizationStep05Datum,
+        );
+        const forged = ((ctx) =>
+          Data.to(
+            {
+              Continue: [
+                {
+                  Finalize: {
+                    input_index: SDK.requireInputIndex(
+                      ctx,
+                      thread,
+                      "forged finalize",
+                    ),
+                    output_index: SDK.requireUniqueOutputIndex(
+                      ctx.outputs,
+                      (output) =>
+                        output.address ===
+                        h.family.steps[4].spendingScriptAddress,
+                      "forged finalize",
+                    ),
+                  },
+                },
+              ],
+            },
+            SDKFraudProof.MintAuthorizationEvaluateSpendRedeemer,
+          )) satisfies BuildTxWithRedeemer;
+        await expect(
+          h.proverLucid
+            .newTx()
+            .collectFrom([thread], forged)
+            .readFrom([refs[5]])
+            .pay.ToContract(
+              h.family.steps[4].spendingScriptAddress,
+              { kind: "inline", value: finalDatum },
+              thread.assets,
+            )
+            .addSignerKey(h.proverSigner.paymentKeyHash)
+            .complete({ localUPLCEval: true }),
+        ).rejects.toBeDefined();
+        await expect(
+          buildAndSubmit(buildMintAuthorizationEvaluate, {
+            ...common,
+            threadOutRef: three.nextThreadOutRef,
+            scriptBytesHex: "820280",
+            addrWitnessItemCbors: witnesses,
+            rawPreimageUtxos,
+            referenceScriptUtxo: refs[5],
+          }),
+        ).rejects.toThrow("preimage differs");
+        const cancelled = await buildAndSubmit(buildLinearFaultCancel, {
+          ...common,
+          family: MINT_AUTHORIZATION_CATEGORY_LABEL,
+          steps: h.family.steps,
+          computationThread: h.family.computationThread,
+          threadOutRef: three.nextThreadOutRef,
+          referenceScriptUtxo: refs[5],
+          witnessReferenceScripts: setup.witnessReferenceScripts,
+        });
+        expect(cancelled.cancelledStepIndex).toBe(5);
+        expect(
+          await h.proverLucid.utxosAtWithUnit(
+            h.family.steps[5].spendingScriptAddress,
+            cancelled.computationThreadUnit,
+          ),
+        ).toHaveLength(0);
+        expect(
+          await h.proverLucid.utxosAtWithUnit(
+            h.family.fraudProof.spendingScriptAddress,
+            h.family.fraudProof.policyId +
+              h.category.categoryId +
+              block.headerHash,
+          ),
+        ).toHaveLength(0);
+        return;
+      }
+      let nextThreadOutRef = three.nextThreadOutRef;
+      for (let count = 0; count < 3000; count++) {
+        const step = await buildAndSubmit(buildMintAuthorizationEvaluate, {
+          ...common,
+          threadOutRef: nextThreadOutRef,
+          scriptBytesHex: policy.scriptBytesHex,
+          addrWitnessItemCbors: witnesses,
+          rawPreimageUtxos,
+          referenceScriptUtxo: refs[5],
+        });
+        nextThreadOutRef = step.nextThreadOutRef;
+        if (step.terminal) break;
+      }
+      const five = await buildAndSubmit(buildMintAuthorizationStep05, {
+        ...common,
+        threadOutRef: nextThreadOutRef,
+        referenceScriptUtxo: refs[4],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      });
+      expect(
+        await h.proverLucid.utxosAtWithUnit(
+          five.fraudProofAddress,
+          five.fraudProofUnit,
+        ),
+      ).toHaveLength(1);
+    } catch (cause) {
+      throw new Error(inspect(cause, { depth: 20 }));
+    }
+  },
+  600_000,
+);

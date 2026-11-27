@@ -14,12 +14,12 @@ export type PlutusV3Validator = {
   readonly script: ScriptRefLike;
 };
 
-export type MidgardV1Validator = {
+export type MidgardValidator = {
   readonly language: "MidgardV1";
   readonly script: Uint8Array | string;
 };
 
-export type SupportedValidator = PlutusV3Validator | MidgardV1Validator;
+export type SupportedValidator = PlutusV3Validator | MidgardValidator;
 export type SpendingValidator = SupportedValidator;
 export type MintingPolicy = SupportedValidator;
 export type ObserverValidator = SupportedValidator;
@@ -69,10 +69,6 @@ export type DatumWitness = {
 
 export type SpendInputIntent = OutRef & {
   readonly redeemer?: Redeemer;
-};
-
-export type ReferenceInputIntent = OutRef & {
-  readonly script?: ScriptSource;
 };
 
 export type MintIntent = {

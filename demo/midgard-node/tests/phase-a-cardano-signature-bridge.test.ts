@@ -2,13 +2,12 @@ import {
   cardanoTxBytesToMidgardNativeTxCanonicalCbor,
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import {
-  type QueuedTx,
-  RejectCodes,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { type QueuedTx, RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -142,9 +141,14 @@ describe("phase-a converted fixture signature bridge", () => {
     expect(phaseA.rejected, JSON.stringify(phaseA.rejected)).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
 
+    // Phase B keys the pre-state by the §5.3 fixed-index item form, not CML's
+    // minimal TransactionInput encoding.
     const preState = new Map<string, Buffer>([
       [
-        Buffer.from(input.to_cbor_bytes()).toString("hex"),
+        encodeMidgardSpendInputItem({
+          txId: Buffer.from("11".repeat(32), "hex"),
+          outputIndex: 0,
+        }).toString("hex"),
         makePubKeyOutput(
           signerKey.to_public().hash(),
           CML.Value.from_coin(3_000_000n),
@@ -153,6 +157,7 @@ describe("phase-a converted fixture signature bridge", () => {
     ]);
     const { accepted, rejected } = await Effect.runPromise(
       runPhaseBValidationWithPatch(phaseA.accepted, preState, {
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 1,
       }),

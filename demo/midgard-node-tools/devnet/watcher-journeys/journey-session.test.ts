@@ -1,0 +1,307 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { openSqliteLedgerStorage } from "@al-ft/midgard-fault-proofs/ledger-store/sqlite";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+import { state } from "./journey-mocks.js";
+import { runAutonomousWatcherJourney } from "./journey-runner.js";
+import { openJourneySession } from "./journey-session.js";
+
+// A devnet session stages with its own committee; it reads no stack shift.
+const stackShiftCoverMs = () => {
+  throw new Error("A devnet journey has no stack shift cover");
+};
+
+beforeEach(async () => {
+  state.runDirectory = await mkdtemp(join(tmpdir(), "watcher-shared-session-"));
+  state.closed = [];
+  state.launches = [];
+  state.bindingCalls = 0;
+  state.failBinding = false;
+  state.failNativeClose = false;
+  state.sessionSources = [];
+  state.replayLedgerStoreDirectories = [];
+  state.watcherState = { state: "running", exitCode: null };
+  await mkdir(join(state.runDirectory, "secrets"));
+  for (const name of [
+    "watcher-rollback.key",
+    "watcher-prover.seed",
+    "watcher-availability.seed",
+  ])
+    await writeFile(join(state.runDirectory, "secrets", name), "secret");
+  await mkdir(join(state.runDirectory, "work/journeys/runtime"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(state.runDirectory, "work/journeys/runtime/actor-funding.txt"),
+    "already funded",
+  );
+  await writeFile(
+    join(state.runDirectory, "binding.json"),
+    "immutable deployment",
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+  );
+});
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await rm(state.runDirectory, { recursive: true, force: true });
+});
+it("keeps one observer and authenticated-history service lifetime across targets", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  try {
+    const first = await session.ensureWatcher();
+    await session.assertHealthy();
+    const second = await session.ensureWatcher();
+    expect(second).toBe(first);
+    expect(second.observe().pid).toBe(first.observe().pid);
+    expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
+    expect(state.bindingCalls).toBe(1);
+    expect(state.closed).toEqual([]);
+    expect(session.native.nativeEvidencePath).toBe(
+      join(session.directory, "native-chain.ndjson"),
+    );
+    expect(first.config).not.toHaveProperty("readinessHeaderHash");
+    expect(Object.keys(first.config.faultProofInfrastructure).sort()).toEqual([
+      "blueprintPath",
+      "deploymentInfoPath",
+      "manifestPath",
+    ]);
+    expect(first.config.decisionJournalDirectory).toBe(
+      join(state.runDirectory, "work/journeys/runtime/workflows"),
+    );
+  } finally {
+    await session.close();
+  }
+  await session.close();
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("restarts only the failed-closed watcher with the same bindings and live services", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  try {
+    const running = await session.ensureWatcher();
+    state.watcherState = { state: "exited", exitCode: 70 };
+    await session.assertHealthy();
+    expect(running.observe().pid).toBe(2);
+    expect(state.bindingCalls).toBe(1);
+    expect(state.closed).toEqual([]);
+    expect(state.launches[1]).toEqual(state.launches[0]);
+  } finally {
+    await session.close();
+  }
+});
+
+it("gates operations on the restarted listener, reading a refused connection through only within one read's tries", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  try {
+    const running = await session.ensureWatcher();
+    const refusal = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("connection refused"), {
+        code: "ECONNREFUSED",
+      }),
+    });
+    const fetch = vi.mocked(globalThis.fetch);
+    // One read tries a refused connection three times, then fails with it;
+    // a running watcher's refusal restarts nothing.
+    const reads = fetch.mock.calls.length;
+    fetch
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal);
+    await expect(running.operations("/v1/status")).rejects.toBe(refusal);
+    expect(fetch.mock.calls.length - reads).toBe(3);
+    expect(running.observe().pid).toBe(1);
+    state.watcherState = { state: "exited", exitCode: 70 };
+    fetch
+      .mockRejectedValueOnce(refusal)
+      .mockResolvedValueOnce(Response.json({ readiness: "ready" }));
+    await expect(running.operations("/v1/status")).resolves.toEqual({
+      readiness: "ready",
+    });
+    expect(running.observe().pid).toBe(2);
+    // A later failure can race the pre-read health check. Its observed exit,
+    // rather than the network error alone, must authorize the next restart.
+    fetch
+      .mockImplementationOnce(async () => {
+        state.watcherState = { state: "exited", exitCode: 70 };
+        throw refusal;
+      })
+      .mockRejectedValueOnce(refusal)
+      .mockRejectedValueOnce(refusal)
+      .mockResolvedValueOnce(Response.json({ readiness: "ready" }));
+    await expect(running.operations("/v1/status")).resolves.toEqual({
+      readiness: "ready",
+    });
+    expect(running.observe().pid).toBe(3);
+  } finally {
+    await session.close();
+  }
+});
+
+it("launches from a newly retained healthy predecessor before remaining staging", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  await expect(
+    runAutonomousWatcherJourney(
+      state.runDirectory,
+      {
+        category: "doubleSpend",
+        stackShiftCoverMs,
+        stage: async (input) => {
+          expect(state.launches).toEqual([]);
+          // The process has not opened its listener yet. Staging must still
+          // continue after binding/launch rather than waiting for catch-up.
+          const refusal = new TypeError("fetch failed", {
+            cause: Object.assign(new Error("connection refused"), {
+              code: "ECONNREFUSED",
+            }),
+          });
+          vi.mocked(globalThis.fetch).mockRejectedValue(refusal);
+          await input.onHealthyPredecessor!("12".repeat(28));
+          expect(state.launches.map(({ command }) => command)).toEqual([
+            "start",
+          ]);
+          const running = await session.ensureWatcher();
+          await expect(running.operations("/v1/status")).rejects.toBe(refusal);
+          throw new Error("later staging failed");
+        },
+      },
+      { session },
+    ),
+  ).rejects.toThrow("later staging failed");
+  expect(state.bindingCalls).toBe(1);
+  expect(state.closed).toHaveLength(3);
+});
+
+it("closes and refuses reuse when a pinned deployment input changes", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  await session.ensureWatcher();
+  await writeFile(
+    join(state.runDirectory, "binding.json"),
+    "changed deployment",
+  );
+  await expect(session.assertHealthy()).rejects.toThrow(
+    "session input changed",
+  );
+  expect(state.closed).toHaveLength(3);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("cleans up once after binding failure and never reuses partial initialization", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  state.failBinding = true;
+  await expect(session.ensureWatcher()).rejects.toThrow("binding rejected");
+  await session.close();
+  expect(state.closed).toEqual(["native", "da"]);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("starts against the retained head before staging and closes after fixture failure", async () => {
+  const headerHash = "12".repeat(28);
+  await writeFile(
+    join(state.runDirectory, "work/journeys/head.json"),
+    JSON.stringify({
+      hubOraclePolicyId: "ab".repeat(28),
+      block: { headerHash },
+    }),
+  );
+  const session = await openJourneySession(state.runDirectory);
+  const stage = vi.fn(async () => {
+    expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
+    throw new Error("fixture rejected");
+  });
+  await expect(
+    runAutonomousWatcherJourney(
+      state.runDirectory,
+      { category: "doubleSpend", stackShiftCoverMs, stage },
+      { session },
+    ),
+  ).rejects.toThrow("fixture rejected");
+  expect(stage).toHaveBeenCalledOnce();
+  expect(state.closed).toHaveLength(3);
+  await expect(session.assertHealthy()).rejects.toThrow("closed");
+});
+
+it("closes the remaining services even when one service fails to close", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  await session.ensureWatcher();
+  state.failNativeClose = true;
+  await expect(session.close()).rejects.toThrow(
+    "Could not close watcher journey session",
+  );
+  expect(state.closed).toEqual(["start-1", "native", "da"]);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("rejects a foreign run directory before restarting its failed watcher", async () => {
+  const session = await openJourneySession(state.runDirectory);
+  await session.ensureWatcher();
+  state.watcherState = { state: "exited", exitCode: 70 };
+  const stage = vi.fn(async () => {
+    throw new Error("must not stage");
+  });
+  await expect(
+    runAutonomousWatcherJourney(
+      join(state.runDirectory, "foreign"),
+      {
+        category: "doubleSpend",
+        stackShiftCoverMs,
+        stage,
+      },
+      { session },
+    ),
+  ).rejects.toThrow("different run directory");
+  expect(stage).not.toHaveBeenCalled();
+  expect(state.launches.map(({ command }) => command)).toEqual(["start"]);
+});
+
+it.each([
+  "journey-session.ts",
+  "journey-session.open-journey-session.ts",
+  "journey-runner.run.ts",
+])("refuses reuse after pinned module part %s changes", async (changed) => {
+  state.sessionSources = [
+    "journey-session.ts",
+    "journey-session.open-journey-session.ts",
+    "journey-runner.run.ts",
+  ].map((name) => join(state.runDirectory, name));
+  for (const path of state.sessionSources)
+    await writeFile(path, "original source");
+  const session = await openJourneySession(state.runDirectory);
+  await session.ensureWatcher();
+  await writeFile(join(state.runDirectory, changed), "changed source");
+  await expect(session.assertHealthy()).rejects.toThrow(
+    `session input changed: ${join(state.runDirectory, changed)}`,
+  );
+  expect(state.closed).toHaveLength(3);
+  await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("keeps concurrent sessions' replayed-ledger stores in separately owned directories", async () => {
+  const sessions = await Promise.all([
+    openJourneySession(state.runDirectory),
+    openJourneySession(state.runDirectory),
+  ]);
+  try {
+    expect(new Set(state.replayLedgerStoreDirectories).size).toBe(2);
+    const hashes = ["91".repeat(28), "92".repeat(28)];
+    await Promise.all(
+      sessions.map((session, i) => session.ledgerAt(hashes[i])),
+    );
+    // Each session holds its own ledger store open; a second opener of
+    // either is refused.
+    for (const directory of state.replayLedgerStoreDirectories)
+      expect(() =>
+        openSqliteLedgerStorage(
+          join(directory, `replayed-ledger-${"ab".repeat(28)}.sqlite`),
+        ),
+      ).toThrow("is open in another process");
+  } finally {
+    await Promise.all(sessions.map((session) => session.close()));
+  }
+});

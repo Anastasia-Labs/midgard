@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adding Fault-Proof Families"
+  short_description: "Add or complete a Midgard fault-proof family end to end."
+  default_prompt: "Use the Midgard fault-proof family workflow and run the family checklist script."

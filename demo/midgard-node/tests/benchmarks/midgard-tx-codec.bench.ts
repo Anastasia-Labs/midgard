@@ -69,12 +69,13 @@ const benchmarkOptions = {
 
 describe("midgard native tx codec benchmark", () => {
   it("measures native serialization, deserialization, conversion, and hashing", async () => {
-    const fixtures = JSON.parse(
+    const [fixture] = JSON.parse(
       fs.readFileSync(fixturePath, "utf8"),
     ) as readonly TxFixture[];
-    const txBytes = fixtures
-      .slice(0, TX_LIMIT)
-      .map((tx) => Buffer.from(tx.cborHex, "hex"));
+    // txs_0.json holds one self-transfer; the benchmark runs it TX_LIMIT times.
+    const txBytes = Array.from({ length: TX_LIMIT }, () =>
+      Buffer.from(fixture!.cborHex, "hex"),
+    );
 
     const nativeCanonicalCbors = txBytes.map((bytes) =>
       cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),

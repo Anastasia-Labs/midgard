@@ -1,0 +1,312 @@
+import { type LucidEvolution } from "@lucid-evolution/lucid";
+
+import type { CanonicalDecodabilityContracts } from "../canonical-decodability/contracts.js";
+import { buildCanonicalDecodabilityInit } from "../canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../canonical-decodability/submit-canonical-decodability-step-02.js";
+import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  admitCanonicalDecodabilityArtifact,
+  type AssemblyContext,
+  record,
+  WITNESS_ROLES,
+} from "./canonical-decodability.admit-canonical-decodability-artifact.js";
+import {
+  CURSOR_FAMILY_TRANSACTION_PORT,
+  type CursorFamilyTransactionPort,
+} from "./cursor-family-adapter.admit-reference-scripts.js";
+import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
+import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
+import {
+  type FamilyReferenceScripts,
+  type LinearFamilyPrerequisiteInput,
+  type ManifestBoundFamilyWorkflow,
+  type ManifestBoundFamilyWorkflowConfig,
+} from "./family-definition.js";
+import {
+  createRawCommittedFieldCarriagePlan,
+  type FieldCarriagePrerequisitePort,
+  type PreimageCarriageRequirement,
+} from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { workflowStepTransaction } from "./step-transaction.js";
+import {
+  workflowTransactionInputOutRefs,
+  workflowTransactionReferenceInputOutRefs,
+} from "./transaction-boundary.js";
+
+export type CanonicalDecodabilityWorkflowReferenceScripts =
+  FamilyReferenceScripts<
+    "canonicalDecodability",
+    (typeof WITNESS_ROLES)[number],
+    true,
+    2
+  >;
+
+type BoundConfig = Readonly<{
+  lucid: LucidEvolution;
+  blueprint: unknown;
+  deploymentInfo: unknown;
+  network: FraudProofWorkflowDeploymentBinding<"canonicalDecodability">["network"];
+  signer: ResolvedProverSigner;
+  headerHash: string;
+  contracts: CanonicalDecodabilityContracts;
+  category: FraudProofWorkflowDeploymentBinding<"canonicalDecodability">["resolvedContracts"]["category"];
+  catalogue: FraudProofWorkflowDeploymentBinding<"canonicalDecodability">["catalogue"];
+  referenceScripts: CanonicalDecodabilityWorkflowReferenceScripts;
+  fieldCarriage: FieldCarriagePrerequisitePort<"canonicalDecodability">;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  fraudProverRewardLovelace: bigint;
+}>;
+
+const actionInput = (
+  action: FraudProofWorkflowAction,
+): Readonly<Record<string, unknown>> => {
+  const input = record(action.input, "canonical-decodability workflow action");
+  if (
+    input.schemaVersion !== CURSOR_FAMILY_ACTION ||
+    input.category !== "canonicalDecodability" ||
+    typeof input.stage !== "string"
+  ) {
+    throw new Error("canonical-decodability workflow action changed identity");
+  }
+  return input;
+};
+
+const stringField = (
+  input: Readonly<Record<string, unknown>>,
+  key: string,
+): string => {
+  const value = input[key];
+  if (typeof value !== "string") {
+    throw new Error(`canonical-decodability workflow action omitted ${key}`);
+  }
+  return value;
+};
+
+export const createTransactionPort = (
+  config: BoundConfig,
+): CursorFamilyTransactionPort<"canonicalDecodability"> => ({
+  portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
+  category: "canonicalDecodability",
+  prepare: async () => {
+    throw new Error(
+      "canonical-decodability requires the authenticated raw committed-field evidence route",
+    );
+  },
+  capture: async ({ action, artifact, holder }) => {
+    const admitted = await admitCanonicalDecodabilityArtifact(artifact);
+    if (admitted.artifact.headerHash !== config.headerHash) {
+      throw new Error(
+        "canonical-decodability artifact changed header identity",
+      );
+    }
+    const input = actionInput(action);
+    if (input.stage === "init") {
+      return Object.freeze({
+        transaction: (
+          await workflowStepTransaction(
+            await buildCanonicalDecodabilityInit({
+              lucid: config.lucid,
+              blueprint: config.blueprint,
+              network: config.network,
+              contracts: config.contracts,
+              category: config.category,
+              catalogue: config.catalogue,
+              signer: config.signer,
+              fraudulentBlockOutRef: stringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              fraudulentHeaderHash: config.headerHash,
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+            }),
+            "canonical-decodability buildCanonicalDecodabilityInit",
+          )
+        ).transaction,
+      });
+    }
+    if (input.stage === "step_01") {
+      const [proofChunks, field] = await Promise.all([
+        resolvePublishedProofChunks({
+          lucid: config.lucid,
+          address: config.signer.proofMaterialsAddress,
+          proofCbor: admitted.artifact.txMembershipProofCbor,
+          view: config.signer.proofMaterials,
+          holder,
+        }),
+        config.fieldCarriage.resolveAuthenticated({
+          headerHash: config.headerHash,
+          holder,
+          action,
+          artifact,
+        }),
+      ]);
+      if (proofChunks === undefined || field.requirement === null) {
+        throw new Error(
+          "canonical-decodability prerequisites disappeared before step-01",
+        );
+      }
+      return Object.freeze({
+        transaction: (
+          await workflowStepTransaction(
+            await buildCanonicalDecodabilityStep01({
+              lucid: config.lucid,
+              blueprint: config.blueprint,
+              contracts: config.contracts,
+              categoryId: config.category.categoryId,
+              network: config.network,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              stateQueueBlockOutRef: stringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              txInclusion: admitted.txInclusion,
+              fieldIndex: admitted.artifact.selectedFieldIndex,
+              committedPreimage: admitted.committedPreimage,
+              ...(admitted.witnessSet === undefined
+                ? {}
+                : { witnessSet: admitted.witnessSet }),
+              publishedProofChunks: proofChunks,
+              publishedFieldCarriageUtxos: field.publications,
+              ...(field.certificate === undefined
+                ? {}
+                : {
+                    fieldCertificateUtxo: field.certificate,
+                    fieldCertificatePolicyId:
+                      config.contracts.fieldPreimageCertificatePolicyId,
+                  }),
+              referenceScriptUtxo: config.referenceScripts.steps[0],
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+            }),
+            "canonical-decodability buildCanonicalDecodabilityStep01",
+          )
+        ).transaction,
+      });
+    }
+    if (input.stage === "step_02") {
+      return Object.freeze({
+        transaction: (
+          await workflowStepTransaction(
+            await buildCanonicalDecodabilityStep02({
+              lucid: config.lucid,
+              contracts: config.contracts,
+              categoryId: config.category.categoryId,
+              signer: config.signer,
+              threadOutRef: stringField(input, "threadOutRef"),
+              referenceScriptUtxo: config.referenceScripts.steps[1],
+              witnessReferenceScripts: config.referenceScripts.witnesses,
+            }),
+            "canonical-decodability buildCanonicalDecodabilityStep02",
+          )
+        ).transaction,
+      });
+    }
+    if (input.stage === "remove") {
+      const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
+      const fraudProofOutRef = stringField(input, "fraudProofOutRef");
+      return await admitRemovalTransaction(
+        await buildRemoveFraudulentBlock({
+          fraudProofOutRef,
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "canonicalDecodability",
+          fraudulentHeaderHash: config.headerHash,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        }),
+        async (built) => {
+          if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              nextRemovalOutRef,
+            ) ||
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+              fraudProofOutRef,
+            )
+          ) {
+            throw new Error(
+              "canonical-decodability removal changed queue/proof identity",
+            );
+          }
+        },
+      );
+    }
+    throw new Error(
+      `canonical-decodability workflow action has unsupported stage ${String(input.stage)}`,
+    );
+  },
+});
+
+export type ManifestBoundCanonicalDecodabilityWorkflowConfig =
+  ManifestBoundFamilyWorkflowConfig<
+    "canonicalDecodability",
+    (typeof WITNESS_ROLES)[number],
+    true,
+    2
+  >;
+
+export type ManifestBoundCanonicalDecodabilityWorkflow =
+  ManifestBoundFamilyWorkflow<"canonicalDecodability", true, 2>;
+
+export const contracts = (
+  context: AssemblyContext,
+): CanonicalDecodabilityContracts => {
+  const resolved = context.binding.resolvedContracts;
+  const chain = resolved.contracts.canonicalDecodability;
+  const stateQueuePolicyId = resolved.stateQueuePolicyId;
+  if (chain === undefined || stateQueuePolicyId === undefined) {
+    throw new Error(
+      "canonical-decodability manifest omitted its proof/certificate contracts",
+    );
+  }
+  return Object.freeze({
+    steps: chain.steps,
+    computationThread: resolved.contracts.computationThread,
+    fraudProof: {
+      policyId: resolved.contracts.fraudProof.policyId,
+      mintingScript: resolved.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        resolved.contracts.fraudProof.spendingScriptAddress,
+    },
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    stateQueuePolicyId,
+    fieldPreimageCertificatePolicyId: context.certificate.policyId,
+  });
+};
+
+// Step-01 carries the selected committed field as raw bytes.
+export const fieldCarriageRequirementForAction = async (
+  context: AssemblyContext,
+  { action, artifact }: LinearFamilyPrerequisiteInput,
+): Promise<PreimageCarriageRequirement | null> => {
+  if (action.input.stage !== "step_01") return null;
+  const admitted = await admitCanonicalDecodabilityArtifact(artifact);
+  return Object.freeze({
+    planned: createRawCommittedFieldCarriagePlan({
+      sourceKind: 0n,
+      owner: context.signer.paymentKeyHash,
+      nativeTxId: admitted.txInclusion.nativeTxId,
+      fieldIndex: admitted.artifact.selectedFieldIndex,
+      preimage: admitted.committedPreimage,
+    }),
+    compactCbor: admitted.txInclusion.nativeTxCompactCbor,
+    ...(admitted.witnessSetCompactCbor === undefined
+      ? {}
+      : { witnessSetCompactCbor: admitted.witnessSetCompactCbor }),
+    certificate: Object.freeze({
+      policyId: context.certificate.policyId,
+      mintingScript: context.certificate.mintingScript,
+      referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+    }),
+  });
+};

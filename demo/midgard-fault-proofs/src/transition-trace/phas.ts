@@ -1,5 +1,5 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -68,6 +68,23 @@ const trieFromEntries = async (
     })),
   );
 
+// A committed root's trie is a pure function of its entries and is only ever
+// read (`prove`), so one trie serves every opening taken from the same root
+// object. Keying by the root object rather than by its hash keeps a root whose
+// entries do not open its hash failing exactly as it would have uncached.
+const triesByRoot = new WeakMap<KeyValuePhasRoot, Promise<Trie>>();
+
+const trieForRoot = (root: KeyValuePhasRoot): Promise<Trie> => {
+  const known = triesByRoot.get(root);
+  if (known !== undefined) return known;
+  const built = trieFromEntries(root.entries);
+  triesByRoot.set(root, built);
+  built.catch(() => {
+    if (triesByRoot.get(root) === built) triesByRoot.delete(root);
+  });
+  return built;
+};
+
 export const keyValuePhasRootWithCount = async (
   entries: readonly KeyValuePhasEntry[],
 ): Promise<KeyValuePhasRoot> => {
@@ -87,11 +104,7 @@ export const keyValuePhasRootWithCount = async (
   };
 };
 
-export const keyValuePhasRoot = async (
-  entries: readonly KeyValuePhasEntry[],
-): Promise<string> => (await keyValuePhasRootWithCount(entries)).root;
-
-const sdkProofFromCbor = (proofCbor: Uint8Array): SDK.Proof => {
+export const sdkProofFromCbor = (proofCbor: Uint8Array): SDK.Proof => {
   try {
     return Data.from(
       Buffer.from(proofCbor).toString("hex"),
@@ -117,7 +130,7 @@ export const keyValuePhasProof = async (
       "Cannot build a PHAS membership proof for an empty tree.",
     );
   }
-  const trie = await trieFromEntries(root.entries);
+  const trie = await trieForRoot(root);
   const proof = await trie.prove(Buffer.from(key));
   const verifiedRoot = normalizeRoot(proof.verify(true));
   if (verifiedRoot !== root.root) {
@@ -151,6 +164,8 @@ export const keyValuePhasNonMembershipProof = async (
       `Cannot build a PHAS non-membership proof for present key ${keyHex}.`,
     );
   }
+  // The insertion below is only a proof-construction device. Never mutate
+  // the cached membership trie shared by other openings of this root.
   const trie = await trieFromEntries(root.entries);
   await trie.insert(Buffer.from(key), NON_MEMBERSHIP_DUMMY_VALUE);
   const proof = await trie.prove(Buffer.from(key));

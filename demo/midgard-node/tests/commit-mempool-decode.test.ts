@@ -7,14 +7,14 @@ import { it } from "@effect/vitest";
 import { Effect, Metric } from "effect";
 import { describe, expect } from "vitest";
 
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import * as Tx from "../src/database/utils/tx.js";
 import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
+  commitStageInputPostState,
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
-} from "@/workers/utils/mpf.js";
-
+} from "../src/mpf/commit-rejection.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 
 describe("resolveTxDeltaForCommit", () => {
@@ -96,6 +96,54 @@ describe("resolveTxDeltaForCommit", () => {
         expect(result.spent).toStrictEqual(existingDelta.spent);
         expect(result.produced).toStrictEqual(existingDelta.produced);
       }
+    }),
+  );
+});
+
+describe("commitStageInputPostState", () => {
+  it.effect("resolves inputs against the block post-state", () =>
+    Effect.gen(function* () {
+      const committed = Buffer.from("a1", "hex");
+      const inserted = Buffer.from("b2", "hex");
+      const reinserted = Buffer.from("c3", "hex");
+      const base = new Map([
+        ["01", committed],
+        ["02", committed],
+        ["03", committed],
+      ]);
+      const baseReads: string[][] = [];
+      const resolve = commitStageInputPostState({
+        readBase: (outRefHexes) => {
+          baseReads.push([...outRefHexes]);
+          return Effect.succeed(
+            new Map(
+              outRefHexes.flatMap((key) => {
+                const output = base.get(key);
+                return output === undefined ? [] : [[key, output] as const];
+              }),
+            ),
+          );
+        },
+        insertedOutputs: new Map([
+          ["02", reinserted],
+          ["04", inserted],
+        ]),
+        spentOutRefHexes: new Set(["03", "04"]),
+      });
+
+      // An unspent committed output, an output the block inserts over its
+      // base, committed and inserted outputs the block spends, and an outref
+      // the block's ledger never holds.
+      const resolved = yield* resolve(["01", "02", "03", "04", "05"]);
+      expect([...resolved.entries()]).toStrictEqual([
+        ["02", reinserted],
+        ["03", null],
+        ["04", null],
+        ["01", committed],
+      ]);
+      expect(resolved.has("05")).toBe(false);
+      // Only the outrefs the block itself does not settle reach the base.
+      expect(baseReads).toStrictEqual([["01", "05"]]);
     }),
   );
 });

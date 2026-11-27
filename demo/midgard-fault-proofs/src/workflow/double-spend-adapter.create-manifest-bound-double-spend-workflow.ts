@@ -1,0 +1,236 @@
+import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  type AuthenticatedStateQueueHeaderObservation,
+  DoubleSpendStep02Datum,
+  DoubleSpendStep03Datum,
+  DoubleSpendStep04Datum,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import type { UTxO } from "@lucid-evolution/lucid";
+
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
+import {
+  assertManifestBoundWorkflowSigner,
+  releaseFinalityAuthorityFromDeploymentBinding,
+} from "./deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
+  requireManifestBoundReferenceScriptUtxo,
+} from "./deployment-manifest-binding.js";
+import { createDoubleSpendConstrainedWorkflowAdapter } from "./double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
+import {
+  createDoubleSpendAuthenticatedL1TerminalVerifier,
+  createDoubleSpendL1ObservationPort,
+} from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
+import type {
+  DoubleSpendConstrainedWorkflowAdapterConfig,
+  DoubleSpendWorkflowReferenceScripts,
+  ManifestBoundDoubleSpendWorkflow,
+  ManifestBoundDoubleSpendWorkflowConfig,
+} from "./double-spend-adapter.preflight-of.js";
+import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
+import type { FraudProofFamilyWorkflowAdapter } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
+import {
+  createFraudProofWorkflowRegistry,
+  runFraudProofWorkflowFromRetainedDa,
+} from "./orchestrator.js";
+import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import type { WorkflowRun } from "./workflow-run.js";
+
+/**
+ * Strict production construction. Every contract, network, category,
+ * economics, and finality value comes from the same finalized manifest; the
+ * caller supplies only live runtime capabilities and published UTxOs.
+ */
+export const createManifestBoundDoubleSpendWorkflow = async (
+  config: ManifestBoundDoubleSpendWorkflowConfig,
+): Promise<ManifestBoundDoubleSpendWorkflow> => {
+  const binding = await bindFraudProofWorkflowDeployment({
+    manifest: config.manifest,
+    blueprintJson: config.blueprintJson,
+    deploymentInfo: config.deploymentInfo,
+    category: "doubleSpend",
+    headerHash: config.headerHash,
+    proverCredential: config.signer.paymentKeyHash,
+    stepDatumSchemas: [
+      FraudProofComputationThreadStepDatum,
+      DoubleSpendStep02Datum,
+      DoubleSpendStep03Datum,
+      DoubleSpendStep04Datum,
+    ],
+  });
+  const certificate = binding.fieldPreimageCertificate;
+  if (certificate === null) {
+    throw new Error(
+      "double-spend deployment omitted the field-preimage certificate policy",
+    );
+  }
+  assertManifestBoundWorkflowSigner({
+    network: binding.network,
+    address: config.signer.address,
+    proofMaterialsAddress: config.signer.proofMaterialsAddress,
+    paymentKeyHash: config.signer.paymentKeyHash,
+  });
+  const stepNames = deploymentFamilyStepNames("doubleSpend");
+  const stepReference = (index: 0 | 1 | 2 | 3): UTxO =>
+    requireManifestBoundReferenceScriptUtxo({
+      binding,
+      contractName: stepNames[index],
+      utxo: config.referenceScripts.steps[index],
+    });
+  const referenceScripts: DoubleSpendWorkflowReferenceScripts = {
+    steps: [
+      stepReference(0),
+      stepReference(1),
+      stepReference(2),
+      stepReference(3),
+    ],
+    witnesses: {
+      computationThreadMint: requireManifestBoundReferenceScriptUtxo({
+        binding,
+        contractName: "computationThreadMint",
+        utxo: config.referenceScripts.witnesses.computationThreadMint,
+      }),
+      fraudProofMint: requireManifestBoundReferenceScriptUtxo({
+        binding,
+        contractName: "fraudProofMint",
+        utxo: config.referenceScripts.witnesses.fraudProofMint,
+      }),
+      phasMembershipWithdraw: requireManifestBoundReferenceScriptUtxo({
+        binding,
+        contractName: "phasMembershipWithdraw",
+        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
+      }),
+      chunkedVerifyWithdraw: requireManifestBoundReferenceScriptUtxo({
+        binding,
+        contractName: "chunkedVerifyWithdraw",
+        utxo: config.referenceScripts.witnesses.chunkedVerifyWithdraw,
+      }),
+    },
+  };
+  const certificateReferenceScript = requireManifestBoundReferenceScriptUtxo({
+    binding,
+    contractName: "fieldPreimageCertificateMint",
+    utxo: config.fieldPreimageCertificateReferenceScript,
+  });
+  const l1 = createDoubleSpendL1ObservationPort({
+    l1: config.l1Source,
+    releaseFinality: binding.releaseFinality,
+    releaseEconomics: binding.releaseEconomics,
+    definition: binding.definition,
+  });
+  const adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig = {
+    lucid: config.lucid,
+    blueprint: binding.blueprint,
+    deploymentInfo: binding.deploymentInfo,
+    network: binding.network,
+    signer: config.signer,
+    referenceScripts,
+    fieldPreimageCertificate: {
+      policyId: certificate.policyId,
+      mintingScript: certificate.mintingScript,
+      referenceScriptUtxo: certificateReferenceScript,
+    },
+    l1,
+    stateQueueMutationLeaseCoordinator:
+      config.stateQueueMutationLeaseCoordinator,
+    fraudProverRewardLovelace: BigInt(
+      binding.releaseEconomics.policy.fraudProverRewardLovelace,
+    ),
+  };
+  return {
+    binding,
+    adapterConfig,
+    adapter: createDoubleSpendConstrainedWorkflowAdapter(adapterConfig),
+    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifier(l1),
+    releaseFinalityAuthority:
+      releaseFinalityAuthorityFromDeploymentBinding(binding),
+  };
+};
+
+/** Run/resume surface for supported constrained shapes; not production-ready. */
+export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
+  hubOraclePolicyId,
+  observation,
+  sources,
+  run,
+  adapterConfig,
+  releaseFinalityAuthority,
+  adapter: bound,
+  maxSubmissionAttempts,
+  maxActions,
+}: {
+  readonly hubOraclePolicyId: string;
+  readonly observation: AuthenticatedStateQueueHeaderObservation;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly run: WorkflowRun;
+  readonly adapterConfig: DoubleSpendConstrainedWorkflowAdapterConfig;
+  readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  /** The adapter to run, in place of the bare one over `adapterConfig`. */
+  readonly adapter?: FraudProofFamilyWorkflowAdapter;
+  readonly maxSubmissionAttempts?: number;
+  readonly maxActions?: number;
+}): Promise<FraudProofWorkflowRunResult> => {
+  const adapter =
+    bound ?? createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
+  return await runFraudProofWorkflowFromRetainedDa({
+    hubOraclePolicyId,
+    observation,
+    sources,
+    replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [adapter],
+      launchScope: ["doubleSpend"],
+    }),
+    run,
+    releaseFinalityAuthority,
+    terminalVerifier: createDoubleSpendAuthenticatedL1TerminalVerifier(
+      adapterConfig.l1,
+    ),
+    ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
+    ...(maxActions === undefined ? {} : { maxActions }),
+  });
+};
+
+/** Production run/resume with the L1 header derived from admitted raw bytes. */
+export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
+  workflow,
+  sources,
+  run,
+  maxSubmissionAttempts,
+  maxActions,
+}: {
+  readonly workflow: ManifestBoundDoubleSpendWorkflow;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly run: WorkflowRun;
+  readonly maxSubmissionAttempts?: number;
+  readonly maxActions?: number;
+}): Promise<FraudProofWorkflowRunResult> => {
+  const observeHeader = workflow.adapterConfig.l1.observeHeader;
+  if (observeHeader === undefined) {
+    throw new Error(
+      "manifest-bound double-spend workflow omitted raw L1 header derivation",
+    );
+  }
+  const observation = await observeFraudProofWorkflowHeader(
+    {
+      observeHeader,
+      observeRetainedHeader: workflow.adapterConfig.l1.observeRetainedHeader,
+    },
+    { headerHash: workflow.binding.definition.headerHash },
+  );
+  return await runOrResumeConstrainedDoubleSpendWorkflow({
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
+    observation,
+    sources,
+    run,
+    adapterConfig: workflow.adapterConfig,
+    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    // The workflow's own adapter, with any reclaim of our threads in front.
+    adapter: workflow.adapter,
+    ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
+    ...(maxActions === undefined ? {} : { maxActions }),
+  });
+};

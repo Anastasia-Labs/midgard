@@ -4,8 +4,8 @@
  * The homepage sample lives inside a JSX string literal in `page.tsx`, so the
  * twoslash transformer that guards the MDX snippets cannot reach it. This file
  * contains the same calls against the real `@al-ft/lucid-midgard` types, so
- * `next build` fails if the sample names an export or method that no longer
- * exists.
+ * `next build` fails if the sample names an export or method that does not
+ * exist.
  *
  * Keep this file and the `transfer.ts` block in `page.tsx` in step.
  */

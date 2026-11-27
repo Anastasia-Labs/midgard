@@ -1,183 +1,149 @@
-# Architecture F MPF prototype
+# Native MPF owner
 
-This crate is the fail-closed prototype for Throughput Phase 3's native/WASM
-contingency. It does not change a production default and is not linked into the
-commit worker.
+Status: Active
 
-The intended build wiring is:
+Last reviewed: 2026-11-24 (owner node cache and RPC schema 2; one-shot WASM
+path removed).
 
-```sh
-wasm-pack build --target nodejs --release \
-  --out-dir ../../.architecture-f-wasm \
-  native/mpf-event-flat-wasm
-```
+This Rust crate supplies the native `architecture-g-owner` binary used by the
+node's MPF service. Runtime integration lives in
+`../../src/services/mpf-native-owner/`; the commit path uses it through
+`../../src/mpf/transition-trace.ts`.
 
-The checked-in `Makefile` pins the lockfile for `make check`, `make build`, and
-`make differential`; the expanded commands above make the generated boundary
-and output directory explicit for audit review.
-
-The generated directory is ignored. A production integration may consume it
-only through a pinned, reproducible build step that checks the Rust/Cargo lock,
-WASM SHA-256, ABI version, and differential corpus before bundling.
-
-After building, the independent adversarial differential and the two exact
-prototype probes are:
+From this directory:
 
 ```sh
-node scripts/mpf-event-flat-wasm-prototype.mjs
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-100000-level \
-  --utxos=100000 --txs=10000
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-1000000-level \
-  --utxos=1000000 --txs=10000
+make check
 ```
 
-The first command checks the hard-coded Forestry corpus roots for empty events,
-delete/reinsert, collapse, split, and long hashed paths, and corrupts one raw
-record to prove the call fails closed. The Level probes assert the fixture
-marker and expected candidate root, re-read the unchanged marker, and report
-raw-fetch, binary-encode, WASM, artifact, RSS, and conservative projection
-timings. Their shared `scratchRootUpperMs` is the larger sum of both parallel
-workers' CPU time plus serialization from the preceding exact pair, so it
-overstates the unchanged scratch-root wall rather than hiding it.
+The Makefile uses locked Cargo dependencies. From `demo/midgard-node`, build
+the runtime binary with `pnpm run native:mpf-owner:build`, and replay the
+adversarial corpus against it with `pnpm run test:mpf:differential`. The
+configured owner path is defined in `src/services/config.mpf.ts`;
+package/release verification must bind the binary and ABI to the deployed node.
 
-## Architecture G retained-session gate
+The binary runs only as the node's child, `architecture-g-owner --rpc`, and
+speaks the RPC below on stdin/stdout.
 
-Architecture G supersedes the plan's earlier rejection of a full-memory MPF
-alternative only as a measured decision point. The tradeoff is materially
-different now: a compact native owner (not a JS object graph), a marker-keyed
-authenticated cache whose contents are never authoritative, explicit rebuild
-on marker/schema/digest mismatch, and Architecture F evidence that repeated raw
-authentication plus artifact reconstruction—not canonical mutation alone—is
-the dominant size-dependent work. Canonical Forestry hashing and Level's root
-marker remain unchanged.
+## Owner node cache
 
-The minimal retained-session prototype deliberately does not load the full
-ledger or integrate a service. It authenticates the exact touched closure into
-a retained session during reported setup, forks an isolated generation, then
-times only fixed binary event encoding plus sequential canonical mutation and
-the mandatory root stream. It byte-compares every event root to the one-shot
-engine and final known Forestry root, and re-reads the unchanged fixture marker:
+The child holds the durable root (the marker), a bounded cache of trie nodes
+keyed by content hash, and at most two open generations. It never holds the
+whole trie and reads nothing at start; the parent sends the root with
+`SetRoot`.
 
-```sh
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --session \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-100000-level \
-  --utxos=100000 --txs=10000
-node scripts/mpf-event-flat-wasm-prototype.mjs \
-  --session \
-  --level=/tmp/midgard-mpf-growth-event-flat-e-1000000-level \
-  --utxos=1000000 --txs=10000
-```
+An apply walks the stream's keys from the marker through the cache, selecting
+the nodes on the touched paths plus, where deletes could leave a branch with
+one child, all of that branch's children (subtree sizes skip this when two
+children must survive). If a node is not cached the child answers `NeedNodes`
+with every absent hash it can name this round and changes nothing; the parent
+reads them from LevelDB, sends them in `ProvideNodes`, and sends the same
+`ApplyEvents` again. A child whose delete decides a branch's fate is fetched
+before that branch's siblings, so no sibling is fetched speculatively. Each
+round reaches at least one level deeper, so a path of n nodes takes at most n
+rounds plus one for the siblings of a collapse at its bottom. When nothing is
+absent the events are applied to an arena built from the selected nodes,
+exactly as before.
 
-Setup/authentication is outside this narrow hot-path projection but is not
-outside operational acceptance. Before any production wiring, a later gate
-must load and authenticate the complete marker-reachable index, measure startup
-wall/RSS and bounded steady-state memory, prove restart/journal replay after
-crashes at every submission/promotion boundary, and reject the design if those
-recovery/liveness bounds are not operationally acceptable.
+Every provided record is authenticated against its hash on entry; one bad
+record refuses the whole frame and caches nothing from it. A branch's subtree
+size is trusted from the store: a wrong size can only make the arena stop at
+an unavailable frontier, never produce a wrong root.
 
-Retained-session event streams (`MEGO` v1) bind counts, caps, base root, and
-ordered bytes under BLAKE2b-256. Root streams (`MEGR` v1) bind base/candidate and
-all event roots. A session permits at most two active generations; stale/base
-mismatched handles, malformed caps, corruption, and failed mutations are
-fail-closed, with append-only rollback to the pre-call root/node watermark.
+The budget (bytes, from `Hello`) bounds an estimate of the cache's heap use;
+the formula is beside `entry_bytes` in `src/owner/node_cache.rs`. Eviction
+uses two generations: a hit in the old one moves the node to the young one,
+and a trim over budget drops the old generation and makes the young one old.
+Trims run only after an apply that built its arena, after
+`PromotionCommitted` and after `SetRoot`, never between the rounds of one
+apply; after each, the cache is within the budget, and with a budget below
+one block's working set that may mean empty. `PromotionCommitted` puts the
+block's new reachable nodes in the cache. Memory is the budget plus the open
+generations' arenas; per-block limits on events, ops, arena nodes and
+generations stay.
 
-## Native64 full-index operational prototype
+## Owner RPC (schema 2)
 
-The `architecture-g-owner` binary is the next bounded gate, not production
-commit wiring. A Node exporter opens each named Level fixture read-only, records
-the durable marker, streams every content-addressed record into the canonical
-binary ABI, re-reads the marker, and closes the database. The native64 owner
-then content-authenticates every record, proves the complete closure is a
-single marker-rooted tree with each leaf at its key-derived path, and compacts
-it into sparse pools for prefixes, edges, branch Merkle caches, keys, and
-values. It refuses more than 2,000,000 records, 512 MiB encoded input, or 2 GiB
-estimated/observed resident memory.
+All integers are little-endian. A frame is `length:u32` (bytes after this
+field), then `MGRP`, `schema:u16 = 2`, `kind:u16`, `request_id:u64`,
+`owner_epoch[16]`, `payload_length:u32`, the payload, and a 32-byte
+BLAKE2b-256 digest of `MIDGARD-MPF-OWNER-RPC-V2` followed by every frame byte
+from the magic to the end of the payload. Frames are at most 64 MiB, and
+`ProvideNodes` and `PromotionChunk` payloads at most 16 MiB. Any request may
+be answered with
+`Error = 23`, whose payload is a UTF-8 message.
 
-```sh
-cargo build --release --locked \
-  --manifest-path native/mpf-event-flat-wasm/Cargo.toml \
-  --bin architecture-g-owner
-node scripts/mpf-architecture-g-owner-prototype.mjs --utxos=100000
-node scripts/mpf-architecture-g-owner-prototype.mjs --utxos=1000000
-```
+| Request                   | Reply                                              |
+| ------------------------- | -------------------------------------------------- |
+| `Hello = 1`               | `HelloAck = 2`                                     |
+| `SetRoot = 3`             | `Ready = 6`                                        |
+| `Fork = 7`                | `Forked = 8`                                       |
+| `ApplyEvents = 9`         | `NeedNodes = 24` or `Applied = 10`                 |
+| `ProvideNodes = 25`       | `NodesProvided = 26`                               |
+| `Discard = 11`            | `Discarded = 12`                                   |
+| `PreparePromotion = 13`   | `PromotionChunk = 14`..., then `PromotionEnd = 15` |
+| `PromotionCommitted = 16` | `PromotionCommitted = 16`                          |
+| `Diagnostics = 17`        | `DiagnosticsResult = 18`                           |
+| `Ping = 19`               | `Pong = 20` (payload echoed)                       |
+| `Shutdown = 21`           | `ShutdownAck = 22`                                 |
 
-The harness performs separate-process prepare/recover replay using the same
-digest-bound event log, validates marker-matched sidecar restart, forces corrupt
-and stale sidecar rebuilds, rejects a corrupt replay log, simulates isolated
-fork/discard/promote and stale-generation rejection without writing either
-fixture, and finally reopens/closes Level to prove clean lock release. The
-sidecar is a cache: it contains the marker-bound canonical export under a file
-digest, is written by fsync-plus-rename, and is discarded/rebuilt on any
-mismatch. Level remains authoritative.
+Payloads (offset: field):
 
-A production deployment would bundle two artifacts from the same locked Rust
-source: the existing WASM differential oracle and a platform-specific native64
-owner binary. The node would launch one supervised owner per ledger store,
-transfer exclusive Level ownership to it, use a versioned local binary RPC
-instead of benchmark files, persist the replay log in the pending-finalization
-journal, pin binary/ABI/sidecar schema hashes in release metadata, and expose
-startup/rebuild/RSS/lease metrics. None of those deployment changes are part of
-this prototype.
+- `Hello` (40 bytes): 0 `binary_sha256[32]`, 32 `cache_budget_bytes:u64`.
+- `HelloAck` (86 bytes): 0 `schema:u16 = 2`, 2 `binary_sha256[32]`,
+  34 `cache_budget_bytes:u64` (echoed), 42 `max_events:u32`,
+  46 `max_ops:u32`, 50 `max_generations:u32 = 2`, 54 BLAKE2b-256 of
+  `MIDGARD-MPF-OWNER-BLAKE2B-SELFTEST-V1` (32 bytes).
+- `SetRoot` (32 bytes): `root[32]`; the empty root is allowed. Refused while
+  any generation is open. The parent sends it once after `Hello` and again
+  whenever it moves the durable root back. Until the first one, `Fork`,
+  `ApplyEvents`, the promotion messages and `Diagnostics` answer
+  "Architecture G owner is not ready".
+- `Ready` (32 bytes): `root[32]`.
+- `Fork` (32 bytes): `base_root[32]`. `Forked` (48): `id[16]`, `base_root[32]`.
+- `ApplyEvents`: `id[16]`, then the `MEGO` event stream.
+- `NeedNodes` (20 + 32n bytes): 0 `id[16]`, 16 `count:u32 = n`, 20 `n`
+  hashes, sorted and unique, none of them cached. The generation is
+  unchanged; resend the same `ApplyEvents` after providing them.
+- `Applied` (100 + 32n bytes): 0 `id[16]`, 16 `candidate_root[32]`,
+  48 BLAKE2b-256 of `MIDGARD-MPF-ARCH-G-EVENT-LOG-V1` and the event stream,
+  80 `count:u32 = n`, 84 `n` event roots, then `proof_duration_ns:u64` (walk
+  and arena build of the final round) and `mutation_duration_ns:u64`.
+- `ProvideNodes` (1 byte to 16 MiB): one or more concatenated node records in
+  the record format below. Already cached nodes are accepted.
+- `NodesProvided` (4 bytes): `count:u32`, the records in the frame.
+- `Discard` (16 bytes): `id[16]`; `Discarded` echoes it.
+- `PreparePromotion` (16 bytes): `id[16]`. `PromotionChunk`: concatenated
+  records of the generation's new reachable nodes, sorted by hash.
+  `PromotionEnd` (116 bytes): `id[16]`, `base_root[32]`,
+  `candidate_root[32]`, `record_count:u32`, BLAKE2b-256 of
+  `MIDGARD-MPF-OWNER-PROMOTION-V1`, base, candidate and every record.
+- `PromotionCommitted` (16 bytes): `id[16]`; the reply is `candidate_root[32]`.
+  The marker moves to the candidate, the new nodes enter the cache, and every
+  open generation is dropped.
+- `Diagnostics`: empty. `DiagnosticsResult` (88 bytes): 0 `marker[32]`,
+  32 `cached_nodes:u64`, 40 `cached_bytes:u64`, 48 `generations:u64`,
+  56 `generated_nodes:u64`, 64 `generated_bytes:u64`, 72 `VmRSS_kib:u64`,
+  80 `VmHWM_kib:u64`.
 
-## Binary ABI v1
+## Node records and events
 
 All integers are little-endian. Hashes are canonical 32-byte BLAKE2b-256
 values. Prefixes contain one nibble per byte so malformed digits can be rejected
 without an ambiguous packed-tail representation.
 
-Input header (72 bytes):
+Each node record is `kind:u8, hash[32], prefix_len:u8, prefix[prefix_len]`. A
+leaf (kind 1) continues with `key_len:u16, value_len:u32, key, value`. A branch
+(kind 2) continues with `size:u64, child_bitmap:u16`, then one 32-byte hash for
+every set bit in ascending child order. In the event stream each event is
+`op_count:u32` followed by its ops. An op is
+`kind:u8, key_len:u16, value_len:u32, key, value`; insert is kind 1 (including
+an empty value) and delete is kind 2 with a zero value length.
 
-| Offset | Field |
-| ---: | --- |
-| 0 | `MEF6` magic |
-| 4 | `u16 version = 1` |
-| 6 | `u16 flags = 0` |
-| 8 | `u32 max_records` |
-| 12 | `u32 max_events` |
-| 16 | `u32 max_ops` |
-| 20 | `u32 max_input_bytes` |
-| 24 | `u32 max_output_bytes` |
-| 28 | `u32 record_count` |
-| 32 | `u32 event_count` |
-| 36 | `u32 op_count` |
-| 40 | `base_root[32]` |
+## Bounds
 
-Each authenticated raw record is `kind:u8, hash[32], prefix_len:u8,
-prefix[prefix_len]`. A leaf continues with `key_len:u16, value_len:u32, key,
-value`. A branch continues with `size:u64, child_bitmap:u16`, then one 32-byte
-hash for every set bit in ascending child order. Each event is `op_count:u32`.
-An op is `kind:u8, key_len:u16, value_len:u32, key, value`; insert is kind 1
-(including an empty value) and delete is kind 2 with a zero value length.
-
-Output header (120 bytes): `MEFO`, version/flags, event count, dirty-record
-count, delta offset/length, base root, candidate root, and a BLAKE2b digest
-binding the domain string, base/candidate roots, every ordered event root, and
-the aggregate event/record/byte counts and compact sparse dirty closure. Event roots immediately follow the header;
-the reconstructable dirty records use the same binary record format.
-
-## Bounds and failure boundary
-
-Caller caps may only tighten the absolute limits: 1,000,000 raw records,
-100,000 events, 400,000 ops, 512 MiB input/output, and 1,000,000 arena nodes.
-Every length uses checked parsing. Raw records are content-authenticated before
-mutation; their available subgraph must be rooted at the pinned base root.
-Strict insert/delete semantics abort the single call on the first invalid op.
-No partial output or durable write exists. The JS owner must compare the durable
-marker to `base_root` before Level reads and again before accepting output; a
-marker change discards the entire result. The receiver authenticates and stages
-the returned closure before one atomic nodes-plus-marker promotion.
-
-The prototype currently emits a compact sparse full-record delta, not the
-smaller predecessor-patch representation. That is deliberate: the growth gate
-must be demonstrated before adding a more complex transfer encoding.
-
-## Memory model
-
-The call owns one immutable raw proof plus append-only generated nodes. Opaque
-untouched children remain 32-byte commitments. Production wiring must budget
-`input + output + ~1.8 KiB * arena_nodes + leaf key/value bytes`, reject before
-the configured cap, and free the whole WASM instance or result on error. There
-is no cache across base-root markers and no fail-open JS hashing fallback.
+The event stream's own caps may only tighten the absolute limits: 100,000
+events, 400,000 ops and 512 MiB per stream. An apply's arena holds at most
+1,000,000 nodes. Every length uses checked parsing. Inserting a present key or
+deleting an absent one fails the whole `ApplyEvents`, and the generation stays
+unapplied.

@@ -1,14 +1,7 @@
-import {
-  Data,
-  fromText,
-  LucidEvolution,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { Data, fromText } from "@lucid-evolution/lucid";
 
-import { AuthenticatedValidator, OutputReferenceSchema } from "@/common.js";
-
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { OutputReferenceSchema } from "./common.js";
 
 export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_REGISTERED_OPERATORS",
@@ -20,8 +13,9 @@ export const RegisteredOperatorDatumSchema = Data.Object({
 export type RegisteredOperatorDatum = Data.Static<
   typeof RegisteredOperatorDatumSchema
 >;
-export const RegisteredOperatorDatum =
-  RegisteredOperatorDatumSchema as unknown as RegisteredOperatorDatum;
+export const RegisteredOperatorDatum = asDataType<RegisteredOperatorDatum>(
+  RegisteredOperatorDatumSchema,
+);
 export const castRegisteredOperatorDatumToData = (
   datum: RegisteredOperatorDatum,
 ): unknown => Data.castTo(datum, RegisteredOperatorDatum);
@@ -38,8 +32,9 @@ export const DuplicateOperatorStatusSchema = Data.Enum([
 export type DuplicateOperatorStatus = Data.Static<
   typeof DuplicateOperatorStatusSchema
 >;
-export const DuplicateOperatorStatus =
-  DuplicateOperatorStatusSchema as unknown as DuplicateOperatorStatus;
+export const DuplicateOperatorStatus = asDataType<DuplicateOperatorStatus>(
+  DuplicateOperatorStatusSchema,
+);
 
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -82,6 +77,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       anchor_element_output_index: Data.Integer(),
       duplicate_node_ref_input_index: Data.Integer(),
       duplicate_operator_status: DuplicateOperatorStatusSchema,
+      bounty_claimant: Data.Bytes({ minLength: 28, maxLength: 28 }),
     }),
   }),
 ]);
@@ -89,32 +85,6 @@ export type RegisteredOperatorMintRedeemer = Data.Static<
   typeof RegisteredOperatorMintRedeemerSchema
 >;
 export const RegisteredOperatorMintRedeemer =
-  RegisteredOperatorMintRedeemerSchema as unknown as RegisteredOperatorMintRedeemer;
-
-export type RegisteredOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  lovelace?: bigint;
-};
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorInitTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  incompleteInitLinkedListTxProgram(lucid, {
-    validator: params.validator,
-    rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-    data: "",
-    redeemer: (outputIndex) =>
-      Data.to(
-        { Init: { output_index: outputIndex } },
-        RegisteredOperatorMintRedeemer,
-      ),
-    lovelace: params.lovelace,
-  });
+  asDataType<RegisteredOperatorMintRedeemer>(
+    RegisteredOperatorMintRedeemerSchema,
+  );

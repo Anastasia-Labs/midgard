@@ -1,4 +1,3 @@
-import { Constr } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -33,11 +32,30 @@ describe("Phase A worker wire codec", () => {
     expect(Buffer.isBuffer(restored.ledgerTx.txId)).toBe(true);
     expect(Buffer.isBuffer(restored.ledgerTx.outputs[0].address)).toBe(true);
     expect(Buffer.isBuffer(restored.graph.produced[0].outref)).toBe(true);
-    expect(restored.ledgerTx.redeemers[0].data).toBeInstanceOf(Constr);
+    expect(Buffer.isBuffer(restored.ledgerTx.redeemers[0].dataCbor)).toBe(true);
     expect(restored.ledgerTx.txId.equals(candidate.ledgerTx.txId)).toBe(true);
     expect(restored.ledgerTx.txId.toString("hex")).toBe(
       candidate.ledgerTx.txId.toString("hex"),
     );
+  });
+
+  it("carries redeemer Data bytes exactly, map order and duplicates included", () => {
+    // {h'ff': 1, h'00': 2, h'ff': 3}: out of key order, with a duplicate key.
+    const data = Buffer.from("a341ff014100 0241ff03".replace(/ /g, ""), "hex");
+    const candidate = makePhaseBCandidate({
+      scriptWitnesses: [plutusV3ScriptWitness(Buffer.from("010203", "hex"))],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: MidgardRedeemerTag.Mint, index: 0n, data },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    expect(candidate.ledgerTx.redeemers[0].dataCbor).toStrictEqual(data);
+
+    const restored = deserializePhaseACandidate(
+      structuredClone(serializePhaseACandidate(candidate)),
+    );
+
+    expect(restored.ledgerTx.redeemers[0].dataCbor).toStrictEqual(data);
   });
 
   it("never exposes oversized Buffer backing stores to structured clone", () => {

@@ -5,6 +5,8 @@
 \section{Time model}
 \label{h:time-model}
 
+\paragraph{Implementation conformance.} The fixed-shift account below is the original scheduling model. The current scheduler permits permissionless end-of-shift advancement once the transaction lower bound reaches the previous shift end, and sets the next shift start to that lower bound. Block commitment and settlement attachment authenticate the appointed operator without requiring containment in the nominal shift. Thus the statement below that the state queue enforces shift containment is a design requirement, not a current validator predicate; see \cref{h:scheduler}.
+
 Midgard partitions time in two different ways:
 \begin{description}
     \item[Operator shifts.] Predefined, non-overlapping time intervals assigned to operators by the Midgard scheduler.

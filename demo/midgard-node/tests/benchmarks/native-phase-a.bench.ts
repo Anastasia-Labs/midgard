@@ -8,7 +8,8 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { QueuedTx } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -120,12 +121,14 @@ const benchmarkOptions = {
 
 describe("native tx phase-A benchmark", () => {
   it("measures phase-A throughput for native payloads", async () => {
-    const fixtures = JSON.parse(
+    const [fixture] = JSON.parse(
       fs.readFileSync(fixturePath, "utf8"),
     ) as readonly TxFixture[];
-    const txBytes = fixtures
-      .slice(0, TX_LIMIT)
-      .map((tx) => Buffer.from(tx.cborHex, "hex"));
+    // txs_0.json holds one self-transfer; the benchmark validates it TX_LIMIT
+    // times (phase A is per transaction, so repeats are all accepted).
+    const txBytes = Array.from({ length: TX_LIMIT }, () =>
+      Buffer.from(fixture!.cborHex, "hex"),
+    );
 
     const nativeCanonicalCbors = txBytes.map((bytes) =>
       cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),

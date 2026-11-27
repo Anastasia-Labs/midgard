@@ -1,14 +1,11 @@
-import "./utils.js";
-
 import { createHash } from "node:crypto";
 
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
-
-import { provideDatabaseLayers } from "./utils.js";
+import { NodeSchema, TxAdmissionsDB } from "../src/database/index.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 describe("durable admission monotone timestamps", () => {
   it("survives a database clock observation behind the admitted row", async () => {
@@ -16,13 +13,10 @@ describe("durable admission monotone timestamps", () => {
       provideDatabaseLayers(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* MigrationRunner.migrate({
-            appVersion: "tx-admissions-monotone-timestamps-test",
-            actor: "tx-admissions-monotone-timestamps-test",
-          });
-          yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
+          yield* NodeSchema.ensure;
+          yield* resetApplicationTables;
 
-          const txCanonicalCbor = Buffer.from("phase1-monotone-timestamp");
+          const txCanonicalCbor = Buffer.from("monotone-timestamp");
           const txId = createHash("sha256").update(txCanonicalCbor).digest();
           const admitted = yield* TxAdmissionsDB.tryInsert({
             txId,
@@ -44,8 +38,6 @@ describe("durable admission monotone timestamps", () => {
             txId,
             txCanonicalCbor,
             submitSource: "native",
-            currentBacklog: 1n,
-            maxBacklog: 10,
           });
           expect(duplicate.kind).toBe("duplicate");
           expect(duplicate.entry.last_seen_at.getTime()).toBeGreaterThanOrEqual(
@@ -55,7 +47,7 @@ describe("durable admission monotone timestamps", () => {
             future[0]!.future.getTime(),
           );
 
-          const secondCbor = Buffer.from("phase1-monotone-timestamp-second");
+          const secondCbor = Buffer.from("monotone-timestamp-second");
           const secondTxId = createHash("sha256").update(secondCbor).digest();
           const second = yield* TxAdmissionsDB.tryInsert({
             txId: secondTxId,
@@ -112,8 +104,6 @@ describe("durable admission monotone timestamps", () => {
             txId,
             txCanonicalCbor,
             submitSource: "native",
-            currentBacklog: 0n,
-            maxBacklog: 10,
           });
           expect(idempotentSubmit).toMatchObject({
             kind: "duplicate",
@@ -125,6 +115,23 @@ describe("durable admission monotone timestamps", () => {
           expect(idempotentSubmit.entry.terminal_at?.getTime()).toBe(
             terminalAt,
           );
+          const [microbatchSubmit] = yield* TxAdmissionsDB.admitReservedBatch([
+            {
+              txId,
+              txCanonicalCbor,
+              submitSource: "native",
+            },
+          ]);
+          expect(microbatchSubmit).toMatchObject({
+            _tag: "Success",
+            result: {
+              kind: "duplicate",
+              entry: {
+                status: TxAdmissionsDB.Status.Rejected,
+                request_count: 4n,
+              },
+            },
+          });
           const rejectionCounts = yield* sql<{
             readonly count: bigint | number | string;
           }>`SELECT COUNT(*) AS count FROM tx_rejections`;

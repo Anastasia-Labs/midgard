@@ -1,0 +1,231 @@
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
+
+import { stackPaths } from "./deployment.js";
+import {
+  readJsonIfPresent,
+  type StackJournal,
+  writeDurableJson,
+} from "./journal.js";
+import type { StackProcesses } from "./process.js";
+import type { StackStep } from "./workflow.js";
+
+/**
+ * A fresh identity may only start over a store that holds no deployment. The
+ * node's schema creates its own schema record, one calibration seed row
+ * and, for the L1 follower's tables, a schema record, a table catalog and
+ * one writer seed row, plus the follower write gate's seed row, so a
+ * never-deployed database with its schema is fresh. A writer row past its seed,
+ * or a gate row a driver has bumped, means a node has run here. Never clear a store.
+ */
+export const FRESH_STORAGE_QUERY =
+  "DO $$ DECLARE relation record; populated boolean; BEGIN FOR relation IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('node_schema', 'l1_follower_schemas', 'l1_follower_tables') LOOP IF relation.tablename = 'commit_build_calibration' THEN SELECT EXISTS(SELECT 1 FROM public.commit_build_calibration WHERE NOT (id = 1 AND ms_per_tx_ewma = 1.0 AND sample_count = 0)) INTO populated; ELSIF relation.tablename = 'l1_follower_writer' THEN SELECT EXISTS(SELECT 1 FROM public.l1_follower_writer WHERE NOT (id = 1 AND writer_epoch = 0 AND next_generation = 0)) INTO populated; ELSIF relation.tablename = 'node_follower_write_gate' THEN SELECT EXISTS(SELECT 1 FROM public.node_follower_write_gate WHERE NOT (singleton AND epoch = 0 AND applied_generation IS NULL AND pending_reason IS NULL)) INTO populated; ELSE EXECUTE format('SELECT EXISTS(SELECT 1 FROM public.%I LIMIT 1)', relation.tablename) INTO populated; END IF; IF populated THEN RAISE EXCEPTION 'Fresh deployment requires empty local storage: %', relation.tablename; END IF; END LOOP; END $$; SELECT '{\"empty\":true}'::json";
+
+export const IDENTITY_TABLE_QUERY =
+  "SELECT json_build_object('exists', to_regclass('public.full_stack_controller_identity') IS NOT NULL)";
+export const IDENTITY_ROW_QUERY =
+  "SELECT row_to_json(identity) FROM full_stack_controller_identity identity";
+/**
+ * The protocol initializations the node's L1 follower saw land: the
+ * transactions that spent the deployment's one-shot outref
+ * (`l1_protocol_init`, kept past pruning). A store attaches to an
+ * initialized deployment only when its follower saw that deployment's
+ * initialization, the manifest's `initProtocol.txHash`.
+ */
+export const ATTACHMENT_QUERY =
+  "SELECT json_build_object('initTxHashes', coalesce(json_agg(encode(tx_hash, 'hex') ORDER BY tx_hash), '[]'::json)) FROM l1_protocol_init";
+/** Records the identity once; a second writer's row is kept and returned, never replaced. */
+export const createIdentityQuery = (marker: {
+  runId: string;
+  hubOraclePolicyId: string;
+}) =>
+  `CREATE TABLE IF NOT EXISTS full_stack_controller_identity (singleton boolean PRIMARY KEY CHECK(singleton), run_id text NOT NULL, hub_oracle_policy_id text NOT NULL); INSERT INTO full_stack_controller_identity VALUES (true,'${marker.runId}','${marker.hubOraclePolicyId}') ON CONFLICT DO NOTHING; ${IDENTITY_ROW_QUERY}`;
+
+const markerFile = (processes: StackProcesses) =>
+  join(processes.config.nodeRoot, "db/full-stack-identity.json");
+const journalFile = (processes: StackProcesses) =>
+  join(processes.config.runDirectory, "stack-journal.json");
+/** The deployment's hub-oracle policy id, from the stack's manifest file. */
+const manifestHubOraclePolicyId = async (processes: StackProcesses) =>
+  (
+    (await readJsonIfPresent(stackPaths(processes).manifest)) as
+      | { contracts?: { hubOracleMint?: { scriptHash?: string } } }
+      | undefined
+  )?.contracts?.hubOracleMint?.scriptHash;
+async function sql(processes: StackProcesses, query: string) {
+  return processes.compose("storage-identity", [
+    "exec",
+    "-T",
+    "postgres",
+    "psql",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-U",
+    processes.env.POSTGRES_USER!,
+    "-d",
+    processes.env.POSTGRES_DB!,
+    "-At",
+    "-c",
+    query,
+  ]);
+}
+export async function assertPreservedStorage(processes: StackProcesses) {
+  const journal = (await readJsonIfPresent(
+    journalFile(processes),
+  )) as StackJournal;
+  const marker = (await readJsonIfPresent(markerFile(processes))) as
+    | { runId: string; hubOraclePolicyId: string }
+    | undefined;
+  if (
+    marker ||
+    journal.steps.services ||
+    journal.steps["storage-identity"]?.status === "complete"
+  ) {
+    const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
+    // A lost store has no identity table at all, which psql reports only as a failed query.
+    const table = (await sql(processes, IDENTITY_TABLE_QUERY)) as {
+      exists: boolean;
+    };
+    const observed = table.exists
+      ? ((await sql(processes, IDENTITY_ROW_QUERY)) as {
+          run_id: string;
+          hub_oracle_policy_id: string;
+        } | null)
+      : null;
+    if (
+      observed?.run_id !== journal.runId ||
+      observed.hub_oracle_policy_id !== hubOraclePolicyId
+    )
+      throw new Error(
+        "Postgres controller identity row is missing or changed; preserve the deployment",
+      );
+    if (
+      marker &&
+      (marker.runId !== journal.runId ||
+        marker.hubOraclePolicyId !== hubOraclePolicyId)
+    )
+      throw new Error("Durable node storage identity changed");
+    if (!marker)
+      await writeDurableJson(markerFile(processes), {
+        runId: observed.run_id,
+        hubOraclePolicyId: observed.hub_oracle_policy_id,
+      });
+    return;
+  }
+  const paths = stackPaths(processes);
+  const manifest = (await readJsonIfPresent(paths.manifest)) as
+    | {
+        steps?: { initProtocol?: { status?: string; txHash?: string } };
+      }
+    | undefined;
+  // A second instance's attach step, like initialize, put the manifest there
+  // over storage that was fresh before it.
+  if (
+    manifest?.steps?.initProtocol?.status === "complete" &&
+    !journal.steps.initialize &&
+    !journal.steps.attach
+  ) {
+    const initTxHash = manifest.steps.initProtocol.txHash;
+    const observed = (await sql(processes, ATTACHMENT_QUERY)) as {
+      initTxHashes: string[];
+    } | null;
+    if (
+      initTxHash === undefined ||
+      !/^[0-9a-f]{64}$/u.test(initTxHash) ||
+      observed?.initTxHashes.includes(initTxHash) !== true
+    )
+      throw new Error(
+        "Existing deployment cannot attach to missing or mismatched local event history",
+      );
+  }
+  if (
+    manifest?.steps?.initProtocol?.status === "complete" ||
+    journal.steps.nonce ||
+    journal.steps.initialize
+  )
+    return;
+  await sql(processes, FRESH_STORAGE_QUERY);
+  const files = await readdir(join(processes.config.nodeRoot, "db")).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    },
+  );
+  if (files.length)
+    throw new Error(
+      "Fresh deployment cannot reuse populated node db directory",
+    );
+}
+export async function establishStorageIdentity(processes: StackProcesses) {
+  const journal = (await readJsonIfPresent(
+    journalFile(processes),
+  )) as StackJournal;
+  const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
+  if (
+    hubOraclePolicyId === undefined ||
+    !/^[0-9a-f]{56}$/.test(hubOraclePolicyId) ||
+    !/^[0-9a-f-]{36}$/.test(journal.runId)
+  )
+    throw new Error("Invalid storage identity");
+  const marker = { runId: journal.runId, hubOraclePolicyId };
+  const prior = await readJsonIfPresent(markerFile(processes));
+  if (prior !== undefined) {
+    await assertPreservedStorage(processes);
+    return;
+  }
+  const observed = (await sql(processes, createIdentityQuery(marker))) as {
+    run_id: string;
+    hub_oracle_policy_id: string;
+  } | null;
+  if (
+    observed?.run_id !== marker.runId ||
+    observed.hub_oracle_policy_id !== marker.hubOraclePolicyId
+  )
+    throw new Error("Storage identity differs from this deployment");
+  await writeDurableJson(markerFile(processes), marker);
+  await assertPreservedStorage(processes);
+}
+
+export function storageIdentityStep(processes: StackProcesses): StackStep {
+  return {
+    id: "storage-identity",
+    reconcile: async (record) => {
+      if ((await readJsonIfPresent(markerFile(processes))) !== undefined) {
+        await assertPreservedStorage(processes);
+        return { status: "complete", data: { preserved: true } };
+      }
+      if (record) {
+        const observed = (await sql(processes, IDENTITY_TABLE_QUERY)) as {
+          exists: boolean;
+        };
+        if (observed.exists) {
+          const journal = (await readJsonIfPresent(
+            journalFile(processes),
+          )) as StackJournal;
+          const hubOraclePolicyId = await manifestHubOraclePolicyId(processes);
+          const marker = (await sql(processes, IDENTITY_ROW_QUERY)) as {
+            run_id: string;
+            hub_oracle_policy_id: string;
+          } | null;
+          if (
+            marker?.run_id !== journal.runId ||
+            marker.hub_oracle_policy_id !== hubOraclePolicyId
+          )
+            throw new Error("Storage identity differs from this deployment");
+          await writeDurableJson(markerFile(processes), {
+            runId: marker.run_id,
+            hubOraclePolicyId: marker.hub_oracle_policy_id,
+          });
+          return { status: "complete", data: { preserved: true } };
+        }
+        if (record.status === "complete")
+          throw new Error("Previously established storage identity is missing");
+      }
+      return { status: "retry" };
+    },
+    execute: async () => {
+      await establishStorageIdentity(processes);
+      return { preserved: true };
+    },
+  };
+}

@@ -1,0 +1,291 @@
+import { defineDeploymentFamily } from "../members.types.js";
+
+export const protocolAuthorityMembers = defineDeploymentFamily("protocol", {
+  referenceScriptAuthMint: {
+    purpose: "mint",
+    reference: {
+      role: "reference-script-auth minting",
+      token: "ReferenceScriptAuthMint",
+    },
+    commands: ["protocol-init", "reference-script-auth"],
+    validatorTitle: null,
+    familyPaths: [],
+  },
+  hubOracleMint: {
+    purpose: "mint",
+    reference: { role: "hub-oracle minting", token: "HubOracleMint" },
+    commands: ["protocol-init", "hub-oracle"],
+    validatorTitle: "hub_oracle.mint.mint",
+    familyPaths: [],
+  },
+  daParamsGovernorSpend: {
+    purpose: "spend",
+    reference: {
+      role: "da-params-governor spending",
+      token: "DaParamsGovernorSpend",
+    },
+    commands: ["da"],
+    validatorTitle: "da_params_governor.da_params_governor.spend",
+    familyPaths: [],
+  },
+  daParamsGovernorMint: {
+    purpose: "mint",
+    reference: {
+      role: "da-params-governor minting",
+      token: "DaParamsGovernorMint",
+    },
+    commands: ["protocol-init", "da"],
+    validatorTitle: "da_params_governor.da_params_governor.mint",
+    familyPaths: [],
+  },
+  daBondPoolSpend: {
+    purpose: "spend",
+    reference: { role: "da-bond-pool spending", token: "DaBondPoolSpend" },
+    commands: ["da"],
+    validatorTitle: "da_bond_pool.da_bond_pool.spend",
+    familyPaths: [],
+  },
+  daBondPoolMint: {
+    purpose: "mint",
+    reference: { role: "da-bond-pool minting", token: "DaBondPoolMint" },
+    commands: ["protocol-init", "da"],
+    validatorTitle: "da_bond_pool.da_bond_pool.mint",
+    familyPaths: [],
+  },
+  daAttestationSpend: {
+    purpose: "spend",
+    reference: { role: "da-attestation spending", token: "DaAttestationSpend" },
+    commands: ["da"],
+    validatorTitle: "da_attestation.da_attestation.spend",
+    familyPaths: [],
+  },
+  daAttestationMint: {
+    purpose: "mint",
+    reference: { role: "da-attestation minting", token: "DaAttestationMint" },
+    commands: ["protocol-init", "da"],
+    validatorTitle: "da_attestation.da_attestation.mint",
+    familyPaths: [],
+  },
+  stateQueueSpend: {
+    purpose: "spend",
+    reference: { role: "state-queue spending", token: "StateQueueSpend" },
+    commands: ["state-queue"],
+    validatorTitle: "state_queue.spend.spend",
+    familyPaths: [],
+  },
+  stateQueueMint: {
+    purpose: "mint",
+    reference: { role: "state-queue minting", token: "StateQueueMint" },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue.mint.mint",
+    familyPaths: [],
+  },
+  stateQueueCommitWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "state-queue commit withdrawal",
+      token: "StateQueueCommitYield",
+    },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue_yields.commit.withdraw",
+    familyPaths: [],
+  },
+  stateQueueUnattestedTimeoutWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "state-queue unattested-timeout withdrawal",
+      token: "StateQueueUnattestedYield",
+    },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue_yields.remove_unattested.withdraw",
+    familyPaths: [],
+  },
+  stateQueueUnavailableTimeoutWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "state-queue unavailable-timeout withdrawal",
+      token: "StateQueueUnavailableYield",
+    },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue_yields.remove_unavailable.withdraw",
+    familyPaths: [],
+  },
+  stateQueueFraudRemovalWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "state-queue fraud-removal withdrawal",
+      token: "StateQueueFraudRemovalYield",
+    },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue_yields.remove_fraudulent.withdraw",
+    familyPaths: [],
+  },
+  stateQueueMergeWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "state-queue merge withdrawal",
+      token: "StateQueueMergeYield",
+    },
+    commands: ["protocol-init", "state-queue"],
+    validatorTitle: "state_queue_yields.merge.withdraw",
+    familyPaths: [],
+  },
+  schedulerSpend: {
+    purpose: "spend",
+    reference: { role: "scheduler spending", token: "SchedulerSpend" },
+    commands: ["scheduler"],
+    validatorTitle: "scheduler.spend.spend",
+    familyPaths: [],
+  },
+  schedulerMint: {
+    purpose: "mint",
+    reference: { role: "scheduler minting", token: "SchedulerMint" },
+    commands: ["protocol-init", "scheduler"],
+    validatorTitle: "scheduler.mint.mint",
+    familyPaths: [],
+  },
+  registeredOperatorsSpend: {
+    purpose: "spend",
+    reference: {
+      role: "registered-operators spending",
+      token: "RegisteredOperatorsSpend",
+    },
+    commands: ["registered-operators"],
+    validatorTitle: "operator_directory/registered_operators.spend.spend",
+    familyPaths: [],
+  },
+  registeredOperatorsMint: {
+    purpose: "mint",
+    reference: {
+      role: "registered-operators minting",
+      token: "RegisteredOperatorsMint",
+    },
+    commands: ["protocol-init", "registered-operators"],
+    validatorTitle: "operator_directory/registered_operators.mint.mint",
+    familyPaths: [],
+  },
+  activeOperatorsSpend: {
+    purpose: "spend",
+    reference: {
+      role: "active-operators spending",
+      token: "ActiveOperatorsSpend",
+    },
+    commands: ["active-operators"],
+    validatorTitle: "operator_directory/active_operators.spend.spend",
+    familyPaths: [],
+  },
+  activeOperatorsMint: {
+    purpose: "mint",
+    reference: {
+      role: "active-operators minting",
+      token: "ActiveOperatorsMint",
+    },
+    commands: ["protocol-init", "active-operators"],
+    validatorTitle: "operator_directory/active_operators.mint.mint",
+    familyPaths: [],
+  },
+  retiredOperatorsSpend: {
+    purpose: "spend",
+    reference: {
+      role: "retired-operators spending",
+      token: "RetiredOperatorsSpend",
+    },
+    commands: ["retired-operators"],
+    validatorTitle: "operator_directory/retired_operators.spend.spend",
+    familyPaths: [],
+  },
+  retiredOperatorsMint: {
+    purpose: "mint",
+    reference: {
+      role: "retired-operators minting",
+      token: "RetiredOperatorsMint",
+    },
+    commands: ["protocol-init", "retired-operators"],
+    validatorTitle: "operator_directory/retired_operators.mint.mint",
+    familyPaths: [],
+  },
+  settlementSpend: {
+    purpose: "spend",
+    reference: null,
+    commands: [],
+    validatorTitle: "settlement.spend.spend",
+    familyPaths: [],
+  },
+  settlementMint: {
+    purpose: "mint",
+    reference: { role: "settlement minting", token: "SettlementMint" },
+    commands: ["settlement"],
+    validatorTitle: "settlement.mint.mint",
+    familyPaths: [],
+  },
+  correctionLockSpend: {
+    purpose: "spend",
+    reference: {
+      role: "correction-lock spending",
+      token: "CorrectionLockSpend",
+    },
+    commands: ["state-queue"],
+    validatorTitle: "correction_lock.spend.spend",
+    familyPaths: [],
+  },
+  availabilityChallengeSpend: {
+    purpose: "spend",
+    reference: {
+      role: "availability-challenge spending",
+      token: "AvailabilityChallengeSpend",
+    },
+    commands: [],
+    validatorTitle: "availability_challenge.availability_challenge.spend",
+    familyPaths: [],
+  },
+  availabilityChallengeMint: {
+    purpose: "mint",
+    reference: {
+      role: "availability-challenge minting",
+      token: "AvailabilityChallengeMint",
+    },
+    commands: ["da"],
+    validatorTitle: "availability_challenge.availability_challenge.mint",
+    familyPaths: [],
+  },
+  availabilityChallengeOpenWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "availability-challenge open withdrawal",
+      token: "AvailabilityChallengeOpenYield",
+    },
+    commands: [],
+    validatorTitle: "availability_challenge_yields.open.withdraw",
+    familyPaths: [],
+  },
+  availabilityChallengeSettleWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "availability-challenge settle withdrawal",
+      token: "AvailabilityChallengeSettleYield",
+    },
+    commands: [],
+    validatorTitle: "availability_challenge_yields.settle.withdraw",
+    familyPaths: [],
+  },
+  availabilityChallengeCloseWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "availability-challenge close withdrawal",
+      token: "AvailabilityChallengeCloseYield",
+    },
+    commands: [],
+    validatorTitle: "availability_challenge_yields.close.withdraw",
+    familyPaths: [],
+  },
+  availabilityChallengeTimeoutWithdraw: {
+    purpose: "withdraw",
+    reference: {
+      role: "availability-challenge timeout withdrawal",
+      token: "AvailabilityChallengeExpiryYield",
+    },
+    commands: [],
+    validatorTitle: "availability_challenge_yields.timeout.withdraw",
+    familyPaths: [],
+  },
+});

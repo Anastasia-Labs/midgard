@@ -1,0 +1,234 @@
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../field-opening.publish-fault-proof-field-carriage.js";
+import {
+  requireLinearFaultReferenceScript,
+  requireLinearFaultStepState,
+  requireLinearFaultThreadUtxo,
+} from "../linear-fault-family.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import type { MintItemNonCanonicalContracts } from "./contracts.js";
+import { nextMintFieldCursor } from "./field-scan.js";
+import {
+  type MintFieldCursor,
+  type MintItemEvidence,
+  mintItemScanControlData,
+} from "./mint-item-non-canonical.js";
+import {
+  MintItemStep02DatumSchema,
+  MintItemStep02RedeemerSchema,
+  MintItemStep03DatumSchema,
+} from "./schemas.js";
+
+export const buildMintItemNonCanonicalStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo: suppliedCertificateUtxo,
+  certificateReferenceScriptUtxo,
+  referenceScriptUtxo,
+  materials,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MintItemNonCanonicalContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: MintItemEvidence;
+  readonly nativeTxCompactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly certificateReferenceScriptUtxo?: UTxO;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
+}) => {
+  const stepIndex = 1;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
+    lucid,
+    contracts,
+    categoryId,
+    family: "mint-item-non-canonical",
+    stepIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepState<{
+    subject: unknown;
+    item_index: bigint;
+    field_cursor: MintFieldCursor | null;
+  }>({
+    threadUtxo,
+    signer,
+    schema: MintItemStep02DatumSchema as never,
+    family: "mint-item-non-canonical",
+    stepIndex,
+  });
+  if (state.item_index !== BigInt(evidence.itemIndex))
+    throw new Error(
+      "mint-item-non-canonical: opening coordinate differs from thread",
+    );
+  const next = nextMintFieldCursor(evidence, state.field_cursor);
+  const nextStepIndex = next.terminal ? 2 : 1;
+  const items = decodeMidgardFieldPreimage(
+    Buffer.from(evidence.fieldPreimageHex, "hex"),
+  );
+  const planned = planFaultProofFieldOpening({
+    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
+    fieldIndex: evidence.fieldIndex,
+    anchorTxId: evidence.subject.transaction_id,
+    nativeTxCompactCbor,
+    itemCbors: items,
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: "mint-item-non-canonical field opening",
+  });
+  signer.selectWallet(lucid);
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      materials,
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.proofMaterialsAddress,
+      label: "mint-item-non-canonical field opening",
+    }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
+  const certificateUtxo =
+    suppliedCertificateUtxo ??
+    (planned.plan.tier === "Certified"
+      ? await reuseOrCertifyFaultProofFieldCarriage({
+          lucid,
+          network: lucid.config().network!,
+          signer,
+          planned,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          certificateMintingScript:
+            contracts.fieldPreimageCertificateMintingScript,
+          certificateReferenceScriptUtxo,
+          missingReferenceScript:
+            "mint-item-non-canonical: certified opening requires certificate reference script",
+          chunkUtxos: carriageUtxos,
+          compactCbor: nativeTxCompactCbor,
+          witnessSetCompactCbor,
+        })
+      : undefined);
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[1].spendingScriptHash,
+    family: "mint-item-non-canonical",
+    stepIndex,
+  });
+  const nextDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: next.terminal
+        ? {
+            subject: evidence.subject,
+            item_index: BigInt(evidence.itemIndex),
+            item_length: BigInt(evidence.itemLength),
+            item_hash: evidence.itemHash,
+            chunk_hashes: evidence.chunkHashes,
+            control: mintItemScanControlData(evidence.scanControls[0]!),
+            outcome: 0n,
+          }
+        : {
+            subject: evidence.subject,
+            item_index: BigInt(evidence.itemIndex),
+            field_cursor: next.cursor,
+          },
+    } as never,
+    (next.terminal
+      ? MintItemStep03DatumSchema
+      : MintItemStep02DatumSchema) as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: "mint-item-non-canonical field opening",
+    });
+    requireOwnSpendPurpose(ctx, threadUtxo, "mint-item-non-canonical step-02");
+    const inputIndex = requireInputIndex(
+      ctx,
+      threadUtxo,
+      "mint-item-non-canonical",
+    );
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      "mint-item-non-canonical step-02 output",
+    );
+    return Data.to(
+      {
+        Continue: [
+          { input_index: inputIndex, output_index: outputIndex, opening },
+        ],
+      } as never,
+      MintItemStep02RedeemerSchema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const transaction = await buildLinearFaultContinue({
+    lucid,
+    signer,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[1].spendingScript,
+    stepRole: "mint-item-non-canonical step-02",
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs:
+      certificateUtxo === undefined ? [] : [certificateUtxo],
+  });
+  if (outputIndex === undefined)
+    throw new Error("mint-item-non-canonical: step-02 layout unresolved");
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+    carriageTier: planned.plan.tier,
+    terminal: next.terminal,
+    publishedCarriageUtxos: carriageUtxos,
+    certificateUtxo,
+  };
+};

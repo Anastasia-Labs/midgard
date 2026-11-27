@@ -1,0 +1,60 @@
+import type { SettlementFailingJob } from "../database/settlement.js";
+import type { SettlementHealth } from "./settlement.reconcile-attempt.js";
+
+/** Worker runs that must die back to back before readiness names settlement.
+ * One or two deaths are a provider or Postgres blip the replacement absorbs;
+ * three in a row is a crash loop no restart will fix. */
+export const SETTLEMENT_WORKER_FAILURE_STREAK = 3;
+/** How long the streak must last. Longer than the chaos drills' L1 provider
+ * (60 s) and Postgres (30 s) outages, which report their own reasons, so a
+ * worker that recovers after one never takes the node out of service. */
+export const SETTLEMENT_WORKER_FAILURE_WINDOW_MS = 120_000;
+/** Completed settlement ticks in a row, within one worker run, that forget
+ * the streak (fibers/settlement.ts). Staying up while every tick fails is not
+ * recovery, and neither is one cheap tick (a pending body's reconcile, an
+ * eligibility wait) before the run dies building a job: a run that does that
+ * every time would otherwise clear the streak on each restart and never reach
+ * readiness. */
+export const SETTLEMENT_WORKER_RECOVERY_TICKS = 3;
+
+const shortDetail = (detail: string) =>
+  (detail.split("\n", 1)[0] ?? "").trim().slice(0, 160);
+
+/** The `/readyz` detail naming stuck settlement jobs (settlement-retry.ts):
+ * how many, and the earliest-due one's kind, event, phase and last error.
+ * A detail, not a reason: a stuck payout does not stop admission or block
+ * production, so the node stays ready while it raises the alarm. */
+export const settlementStuckDetail = (stuck: {
+  readonly count: number;
+  readonly first: SettlementFailingJob | undefined;
+}): string | undefined =>
+  stuck.first === undefined
+    ? undefined
+    : `settlement_jobs_stuck:${stuck.count.toString()}:${stuck.first.kind}:${stuck.first.event_id}:${stuck.first.phase}:${shortDetail(stuck.first.last_error)}`;
+
+/** The `/readyz` detail naming the attempt that blocks new settlement work
+ * while its reconcile has failed `SETTLEMENT_JOB_FAILURE_CAP` times in a row.
+ * A detail for the same reason as a stuck job. */
+export const settlementReconcileStuckDetail = (
+  health: SettlementHealth,
+): string | undefined =>
+  health.reconcileStuck === undefined
+    ? undefined
+    : `settlement_reconcile_stuck:${health.reconcileStuck.txHash}:${shortDetail(health.reconcileStuck.lastError)}`;
+
+/** Job-level failures, eligibility waits and pending confirmations are payout
+ * delays and stay out of readiness reasons (a stuck job is a detail, above);
+ * only a worker that cannot stay up is a reason. */
+export const settlementReadinessReason = (
+  health: SettlementHealth,
+  now: number,
+): string | undefined => {
+  const failures = health.workerFailures;
+  if (
+    failures === undefined ||
+    failures.count < SETTLEMENT_WORKER_FAILURE_STREAK ||
+    now - failures.since < SETTLEMENT_WORKER_FAILURE_WINDOW_MS
+  )
+    return undefined;
+  return `settlement_worker_failing:${failures.count}:${shortDetail(failures.last)}`;
+};

@@ -2,9 +2,18 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
+import {
+  isMidgardConsensusProfile,
+  MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_CONSENSUS_PROFILE,
+  MIDGARD_PROTOCOL_INFO_API_VERSION,
+  type MidgardConsensusProfile,
+} from "@al-ft/midgard-core/consensus-profile";
 import type { Network } from "@lucid-evolution/lucid";
 
-export const PROTOCOL_INFO_API_VERSION = 1 as const;
+import { positiveSafeInteger } from "../artifact-schema.js";
+
+export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_API_VERSION;
 
 type ProtocolInfoConfig = {
   readonly NETWORK: Network;
@@ -14,12 +23,12 @@ type ProtocolInfoConfig = {
   readonly VALIDATION_STRICTNESS_PROFILE: string;
 };
 
-export type ProtocolInfo = {
-  readonly apiVersion: typeof PROTOCOL_INFO_API_VERSION;
+type ProtocolInfoCommon = {
+  /** The deployment's hub-oracle policy id (56 lowercase hex). */
+  readonly hubOraclePolicyId: string;
   readonly network: Network;
-  readonly midgardNativeTxVersion: number;
   readonly currentSlot: string;
-  readonly supportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
+  readonly codecSupportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
   readonly protocolFeeParameters: {
     readonly minFeeA: string;
     readonly minFeeB: string;
@@ -31,6 +40,13 @@ export type ProtocolInfo = {
     readonly strictnessProfile: string;
     readonly localValidationIsAuthoritative: false;
   };
+};
+
+export type ProtocolInfo = ProtocolInfoCommon & {
+  readonly apiVersion: typeof PROTOCOL_INFO_API_VERSION;
+  readonly midgardNativeTxVersion: 1;
+  readonly consensusProfile: MidgardConsensusProfile;
+  readonly supportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
 };
 
 const stringifyNonNegativeBigInt = (
@@ -53,9 +69,11 @@ const stringifyCurrentSlot = (slot: number | bigint): string => {
   return slot.toString(10);
 };
 
-const asPositiveSafeInteger = (value: number, fieldName: string): number => {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a positive safe integer`);
+const hubOraclePolicyIdOf = (value: unknown): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{56}$/u.test(value)) {
+    throw new Error(
+      "hubOraclePolicyId must be the deployment's 28-byte hub-oracle policy id in lowercase hex",
+    );
   }
   return value;
 };
@@ -63,30 +81,48 @@ const asPositiveSafeInteger = (value: number, fieldName: string): number => {
 export const encodeProtocolInfo = ({
   nodeConfig,
   currentSlot,
+  hubOraclePolicyId,
+  consensusProfile = MIDGARD_CONSENSUS_PROFILE,
 }: {
   readonly nodeConfig: ProtocolInfoConfig;
   readonly currentSlot: number | bigint;
-}): ProtocolInfo => ({
-  apiVersion: PROTOCOL_INFO_API_VERSION,
-  network: nodeConfig.NETWORK,
-  midgardNativeTxVersion: asPositiveSafeInteger(
-    Number(MIDGARD_NATIVE_TX_VERSION),
-    "MIDGARD_NATIVE_TX_VERSION",
-  ),
-  currentSlot: stringifyCurrentSlot(currentSlot),
-  supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  protocolFeeParameters: {
-    minFeeA: stringifyNonNegativeBigInt(nodeConfig.MIN_FEE_A, "MIN_FEE_A"),
-    minFeeB: stringifyNonNegativeBigInt(nodeConfig.MIN_FEE_B, "MIN_FEE_B"),
-  },
-  submissionLimits: {
-    maxSubmitTxCborBytes: asPositiveSafeInteger(
-      nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
-      "MAX_SUBMIT_TX_CBOR_BYTES",
-    ),
-  },
-  validation: {
-    strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
-    localValidationIsAuthoritative: false,
-  },
-});
+  readonly hubOraclePolicyId: unknown;
+  readonly consensusProfile?: MidgardConsensusProfile;
+}): ProtocolInfo => {
+  if (!isMidgardConsensusProfile(consensusProfile)) {
+    throw new Error("Unsupported consensus profile");
+  }
+  const configuredMax = positiveSafeInteger(
+    nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+    "MAX_SUBMIT_TX_CBOR_BYTES",
+  );
+  if (configuredMax > MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes) {
+    throw new Error(
+      "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
+    );
+  }
+  const common: ProtocolInfoCommon = {
+    hubOraclePolicyId: hubOraclePolicyIdOf(hubOraclePolicyId),
+    network: nodeConfig.NETWORK,
+    currentSlot: stringifyCurrentSlot(currentSlot),
+    codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    protocolFeeParameters: {
+      minFeeA: stringifyNonNegativeBigInt(nodeConfig.MIN_FEE_A, "MIN_FEE_A"),
+      minFeeB: stringifyNonNegativeBigInt(nodeConfig.MIN_FEE_B, "MIN_FEE_B"),
+    },
+    submissionLimits: {
+      maxSubmitTxCborBytes: configuredMax,
+    },
+    validation: {
+      strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
+      localValidationIsAuthoritative: false,
+    },
+  };
+  return {
+    ...common,
+    apiVersion: PROTOCOL_INFO_API_VERSION,
+    midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_VERSION) as 1,
+    consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+    supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  };
+};

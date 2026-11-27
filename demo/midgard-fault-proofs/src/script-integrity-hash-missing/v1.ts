@@ -1,0 +1,249 @@
+import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import type { CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
+import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
+import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
+import {
+  type FamilyAssemblyContext,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
+  type ManifestBoundFamilyWorkflow,
+} from "../workflow/family-definition.family-definition.js";
+import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import type { WorkflowRun } from "../workflow/workflow-run.js";
+import { createScriptIntegrityHashMissingTransactionPort } from "./actuator.create-script-integrity-hash-missing-transaction-port.js";
+import type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.resolve-field.js";
+import { scriptIntegrityHashMissingFieldRequirement } from "./actuator.script-integrity-hash-missing-field-requirement.js";
+import { admitScriptIntegrityHashMissingArtifact } from "./artifact.js";
+import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
+import { ScriptIntegrityStepDatums } from "./schemas.js";
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS = Object.freeze({
+  witnesses: {
+    computationThreadMint: "computationThreadMint",
+    fraudProofMint: "fraudProofMint",
+    phasMembershipWithdraw: "phasMembershipWithdraw",
+    chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+    pexcludesWithdraw: "pexcludesWithdraw",
+  },
+  fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+  removal: STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS,
+} as const);
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC: CursorFamilySpec<"scriptIntegrityHashMissing"> &
+  Readonly<{ stepCount: 7 }> = Object.freeze({
+  category: "scriptIntegrityHashMissing",
+  stepCount: 7,
+  successors: Object.freeze({
+    1: [2] as const,
+    2: [3] as const,
+    3: [4, 7] as const,
+    4: [4, 5] as const,
+    5: [5, 6] as const,
+    6: [6, 7] as const,
+    7: ["proof_token"] as const,
+  }),
+});
+
+export type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.js";
+import {
+  createFraudProofWorkflowRegistry,
+  runFraudProofWorkflowFromRetainedDa,
+} from "../workflow/orchestrator.js";
+
+export type ScriptIntegrityHashMissingRemovalReferenceScripts = Readonly<{
+  correctionLockSpend: UTxO;
+  stateQueueSpend: UTxO;
+  stateQueueMint: UTxO;
+  stateQueueFraudRemovalWithdraw: UTxO;
+  activeOperatorsSpend: UTxO;
+  activeOperatorsMint: UTxO;
+  retiredOperatorsSpend: UTxO;
+  retiredOperatorsMint: UTxO;
+  schedulerSpend: UTxO;
+}>;
+
+export type ManifestBoundScriptIntegrityHashMissingWorkflowConfig = Readonly<{
+  manifest: unknown;
+  blueprintJson: string;
+  deploymentInfo: unknown;
+  headerHash: string;
+  lucid: LucidEvolution;
+  signer: ResolvedProverSigner;
+  l1Source: FraudProofL1Source;
+  decisionDigest: string;
+  stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
+  referenceScripts: ScriptIntegrityHashMissingWorkflowReferenceScripts &
+    Readonly<{ removal: ScriptIntegrityHashMissingRemovalReferenceScripts }>;
+}>;
+
+export type ManifestBoundScriptIntegrityHashMissingWorkflow = Omit<
+  ManifestBoundFamilyWorkflow<"scriptIntegrityHashMissing", true, 7>,
+  "definition" | "replayer"
+> &
+  Readonly<{
+    transactions: CursorFamilyTransactionPort<"scriptIntegrityHashMissing">;
+    decisionDigest: string;
+  }>;
+
+const WITNESS_ROLES = MEMBERSHIP_WITNESS_ROLES;
+type BoundContext = FamilyAssemblyContext<
+  "scriptIntegrityHashMissing",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>;
+const createTransactionPort = (
+  context: BoundContext,
+): CursorFamilyTransactionPort<"scriptIntegrityHashMissing"> => {
+  const { binding, references } = context;
+  const chain = binding.resolvedContracts.contracts.scriptIntegrityHashMissing;
+  const certificate = binding.fieldPreimageCertificate;
+  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+  if (
+    chain === undefined ||
+    chain.steps.length !== 7 ||
+    certificate === null ||
+    stateQueuePolicyId === undefined
+  )
+    throw new Error(
+      "scriptIntegrityHashMissing manifest omitted required contracts",
+    );
+  const contracts: ScriptIntegrityHashMissingContracts = Object.freeze({
+    steps: chain.steps,
+    computationThread: binding.resolvedContracts.contracts.computationThread,
+    fraudProof: {
+      policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+      mintingScript:
+        binding.resolvedContracts.contracts.fraudProof.mintingScript,
+      spendingScriptAddress:
+        binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
+    },
+    fieldPreimageCertificatePolicyId: certificate.policyId,
+    fieldPreimageCertificateMintingScript: certificate.mintingScript,
+    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+    stateQueuePolicyId,
+  });
+  return createScriptIntegrityHashMissingTransactionPort({
+    binding,
+    lucid: context.lucid,
+    signer: context.signer,
+    contracts,
+    references,
+    lease: context.stateQueueMutationLeaseCoordinator,
+  });
+};
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION = defineFamily<
+  "scriptIntegrityHashMissing",
+  (typeof WITNESS_ROLES)[number],
+  true,
+  7
+>({
+  category: "scriptIntegrityHashMissing",
+  stepDatumSchemas: ScriptIntegrityStepDatums,
+  witnessRoles: WITNESS_ROLES,
+  fieldPreimageCertificate: true,
+  auxiliaryReferenceScripts:
+    SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS.removal,
+  replayer: () => SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+  adapter: {
+    kind: "cursor",
+    spec: SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
+    stepContractNames: cursorStepContractNames(
+      SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
+    ),
+    transactionPort: createTransactionPort,
+  },
+  fieldCarriage: [
+    {
+      requirementForAction: (context, { action, artifact }) => {
+        const { certificate, references } = context;
+        const planned = scriptIntegrityHashMissingFieldRequirement({
+          actionStage: action.input.stage,
+          artifact,
+          owner: context.signer.paymentKeyHash,
+        });
+        if (planned === null) return null;
+        const admitted = admitScriptIntegrityHashMissingArtifact(
+          artifact,
+          context.signer.paymentKeyHash,
+        );
+        return {
+          planned,
+          compactCbor: admitted.evidence.nativeTxCompactCbor,
+          witnessSetCompactCbor: admitted.evidence.witnessSetCompactCbor,
+          certificate: {
+            policyId: certificate.policyId,
+            mintingScript: certificate.mintingScript,
+            referenceScriptUtxo: references.fieldPreimageCertificateMint,
+          },
+        } satisfies FieldCarriageRequirement;
+      },
+    },
+  ],
+});
+
+export const createManifestBoundScriptIntegrityHashMissingWorkflow = async (
+  config: ManifestBoundScriptIntegrityHashMissingWorkflowConfig,
+): Promise<ManifestBoundScriptIntegrityHashMissingWorkflow> => {
+  if (!/^[0-9a-f]{64}$/u.test(config.decisionDigest))
+    throw new Error("scriptIntegrityHashMissing decision digest is malformed");
+  const { decisionDigest, ...assemblyConfig } = config;
+  const workflow = await assembleManifestBoundFamilyWorkflow(
+    SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
+    {
+      ...assemblyConfig,
+      auxiliaryReferenceScripts: config.referenceScripts.removal,
+    },
+  );
+  return Object.freeze({
+    ...workflow,
+    decisionDigest,
+  }) as ManifestBoundScriptIntegrityHashMissingWorkflow;
+};
+
+export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
+  workflow,
+  sources,
+  run,
+}: {
+  readonly workflow: ManifestBoundScriptIntegrityHashMissingWorkflow;
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly run: WorkflowRun;
+}): Promise<FraudProofWorkflowRunResult> => {
+  if (
+    workflowActuationAuthorizingDecisionDigest(run) !== workflow.decisionDigest
+  )
+    throw new Error(
+      "scriptIntegrityHashMissing run actuation permit changed decision digest",
+    );
+  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
+    headerHash: workflow.binding.definition.headerHash,
+  });
+  return await runFraudProofWorkflowFromRetainedDa({
+    hubOraclePolicyId: workflow.binding.hubOraclePolicyId,
+    observation,
+    sources,
+    replayer: SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+    registry: createFraudProofWorkflowRegistry({
+      adapters: [workflow.adapter],
+      launchScope: ["scriptIntegrityHashMissing"],
+    }),
+    run,
+    terminalVerifier: workflow.terminalVerifier,
+    releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+  });
+};

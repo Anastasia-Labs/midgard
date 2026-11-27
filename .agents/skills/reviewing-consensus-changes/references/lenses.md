@@ -1,0 +1,422 @@
+# Review lenses and calibration
+
+Hand this file, whole, to every reviewer in pass 1 and pass 2. Each lens is a
+question to hunt with, not a box to tick. Each one names the defect class or
+false alarm it targets; do not relax a lens without knowing what it closes
+`[review]`. Facts are as of 2026-09-25.
+
+## Calibration
+
+A finding is reported only when all of these hold:
+
+1. **A source.** Something an adversary controls: a redeemer, a datum they
+   create, an output they add, a transaction they order, a prover-supplied
+   byte string, a block the operator commits, a parameter a deployer could
+   get wrong through the SDK.
+2. **A trace.** Each step from that source to the outcome, with `path:line`.
+3. **An outcome that matters.** An honest block removed or an honest party
+   slashed; a fraudulent block that cannot be proven; value created, taken or
+   frozen; liveness lost; a transaction that cannot fit its budget in a
+   supported shape; a guard that cannot fail.
+4. **Reachability.** Why nothing earlier in the transaction, the thread, or
+   the SDK refuses the input first.
+
+Drop a finding that lacks one of them, and record the drop and its reason.
+Two real findings beat twelve speculative ones.
+
+An **excess finding** (lens 14) needs none of the four: it names code the
+change adds or keeps that fails the test in
+[production-l2.md](../../../../docs/agents/production-l2.md), and what to
+delete. It ranks with a gap of the same size. A review that reports gaps and
+no look for excess is half a review.
+
+These are **not** findings:
+
+- A validator that does not re-check its own `validator main(...)`
+  parameters. On-chain code trusts deployment parameters; see the
+  parameter-trust lens.
+- "`tx_id` should hash `witness_set_hash`." The two commitments are separate
+  by design; see the anchoring lens for what the real question is.
+- "Consider more validation" with no input that gets through.
+- A failure only we could cause, or whose whole cost is fees, a rebuilt
+  transaction or a repeated read. A transaction of ours landing
+  script-invalid is the standing example: phase 1 rejects it.
+- A request for a journal, stored record, alert, metric, status or
+  accounting where reading the chain again answers the question.
+- "This function is complex and could have bugs."
+- A cost concern with no measurement. Measure it, or report it as PLAUSIBLE
+  with the measurement that would decide it.
+- Style, naming or comments, unless the comment states an invariant the code
+  breaks.
+- Anything you would not defend as a real defect to the person who wrote the
+  code.
+
+## The lenses
+
+### 1. Parameter trust
+
+On-chain code trusts deployment parameters: a validator never re-checks a
+`validator main(...)` parameter's width, cardinality or domain
+([contracts.md](../../../../docs/agents/contracts.md)), because such a check
+spends execution units on every spend re-proving a fixed fact. The shape
+checks live in the SDK, in `assertParameterShapes`, which
+`applyBlueprintParams` calls on every application
+`[runtime: assertParameterShapes, demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts:364]`.
+
+Ask:
+
+- Does the change add an on-chain check that can only be false for a
+  dishonestly deployed script? That check is the defect `[review]`.
+- Does a new parameter reach the chain through `applyBlueprintParams`, with
+  every builder, fixture and emulator scenario updated in the same change
+  ([contracts.md](../../../../docs/agents/contracts.md))? `[review]`
+- Is the value a **parameter**, or something read from a datum, redeemer or
+  reference input? Only parameters are trusted. A datum field that looks like
+  configuration is adversary input.
+
+### 2. Always-succeeds scripts
+
+Under Plutus V3 a validator that receives too few parameters reduces to a
+lambda value, and the ledger reads "no error" as success. A resolver deployed
+with one parameter too few lets a challenger defeat any honest block.
+`applyBlueprintParams` refuses too few and too many parameters
+`[runtime: applyBlueprintParams]`.
+
+Blind spot: a site that deploys `compiledCode` bare never reaches that guard;
+on 2026-11-23 `demo/*/src` held 43 `compiledCode` reads.
+
+Ask:
+
+- Does every script this change deploys or references go through
+  `applyBlueprintParams`, or through a loader that refuses a validator with
+  declared parameters?
+- Can any arm of the validator return `True` without inspecting the
+  transaction: an `else` handler, a wildcard redeemer arm, an early exit, a
+  `when` branch that forgets its conjunction?
+- Does a spending validator that delegates to a rewarding script perform the
+  whole yield handshake (NFT-authenticated reference input, script hash from
+  its `reference_script`, the exact zero withdrawal)? Skip one step and the
+  delegate can be any script
+  ([withdraw-zero-yielding.md](../../../../docs/agents/withdraw-zero-yielding.md)).
+
+### 3. Decoders and the pinned compiler
+
+Every `expect` over `Data` is a decoder, and its domain is the set of values
+it accepts. Stock Aiken v1.1.22 names generated decoders by the local type
+name only, so two same-named types in different modules share one decoder and
+the blueprint gets under-strict decoders on the adjudication path
+(`MintRedeemer` alone is declared in 12 modules). The fork that
+`demo/flake.lock` pins fixes it, and every script, the pre-commit hook and CI
+run only that compiler, through `scripts/aiken`
+`[script: scripts/lib/aiken.mjs]` `[hook: pre-commit]`. Blind spot: a
+hand-typed bare `aiken` runs whatever is on `PATH`.
+
+Ask:
+
+- For every datum, redeemer and prover-supplied `Data` the change decodes:
+  what does the decoder accept that the protocol does not? Extra constructor
+  fields, trailing list items, non-canonical integers, an unexpected
+  constructor index?
+- Does a decode that can fail on adversary input make an honest party's
+  transaction fail? A prover who can make the refusal path unreachable, or a
+  datum an attacker can make undecodable to strand an honest spend, is a
+  finding.
+- Where the protocol must adjudicate an out-of-domain input rather than
+  refuse it (a fault proof about malformed bytes), is there an explicit arm
+  for it?
+- Were the change's Aiken results produced by the pinned fork?
+
+### 4. Value conservation
+
+Every lovelace and token a transaction moves must be accounted for exactly.
+The fraud-prover reward is paid to the prover's enterprise address, ADA only,
+with no datum or reference script, and over- and under-payment are refused
+alike
+`[aiken-test: state-queue/]` (predicate `bounty_routing_is_exact_v1`,
+`onchain/aiken/lib/midgard/operator-directory.ak`). The duplicate-registration
+and bad-settlement slashes pay their bounty through the same predicate. A
+transaction carries one operator slash (`other_directory_is_untouched_v1`), so one pinned fee and one bounty account for one bond.
+
+Ask:
+
+- For each input the change lets a validator spend: where does its whole
+  value go, and what check pins each destination? "At least" where the
+  protocol means "exactly" is a finding when the surplus can be redirected.
+- Can an output that satisfies the check also carry extra tokens, a datum or
+  a reference script the check does not look at?
+- Does an equality such as `fee == penalty` survive the off-chain builder?
+  Lucid charges a change output's own fee on top of `setMinFee`, so an exact
+  fee needs a builder with no Lucid-managed change
+  (`demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts`). The bad-settlement
+  slash builder, `incompleteResolveSettlementProgram` in
+  `demo/midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts`,
+  uses a bare
+  `setMinFee` (see
+  [invariants-user-events.md](invariants-user-events.md) UE7).
+- Mint and burn: is each minted token's quantity, name and destination
+  pinned, and can a burn be skipped?
+
+### 5. Anchoring, not preimage
+
+When a proof reads bytes, the question is whether those bytes are tied to a
+commitment the block authenticated. A preimage that hashes correctly to a
+hash the prover also supplied proves nothing `[review]`. For witness-set
+fields the anchor equality is pinned by tests
+`[aiken-test: midgard/fraud-proofs/field-opening-v1.test/]`
+([invariants-fraud-proofs.md](invariants-fraud-proofs.md) FP5); a new reader
+of committed bytes has no such test until its author writes one.
+
+Precision example, a finding that looked real and was not: "`tx_id` does not
+commit `witness_set_hash`." The transaction id is the Level-2 commitment over
+the body and the witness-set hash is a separate Level-1 commitment, by design.
+Adding the witness-set hash to the id's preimage would be the bug. The real
+question is whether the witness-set hash a proof reads is still tied to the
+block-authenticated commitment.
+
+The real defect of that shape: a door that selects a field-preimage
+certificate by token name, without comparing its field hash to the anchored
+commitment, accepts a certificate minted over a fabricated witness set. The
+certificate mint welds `field_hash` into its verified datum, and the door
+checks the equality. The decision record states the rule:
+"Token naming or an anchored witness-set hash without that comparison cannot
+substitute for content authentication"
+([field-carriage decision](../../../../docs/midgard/decisions/field-carriage-authentication-and-budgeting.md)).
+
+Ask:
+
+- For every byte string a step reads, which authenticated commitment does it
+  trace back to, and at which `path:line` is the equality checked?
+- Does a rebinding or threading step carry the authenticated commitment
+  forward, or only a hash the prover can choose?
+- Before calling something a preimage defect, has the anchoring been checked?
+
+### 6. Reference scripts for fault-proof steps
+
+Fault proofs and their supporting witness scripts deploy as published
+reference scripts, never attached inline, whatever their size
+(`demo/midgard-fault-proofs/src/witness-reference-scripts.ts`). Submitters
+hash-check each reference script against the script the transaction executes, and a missing entry fails closed
+`[runtime: requireWitnessReferenceScriptUtxo]`
+(`witness-reference-scripts.ts`; linear families use
+`requireLinearFaultReferenceScript`,
+`demo/midgard-fault-proofs/src/linear-fault-family.ts`). A family that
+attaches inline is not a precedent for new work.
+
+Blind spot: the runtime check covers only the builders that call it, and
+the lint `midgard/fault-proof-reference-scripts-only` refuses a new
+`attach.*` only inside the fault-proof source trees it lists `[review]`.
+
+Ask:
+
+- Does a new or changed family publish its steps as reference scripts, and
+  do its submitters go through one of the two functions above?
+- Does a new inline attach sit on an emulator-only path, and is that path
+  unreachable from production submitters?
+
+### 7. Both polarities
+
+Every contract has emulator scenarios for the honest path and for the
+refusal the validator must make
+([contracts.md](../../../../docs/agents/contracts.md)) `[review]`. For a fault
+proof that means two suites: the proof succeeds when the fault is really in
+the commitment, and a realistic adversary running the same flow against an
+honest commitment is refused at the intended check. The
+`submit-init-emulator-*-adversarial.test.ts` suites in
+`demo/midgard-fault-proofs/tests` are the pattern. The fault-proof gap
+register's closure rule asks for the same pair
+([remaining-gaps.md](../../../../docs/fault-proofs/remaining-gaps.md)).
+
+Ask:
+
+- Does each changed validator arm have a negative that fails **at that arm**?
+  A negative that fails earlier, in the builder or at another check, passes
+  for the wrong reason and keeps passing when the arm is deleted.
+- Does the positive scenario use the real deployment path (applied
+  parameters, reference scripts), not a hand-built script?
+
+### 8. Gates that cannot fail
+
+A gate that cannot fail looks exactly like a healthy one. Its shapes:
+
+- a zero-collection Aiken selector that exits 0
+  (`[script: onchain/aiken/scripts/run-focused-check.mjs]` and
+  `guard-focused-selector.mjs` fail closed on zero);
+- an Aiken `test ... fail` over an `and { }`, which passes as soon as any one
+  conjunct is false, including the one the test meant to exercise;
+- a runtime gate whose condition is always met in production, such as an
+  `=== undefined` test of a field every production caller sets;
+- a check whose expected value comes from the artifact under test;
+- a fix applied to one copy of duplicated code while a twin keeps the defect
+  ([invariants-fraud-proofs.md](invariants-fraud-proofs.md) FP6).
+
+Ask:
+
+- Can each new or changed test fail? Name the mutation that turns it red,
+  then run it (step 5 of the skill).
+- Does each `fail` test pin one disposition, not a conjunction?
+- Does a gate compare against an independent value, or against something the
+  thing it checks supplies?
+- When a fix lands in one copy, where are the others (`grep` the function
+  name and the parsed field), and does each get the same fix?
+
+### 9. Execution and size budgets
+
+Every flat-reversion measurement is judged against 13,200,000 memory units:
+the 20% reserve off Cardano's 16,500,000 `maxTxExUnits` memory cap
+([execution basis](../../../../docs/spec/protocol-decisions.md#execution-basis)). The script
+budgets in `demo/midgard-core/src/script-budgets.json` hold measured units for
+the budgeted tests to ceilings at or under this basis
+`[ci: aiken-ci.yml/Hold every script budget to its ceiling]`, judged by
+`[script: onchain/aiken/scripts/script-budgets.mjs]`. The Aiken guards print
+each run's largest unit-test units as a share of this basis, but only a budget
+gates them. Blind spot: a validator without a budgeted test can grow past the
+basis with every suite green.
+
+Ask:
+
+- Does the change add work proportional to an adversary-chosen size (inputs,
+  items, bytes, list length)? What is the largest supported shape, and was it
+  measured?
+- Did a ledger row move? A moved row needs a reason in the change, not a
+  silent re-pin.
+- Does the transaction still fit `maxTxSize` with its evidence, once it
+  carries every witness and datum?
+
+### 10. TypeScript and Aiken twins
+
+Canonical codecs and several proof computations exist twice, in TypeScript
+and in Aiken, tied by generated golden channels: a TypeScript generator emits
+a JSON fixture and an Aiken test module, and `:check` fails when either
+differs from what the generator produces
+`[ci: midgard-node-ci.yml/Check native V1 field-access golden vectors]` and
+the sibling `Check ... golden vectors` steps. Blind spot: editing a producer
+then regenerating re-greens both suites, so the channel shows drift only when
+the goldens are not regenerated.
+
+Open instances: on-chain `parse_script_ref`
+(`onchain/aiken/lib/midgard/ledger-output-v1.ak`) accepts tag-0
+reference-script bytes as opaque, while the TypeScript codec parses them and
+throws on malformed bytes (`demo/midgard-core/src/codec/versioned-script.ts`),
+so the two sides disagree about the honest post-state root for a transaction
+only one side can decode (#633, open). The general form is worse for
+liveness: the reference challenger declines a whole transaction when its codec
+refuses any one output item, so an operator can shield a real fault by
+committing one refused item beside it (#635, open).
+
+Ask:
+
+- Does the change edit one twin without the other?
+- If goldens changed in the diff, which producer change explains each changed
+  vector, and does the Aiken side agree for a reason other than having been
+  regenerated?
+- Does the TypeScript side accept anything the Aiken side refuses, or the
+  reverse? The watcher decides from the TypeScript side and the chain from the
+  Aiken side; a disagreement is a false accusation or a missed fault.
+
+### 11. Ledger facts, not builder assumptions
+
+A validator can rely only on what the ledger guarantees about the script
+context ([script-context-invariants.md](../../../../docs/script-context-invariants.md)).
+Inputs arrive ordered by output reference, not in builder order; withdrawals by
+credential; redeemers by purpose `[review]`. The emulator enforces only the
+ledger rules its version implements, so an emulator pass is evidence, not
+proof.
+
+Easy to miss: positional reference-input indices built from a subset (the
+carriage UTxOs alone) name the wrong UTxO whenever another reference input
+sorts first, because the ledger sorts the complete set. The ledger refuses
+reference inputs that overlap inputs when a PlutusV3 script runs; the
+emulator enforces that rule from lucid-evolution 0.6.5.
+
+Ask:
+
+- Does the change assume an order, a uniqueness or an absence that only the
+  honest builder produces? An adversary builds their own transaction.
+- Does an index in a redeemer point into a list whose order the adversary
+  controls, and is the indexed element authenticated after lookup?
+- Does a test pass only because the emulator accepts a transaction the ledger
+  would refuse?
+
+### 12. Replacement paths keep every guard
+
+When a change replaces or retires a path (a new redeemer arm, a rewritten
+step, a family moved onto a new door), list the guards the old path enforced
+and find each one on the new path `[review]`.
+
+Easy to miss:
+
+- a rebind onto a new door that re-derives a hash but drops the anchoring
+  equality the old path had
+  ([invariants-fraud-proofs.md](invariants-fraud-proofs.md) FP5);
+- an unrelated change, such as an off-chain PR, that deletes a consensus
+  equality ([invariants-state-queue.md](invariants-state-queue.md) SQ1);
+- a check removed on a sound argument with nothing weaker in its place.
+
+The converse holds too: a guard that can no longer fail is deleted, not kept.
+Once the certificate mint welds the field hash, `carriage_reaches_the_anchor`
+has nothing left to check.
+
+Ask:
+
+- For every check the old code made, where does the new code make it, or
+  what makes it unnecessary? Write the pairing down.
+- When a check is removed because it was too strong, what weaker check
+  replaces it?
+- Do the rarely taken exits (timeouts, cancellation, removal, reclaim) keep
+  the same invariants as the main path?
+
+### 13. One successor per step
+
+A bisection dispute narrows to one step, and resolution awards the challenger
+once it proves that its own claimed successor is valid. It never checks that
+the operator's successor is wrong. So every step verifier must admit exactly
+one successor per pre-state. A witness field that reaches the successor
+without being pinned, either by the pre-state or by an equality against an
+authenticated commitment, is a free choice. A free choice lets a challenger
+dispute an honest step with a different valid successor and remove an honest
+block `[review]`.
+
+Easy to miss when a pinned choice becomes a bound: a CEK redeemer-context
+select that admits "any purpose below `purpose_bound`" instead of "the item at
+`redeemer_count - cursor - 1`" lets a challenger skip a lower purpose that
+carries a redeemer and win the award against an honest block.
+
+Ask:
+
+- For each witness field a step reads: does it reach the successor, directly
+  or through a hash, a control record or a leaf? If it does, what pins it:
+  the pre-state, or an equality against an authenticated commitment? A bound
+  (`<`, `<=`, `> 0`) or a well-formedness check is not a pin, and neither is a
+  check at a later step, because the award happens at this one.
+- Does the step choose among items, purposes, indices or branches? Is the
+  choice forced (the next one), or only valid (any one that satisfies a
+  predicate)?
+- Does a length, count or offset the prover supplies reach the successor? If
+  so, is it checked against the committed item it describes, or only for
+  range?
+- When several witness constructors apply at one stage (select and skip, for
+  example), can two of them succeed from the same pre-state? Each pre-state
+  must admit exactly one arm.
+- Is there a test that builds two distinct successors from one pre-state and
+  shows the step accepts at most one? In an emulator scenario, a challenger
+  disputing an honest step with a different valid successor must be refused.
+
+### 14. Excess
+
+Every finding a reviewer raises about a gap pushes code in; this lens pushes
+it out. Remembered sends, coin holds, restart waits, rebroadcasts and
+wallet-only time bounds in a fault-proof workflow are the standing example:
+each covers a case that is unrealistic or costs only fees, and the ledger plus
+the node's mempool already answer it.
+
+Ask:
+
+- Does each guard, retry, hold, stored record, status, alert or knob in the
+  diff pass the four-part test in
+  [production-l2.md](../../../../docs/agents/production-l2.md)? One that does
+  not is a finding; name the lines to delete `[review]`.
+- Does a check repeat one the ledger, a validator, the type or an earlier
+  layer already makes?
+- Could the change have landed by deepening an existing module instead of
+  adding one? Is there a case split that one general rule replaces?
+- What are the net lines? Growth without a named reason is a finding.

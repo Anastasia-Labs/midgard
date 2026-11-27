@@ -1,0 +1,31 @@
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/deployment";
+
+import { publicDeploymentBlueprintRegistry } from "./deployment-blueprint-registry.js";
+import { loadPhasMembershipWithdrawalScript } from "./phas-membership.js";
+
+export {
+  DEPLOYMENT_MANIFEST_MEMBERS as MANIFEST_ORDER,
+  DEPLOYMENT_PUBLICATION_MEMBERS as PUBLICATION_ORDER,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
+
+const recipeContext: SDK.DeploymentRecipeContext = {
+  phasMembership: loadPhasMembershipWithdrawalScript,
+};
+
+/** Every deployment member, in the contract-name list's order. */
+export const manifestDeployableScripts = (
+  contracts: SDKCore.MidgardValidators,
+): readonly SDK.DeploymentScript[] => {
+  const scripts = SDK.manifestDeploymentScripts(contracts, recipeContext);
+  publicDeploymentBlueprintRegistry(scripts);
+  return scripts;
+};
+
+/** The published members, in that same order. */
+export const publishedDeployableScripts = (
+  contracts: SDKCore.MidgardValidators,
+): readonly SDK.PublishedDeploymentScript[] => {
+  manifestDeployableScripts(contracts);
+  return SDK.publishedDeploymentScripts(contracts, recipeContext);
+};

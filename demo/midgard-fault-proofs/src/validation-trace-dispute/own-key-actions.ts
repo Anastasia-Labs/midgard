@@ -1,0 +1,196 @@
+/** Actions of ours that run no script of the dispute: transactions our key
+ * alone signs (a field copy spent back, an operand staged or spent back, a
+ * field grammar certificate opened or advanced, whose validator runs from
+ * its published reference script alone, or an ended workflow's proof
+ * materials swept back), put in front of a family adapter. Each is taken in place of what the
+ * adapter observes when `next` says so, or in place of a resolution by
+ * another record when `resolved` says so, built from the live chain at its
+ * preflight; the runner follows its exact signed bytes. A build that fails
+ * is the action's recorded, retried outcome for its workflow alone; a wait on
+ * the L1 source goes to the orchestrator as a wait. */
+import type { TxSigned } from "@lucid-evolution/lucid";
+
+import { WorkflowActionChangedError } from "../workflow/action-changed.js";
+import { isFraudProofL1WaitError } from "../workflow/l1-source.js";
+import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
+  FraudProofWorkflowObservation,
+} from "../workflow/orchestrator.js";
+import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  isFraudProofResolvedByAnotherRecordError,
+} from "../workflow/resolved-by-another-record.js";
+import {
+  bindWorkflowPreflightTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+} from "../workflow/transaction-boundary.js";
+import {
+  isWorkflowFundingShortfall,
+  type WorkflowFundingShortfallError,
+} from "../workflow/workflow-funding-shortfall.js";
+
+export type OwnKeyActions = Readonly<{
+  /** Whether `action` is one of ours. */
+  owns: (action: FraudProofWorkflowAction) => boolean;
+  /** What to do instead of `observed`, the adapter's observation; none to
+   * keep it. */
+  next: (
+    context: FraudProofWorkflowAdapterContext,
+    observed: FraudProofWorkflowObservation,
+  ) => Promise<FraudProofWorkflowObservation | undefined>;
+  /** What to take before the adapter's resolution by another record,
+   * `resolution`, goes through: a spend back, or the wait on one; none to
+   * let it through. */
+  resolved?: (
+    context: FraudProofWorkflowAdapterContext,
+    resolution: FraudProofResolvedByAnotherRecord,
+  ) => Promise<FraudProofWorkflowObservation | undefined>;
+  /** The alarm `action` of ours pauses on when our wallet cannot fund its
+   * build, `shortfall` being the pause; none to pause on `shortfall`. */
+  unfunded?: (
+    context: FraudProofWorkflowAdapterContext,
+    action: FraudProofWorkflowAction,
+    shortfall: WorkflowFundingShortfallError,
+  ) => Promise<WorkflowFundingShortfallError | undefined>;
+  /** The signed transaction of `action`, what its recovery keeps besides
+   * the signed bytes, and the published reference scripts it runs, if it
+   * runs any (each script it runs must be one of them). */
+  build: (
+    context: FraudProofWorkflowAdapterContext,
+    action: FraudProofWorkflowAction,
+  ) => Promise<
+    Readonly<{
+      signed: TxSigned;
+      referenceScripts?: LocallyEvaluatedTransaction["referenceScripts"];
+    }>
+  >;
+}>;
+
+/** `base` with the actions of `own` in front of it. */
+export const withOwnKeyActions = ({
+  base,
+  own,
+  label,
+  family = "validation-trace",
+}: {
+  readonly base: FraudProofFamilyWorkflowAdapter;
+  readonly own: OwnKeyActions;
+  /** What the actions are, for their messages. */
+  readonly label: string;
+  /** Whose actions they are, for their messages. */
+  readonly family?: string;
+}): FraudProofFamilyWorkflowAdapter => {
+  const prepared = new Map<string, LocallyEvaluatedTransaction>();
+  const keyOf = (workflowId: string, actionId: string) =>
+    `${workflowId}\u0000${actionId}`;
+  const observe = async (
+    context: FraudProofWorkflowAdapterContext,
+  ): Promise<FraudProofWorkflowObservation> => {
+    let observed: FraudProofWorkflowObservation;
+    try {
+      observed = await base.observe(context);
+    } catch (cause) {
+      if (
+        own.resolved === undefined ||
+        !isFraudProofResolvedByAnotherRecordError(cause)
+      )
+        throw cause;
+      const instead = await own.resolved(context, cause.resolution);
+      if (instead === undefined) throw cause;
+      return instead;
+    }
+    return (await own.next(context, observed)) ?? observed;
+  };
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    ...base,
+    observe,
+    unfunded: async (context) =>
+      (own.owns(context.action)
+        ? await own.unfunded?.(context, context.action, context.shortfall)
+        : await base.unfunded?.(context)) ?? context.shortfall,
+    preflight: async (context) => {
+      if (!own.owns(context.action)) return await base.preflight(context);
+      const { actionId } = context.action;
+      const current = await observe(context);
+      if (
+        current.kind !== "action_required" ||
+        current.action.actionId !== actionId
+      )
+        throw new WorkflowActionChangedError(
+          `${family} ${actionId} is no longer the next action`,
+        );
+      const key = keyOf(context.workflowId, actionId);
+      prepared.delete(key);
+      let built: Awaited<ReturnType<OwnKeyActions["build"]>>;
+      try {
+        built = await own.build(context, context.action);
+      } catch (cause) {
+        if (
+          cause instanceof WorkflowActionChangedError ||
+          isWorkflowFundingShortfall(cause) ||
+          isFraudProofL1WaitError(cause)
+        )
+          throw cause;
+        throw new WorkflowActionUnbuiltError(
+          actionId,
+          `${family} ${actionId} does not build: ${String(cause)}`,
+        );
+      }
+      const referenceScripts = built.referenceScripts ?? [];
+      const transaction: LocallyEvaluatedTransaction = {
+        txHash: built.signed.toHash().toLowerCase(),
+        signed: built.signed,
+        referenceScripts,
+      };
+      if (referenceScripts.length > 0)
+        requireReferenceOnlyScriptWitnesses({
+          transaction,
+          label: `${family} ${label}`,
+        });
+      prepared.set(key, transaction);
+      return bindWorkflowPreflightTransaction(
+        {
+          actionId,
+          txHash: transaction.txHash,
+          scriptExecution:
+            referenceScripts.length === 0
+              ? ("none" as const)
+              : ("reference_scripts" as const),
+          localUplcEvaluation: {
+            status: "passed" as const,
+            evaluator: LOCAL_UPLC_EVALUATOR,
+          },
+          referenceScripts,
+        },
+        transaction.signed,
+      );
+    },
+    submit: async (context) => {
+      if (!own.owns(context.action)) return await base.submit(context);
+      const key = keyOf(context.workflowId, context.action.actionId);
+      const transaction = prepared.get(key);
+      if (
+        transaction === undefined ||
+        transaction.txHash !== context.preflight.txHash
+      )
+        throw new Error(
+          `${family} ${context.action.actionId} has no captured body to submit`,
+        );
+      try {
+        return {
+          kind: "submitted",
+          txHash: await submitCapturedTransaction(transaction),
+        };
+      } finally {
+        prepared.delete(key);
+      }
+    },
+  };
+  return Object.freeze(adapter);
+};

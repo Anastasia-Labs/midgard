@@ -1,0 +1,151 @@
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+import { describe, expect, it } from "vitest";
+
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { prepareReferenceInputNoIdxFromCanonicalEvidence } from "../src/prepare-reference-input-no-idx.prepare-reference-input-no-idx-from-node.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import {
+  admitReferenceInputNoIdxArtifact,
+  prepareReferenceInputNoIdxArtifact,
+} from "../src/workflow/reference-input-no-idx.admit-reference-input-no-idx-artifact.js";
+import {
+  authenticatedHeaderObservation,
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+} from "./helpers/canonical-block-evidence-fixture.js";
+
+const evidenceFor = async ({
+  violating,
+  rejected,
+}: {
+  readonly violating: boolean;
+  /** Which transaction the block commits as TxIsInvalid, if either. */
+  readonly rejected?: "producer" | "consumer";
+}) => {
+  const producer = buildFixtureTransaction({
+    validity: rejected === "producer" ? "TxIsInvalid" : "TxIsValid",
+    spendInputs: [],
+    outputs: violating ? [] : [Buffer.from("80", "hex")],
+    fee: 1n,
+  });
+  const consumer = buildFixtureTransaction({
+    validity: rejected === "consumer" ? "TxIsInvalid" : "TxIsValid",
+    spendInputs: [],
+    referenceInputs: [
+      encodeMidgardSpendInputItem({
+        txId: Buffer.from(producer.txId, "hex"),
+        outputIndex: 0,
+      }),
+    ],
+    fee: 2n,
+  });
+  const fixture = await buildCanonicalBlockFixture({
+    transactions: [producer, consumer],
+  });
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+    observation: authenticatedHeaderObservation(fixture),
+    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+    daProvenance: {
+      trustClass: "public_or_permissionless_da",
+      sourceId: "libp2p/production-reference-input-no-idx-test",
+      grade: "security",
+    },
+  });
+  return { evidence, producerId: producer.txId, consumerId: consumer.txId };
+};
+
+describe("production reference-input-no-idx V1", () => {
+  it("replays, prepares, and strictly re-admits the same-block violation", async () => {
+    const { evidence, producerId, consumerId } = await evidenceFor({
+      violating: true,
+    });
+    const replay =
+      await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    expect(replay.detections).toHaveLength(1);
+    expect(replay.detections[0]).toMatchObject({
+      violationId: "reference-input-no-idx",
+    });
+    const classification = await classifyCanonicalBlockViolations({
+      evidence,
+      detections: replay.detections,
+    });
+    expect(classification).toMatchObject({
+      decision: "fault_detected",
+      category: "referenceInputNoIdx",
+    });
+    const prepared = await prepareReferenceInputNoIdxFromCanonicalEvidence({
+      evidence,
+      badTxId: consumerId,
+      badReferenceInputIndex: 0,
+    });
+    expect(prepared).toMatchObject({
+      badReferenceInputIndex: 0,
+      producingTxId: producerId,
+      producingTxOutputCount: 0,
+    });
+    if (
+      classification.decision !== "fault_detected" ||
+      classification.category !== "referenceInputNoIdx"
+    ) {
+      throw new Error("fixture did not select referenceInputNoIdx");
+    }
+    const artifact = await prepareReferenceInputNoIdxArtifact({
+      evidence,
+      classification,
+    });
+    expect(admitReferenceInputNoIdxArtifact(artifact)).toMatchObject({
+      artifact,
+    });
+    expect(() =>
+      admitReferenceInputNoIdxArtifact({
+        ...artifact,
+        badReferenceInputOutputIndex: "1",
+      }),
+    ).toThrow("does not re-derive its violation");
+
+    const fields = classification.selected.detectionId.split(":");
+    const unsafeIndexClassification = {
+      ...classification,
+      selected: {
+        ...classification.selected,
+        detectionId: [
+          fields[0],
+          fields[1],
+          "9007199254740993",
+          ...fields.slice(3),
+        ].join(":"),
+      },
+    };
+    await expect(
+      prepareReferenceInputNoIdxArtifact({
+        evidence,
+        classification: unsafeIndexClassification,
+      }),
+    ).rejects.toThrow("classification identity is malformed");
+  });
+
+  it("does not classify an in-range producer output", async () => {
+    const { evidence } = await evidenceFor({ violating: false });
+    expect(
+      (await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(evidence))
+        .detections,
+    ).toEqual([]);
+  });
+
+  // Steps 01 and 03 bind only an accepted transaction, so a finding that
+  // names a TxIsInvalid one could never be proved.
+  it.each(["producer", "consumer"] as const)(
+    "does not claim an out-of-range reference input when the %s is TxIsInvalid",
+    async (rejected) => {
+      const { evidence } = await evidenceFor({ violating: true, rejected });
+      expect(
+        (
+          await REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY.replay(
+            evidence,
+          )
+        ).detections,
+      ).toEqual([]);
+    },
+  );
+});

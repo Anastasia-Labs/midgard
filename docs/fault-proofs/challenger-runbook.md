@@ -1,0 +1,136 @@
+# Independent Challenger Runbook
+
+Use this runbook for a watcher-driven or manual challenge against an existing
+deployment. It does not create or reset protocol state.
+
+## 1. Admit one deployment identity
+
+Work from a clean build of the repository commit named by the deployment
+manifest. Keep the manifest, `onchain/aiken/plutus.json`, deployment-info file,
+catalogue root, reference-script outrefs, and protocol-parameter snapshot as
+one immutable evidence set.
+
+Build the CLI and its workspace dependencies before invoking its `dist` entry
+point, then run the fail-closed inspection before starting a watcher:
+
+```bash
+pnpm --dir demo --filter '@al-ft/midgard-fault-proofs...' build
+node demo/midgard-fault-proofs/dist/bin.js inspect-contracts \
+  --blueprint onchain/aiken/plutus.json \
+  --deployment-info "$MIDGARD_DEPLOYMENT_INFO" \
+  --network Preprod
+```
+
+Completion: inspection succeeds and its catalogue root, script hashes, and
+network agree with the signed deployment manifest. Stop on any disagreement.
+Inspection reports offline identity comparisons and script sizes; it does not
+certify publication or readiness. Deployment verification and watcher startup
+check the required reference scripts, and proof execution checks them again.
+
+## 2. Start public evidence authorities
+
+Start the DA committee and watcher from their signed manifests. Follow
+`demo/da-committee-node/docs/da-committee-node-architecture.md` and
+`demo/midgard-watcher/README.md` for configuration rather than copying
+environment variables here.
+
+The production process launcher admits only the `acceptance` mode on Preprod
+or Custom with a `local_node` source. Its finality depth must equal the
+deployment profile's confirmation depth (30 on `preprod-public`), and
+post-finality recovery depth is 2,160. Proof actions proceed on authenticated
+inclusion at depth 1. A rollback invalidates cached authority and re-observes
+canonical state from the chain before the next build under fresh authority.
+A transaction the watcher sent is in a block or in its node's mempool, which
+every read overlays on the ledger; if it is in neither, the next pass builds
+it again.
+
+The challenger path requires:
+
+- the watcher's own L1 follower on a local Cardano node (`local_node`);
+- public libp2p retained-payload and proof-artifact protocols;
+- the exact deployment fingerprint on every request;
+- a durable watcher decision journal;
+- an admitted actuation permit and a funded prover wallet;
+- every enabled category reported ready by the installed application registry.
+
+Completion: DA retention has completed a successful check, the watcher is
+ready, and its installed category list exactly equals the enabled launch
+scope. A missing runner, reference script, manifest binding, or evidence source
+is a readiness failure.
+
+## 3. Detect and prosecute
+
+Proving is permissionless: any signing key may initialize a proof's
+computation thread, so any party running a watcher can challenge. The
+production watcher is the normal entry point, and it submits every proof
+transaction itself. It obtains the challenged HeaderV1 from authenticated L1
+state, retrieves retained evidence through the public DA protocols, records
+the classifier decision, and runs the manifest-bound category workflow, which
+reads its progress from the chain. A normal challenge needs no operator
+command.
+
+Operations status reports `retained_da_transport_failed` when the shared
+retained-DA transport failed to start. That start builds the local libp2p node
+and contacts no peer, so the cause is local (dependencies, keys, descriptors,
+memory). The watcher fails closed on the classification that needed it and
+exits 70 with the error in its `failed_closed` record; fix the host cause and
+restart. There is no in-process retry to wait for.
+
+For diagnosis, the package readiness command may be inspected without
+submitting transactions:
+
+```bash
+node demo/midgard-fault-proofs/dist/bin.js workflow-readiness
+```
+
+`run-workflow` and `resume-workflow` refuse from the CLI: production
+actuation needs the admitted decision, its actuation permit and the objective
+wallet, which only the watcher's application supervisor supplies.
+
+Completion: the chain holds a permanent category-plus-header proof token, a
+confirmed state-queue removal that references it, and the exact slash and
+reward. Submitted or unknown transactions are not completion.
+
+## 4. Verify independently
+
+Re-read the final state from L1 and public DA, not from the workflow's own
+success flag. Verify:
+
+1. the target header and every removed descendant are absent;
+2. the permanent proof token remains at the fault-proof address;
+3. the operator bond was consumed once and the authenticated prover was paid
+   exactly once;
+4. retained evidence and immutable journal records hash to the recorded
+   deployment identity;
+5. the watcher has no queued or active proof job for the header.
+
+Completion: all five observations agree at a final chain point.
+
+## 5. When a proof does not land
+
+The watcher's alert rules page on a proof that does not land:
+`MidgardWatcherProofSubmissionFailure`, `MidgardWatcherProofHeld` and
+`MidgardWatcherProofDeadline`. Their sections in
+[`docs/operations/alerts.md`](../operations/alerts.md) name the readiness
+reason behind each page and what clears it.
+
+The watcher retries submission by itself: a held objective resumes on the
+next observation once its cause (prover wallet funds, the L1 provider,
+retained-DA reachability) is fixed, and a restart resumes every objective
+from what the chain holds. That restart is the
+manual fallback; it follows
+[`manual-recovery-runbook.md`](manual-recovery-runbook.md). The package's
+`submit-*` and `remove-*` commands are diagnostic routes without the watcher's
+permits; do not use them to drive a watcher objective. An objective held as `fault_proof_start_deadline_passed`
+cannot be resumed by this watcher;
+escalate it while the challenge window is open, since another independent
+challenger can still prove the same fault.
+
+Completion: the objective's alert and readiness reason clear, and section 4
+verifies the outcome.
+
+## Recovery branch
+
+If any submission may have reached L1, switch to
+[`manual-recovery-runbook.md`](manual-recovery-runbook.md). Read the
+objective's transactions from L1 before retrying.

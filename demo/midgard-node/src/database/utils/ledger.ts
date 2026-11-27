@@ -2,12 +2,12 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { Database } from "../../services/database.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./common.js";
 
 /**
  * Table adapter for ledger-style UTxO sets.
@@ -41,34 +41,6 @@ export type MinimalEntry = {
   [Columns.OUTREF]: Buffer;
   [Columns.OUTPUT]: Buffer;
 };
-
-/**
- * Creates the ledger table and its address lookup index if they are missing.
- */
-export const createTable = (
-  tableName: string,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-        ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-        ${sql(Columns.OUTREF)} BYTEA NOT NULL,
-        ${sql(Columns.OUTPUT)} BYTEA NOT NULL,
-        ${sql(Columns.ADDRESS)} TEXT NOT NULL,
-        ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-        PRIMARY KEY (${sql(Columns.OUTREF)})
-      );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          `idx_${tableName}_${Columns.ADDRESS}`,
-        )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
 
 /**
  * Inserts one ledger entry, ignoring duplicates keyed by outref.

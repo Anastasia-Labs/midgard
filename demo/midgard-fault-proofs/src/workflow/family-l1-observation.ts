@@ -1,0 +1,359 @@
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import type {
+  AuthenticatedStateQueueHeaderObservation,
+  EvidenceProvenance,
+} from "@al-ft/midgard-sdk/fraud-proof";
+
+import { MAX_COMPUTATION_THREAD_STEPS } from "./computation-thread-steps.js";
+import {
+  confirmRemoval,
+  type RemovalConfirmation,
+} from "./family-l1-observation.confirm-removal.js";
+import {
+  FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
+  type FraudProofWorkflowTerminal,
+} from "./identity.js";
+import type { FraudProofL1Source } from "./l1-source.js";
+import {
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+  type FraudProofWorkflowTerminalVerifier,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import {
+  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
+} from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
+import {
+  deriveFraudProofRawL1FamilyStage,
+  fraudProofRawL1SnapshotRequestForFamily,
+} from "./raw-l1-family-derivation.js";
+import { fraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
+import {
+  deriveFraudProofRawL1OwnThreads,
+  type FraudProofOwnThreads,
+} from "./raw-l1-family-derivation.own-thread.js";
+import {
+  type FraudProofRawL1FamilyDefinition,
+  type FraudProofRawL1FamilyStage,
+  StateQueueHeaderNotLiveError,
+} from "./raw-l1-family-derivation.state-queue-topology.js";
+import {
+  createFraudProofAuthenticatedPublicationObserver,
+  type FraudProofAuthenticatedPublicationObserver,
+} from "./raw-l1-publication-observation.js";
+import {
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1Point,
+  type FraudProofRawL1SnapshotAuthority,
+} from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
+
+export const FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT =
+  "midgard-fraud-proof-family-l1-observation-port-v1" as const;
+
+export interface FraudProofFamilyL1ObservationPort<
+  Category extends FraudProofCatalogueCategoryName,
+> {
+  readonly portVersion: typeof FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT;
+  readonly category: Category;
+  /** Raw authenticated authority retained for live global prerequisites. */
+  readonly rawL1?: FraudProofRawL1SnapshotAuthority;
+  readonly publications: FraudProofAuthenticatedPublicationObserver;
+  observeHeader(input: {
+    readonly headerHash: string;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
+  /** Recovery from exact NFT creation history; does not assert a live target. */
+  observeRetainedHeader?(input: {
+    readonly headerHash: string;
+  }): Promise<AuthenticatedStateQueueHeaderObservation>;
+  /** Latest authenticated raw point through which all returned history was reconfirmed. */
+  observeBoundary?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofRawL1Point>;
+  transactionConfirmed(input: {
+    readonly headerHash: string;
+    readonly txHash: string;
+    readonly removal?: RemovalConfirmation;
+  }): Promise<boolean>;
+  observe(input: { readonly headerHash: string }): Promise<{
+    readonly provenance: EvidenceProvenance;
+    readonly stage: FraudProofRawL1FamilyStage;
+  }>;
+  /** Our computation threads on the header: the one still standing, if any,
+   * and each transaction that spent one, at its depth. */
+  observeOwnThreads?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofOwnThreads>;
+  /** One capture of the header, from which `observe` and `observeOwnThreads`
+   * both read, each derived only when asked for. */
+  observeView?(input: {
+    readonly headerHash: string;
+  }): Promise<FraudProofFamilyL1View>;
+}
+
+/** The family's stage and our threads on one header, from one capture. */
+export type FraudProofFamilyL1View = Readonly<{
+  observe(): Promise<{
+    readonly provenance: EvidenceProvenance;
+    readonly stage: FraudProofRawL1FamilyStage;
+  }>;
+  ownThreads(): FraudProofOwnThreads;
+}>;
+
+/**
+ * Header observation for running or resuming a workflow. While the header is
+ * in the state queue this is the live observation; once a proof has removed
+ * it, the same header is observed from its exact authenticated NFT mint so a
+ * workflow that already submitted the removal can resume to its terminal
+ * instead of failing closed on every retry.  Neither observation authorizes
+ * a new proof action: the family stage machine still decides that.
+ */
+export const observeFraudProofWorkflowHeader = async <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  l1: Pick<
+    FraudProofFamilyL1ObservationPort<Category>,
+    "observeHeader" | "observeRetainedHeader"
+  >,
+  input: { readonly headerHash: string },
+): Promise<AuthenticatedStateQueueHeaderObservation> => {
+  try {
+    return await l1.observeHeader(input);
+  } catch (error) {
+    if (
+      !(error instanceof StateQueueHeaderNotLiveError) ||
+      l1.observeRetainedHeader === undefined
+    ) {
+      throw error;
+    }
+    return await l1.observeRetainedHeader(input);
+  }
+};
+
+/**
+ * Family-neutral strict admission over exact raw L1 bytes.
+ * The provider never supplies a trusted stage or terminal: both are derived
+ * locally after the snapshot and complete unit histories are admitted.
+ */
+export const createFraudProofFamilyRawL1ObservationPort = <
+  Category extends FraudProofCatalogueCategoryName,
+>({
+  authority,
+  releaseFinality,
+  releaseEconomics,
+  definition,
+}: {
+  readonly authority: FraudProofRawL1SnapshotAuthority;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
+    readonly category: Category;
+  };
+}): FraudProofFamilyL1ObservationPort<Category> => {
+  if (
+    authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
+    definition.computationThread.steps.length === 0 ||
+    definition.computationThread.steps.length > MAX_COMPUTATION_THREAD_STEPS
+  ) {
+    throw new Error(
+      `${definition.category} raw L1 observation authority is incomplete`,
+    );
+  }
+  const request = fraudProofRawL1SnapshotRequestForFamily({
+    definition,
+    releaseFinality,
+  });
+  const capture = async (headerHash: string) => {
+    if (headerHash !== definition.headerHash) {
+      throw new Error(
+        `${definition.category} raw L1 observation changed the header`,
+      );
+    }
+    const { snapshot, pending } = await authority.capture(request);
+    return {
+      snapshot: admitFraudProofRawL1Snapshot({
+        value: snapshot,
+        request,
+        releaseFinality,
+        observationDepth: "inclusion",
+      }),
+      pending,
+    };
+  };
+  /** The ledger snapshot of one capture: evidence only. */
+  const ledger = async (headerHash: string) =>
+    (await capture(headerHash)).snapshot;
+  const stageOf = async (
+    headerHash: string,
+    { snapshot, pending }: Awaited<ReturnType<typeof capture>>,
+  ) => ({
+    provenance: snapshot.provenance,
+    stage: await deriveFraudProofRawL1FamilyStage({
+      snapshot,
+      pending,
+      definition,
+      releaseEconomics,
+      history: fraudProofRawL1HistoryReader({
+        authority,
+        releaseFinality,
+        headerHash,
+      }),
+    }),
+  });
+  const port: FraudProofFamilyL1ObservationPort<Category> = {
+    portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+    category: definition.category,
+    rawL1: authority,
+    publications: createFraudProofAuthenticatedPublicationObserver({
+      authority,
+      releaseFinality,
+    }),
+    transactionConfirmed: async ({ headerHash, txHash, removal }) => {
+      const snapshot = await ledger(headerHash);
+      const transaction = snapshot.transactions.find(
+        (entry) => entry.txHash === txHash,
+      );
+      return (
+        transaction !== undefined &&
+        (removal === undefined ||
+          (await confirmRemoval({
+            transaction,
+            removal,
+            definition,
+            snapshot,
+          })))
+      );
+    },
+    observeHeader: async ({ headerHash }) =>
+      await deriveAuthenticatedStateQueueHeaderObservationFromRawL1({
+        snapshot: await ledger(headerHash),
+        definition,
+      }),
+    observeRetainedHeader: async ({ headerHash }) =>
+      await deriveRetainedStateQueueHeaderObservationFromRawL1({
+        snapshot: await ledger(headerHash),
+        definition,
+      }),
+    observeBoundary: async ({ headerHash }) =>
+      (await ledger(headerHash)).cursor.point,
+    observeOwnThreads: async ({ headerHash }) =>
+      deriveFraudProofRawL1OwnThreads({
+        ...(await capture(headerHash)),
+        definition,
+      }),
+    observe: async ({ headerHash }) =>
+      await stageOf(headerHash, await capture(headerHash)),
+    observeView: async ({ headerHash }) => {
+      const captured = await capture(headerHash);
+      return Object.freeze({
+        observe: async () => await stageOf(headerHash, captured),
+        ownThreads: () =>
+          deriveFraudProofRawL1OwnThreads({ ...captured, definition }),
+      });
+    },
+  };
+  return Object.freeze(port);
+};
+
+/** The family port over the fault-proof L1 source, at inclusion depth. */
+export const createFraudProofFamilyL1ObservationPort = <
+  Category extends FraudProofCatalogueCategoryName,
+>({
+  l1,
+  releaseFinality,
+  releaseEconomics,
+  definition,
+}: {
+  readonly l1: FraudProofL1Source;
+  readonly releaseFinality: VerifiedFraudProofReleaseFinalityPolicy;
+  readonly releaseEconomics: VerifiedFraudProofReleaseEconomicsPolicy;
+  readonly definition: FraudProofRawL1FamilyDefinition & {
+    readonly category: Category;
+  };
+}): FraudProofFamilyL1ObservationPort<Category> =>
+  createFraudProofFamilyRawL1ObservationPort({
+    authority: l1.snapshotAuthority({
+      releaseFinality,
+      observationDepth: "inclusion",
+    }),
+    releaseFinality,
+    releaseEconomics,
+    definition,
+  });
+
+const sameTerminal = (
+  left: FraudProofWorkflowTerminal,
+  right: FraudProofWorkflowTerminal,
+): boolean => {
+  // Slot/hash identify the removal's original inclusion and remain immutable.
+  // Only its depth may grow while a completion is reconciled again.
+  const facts = (terminal: FraudProofWorkflowTerminal) => ({
+    ...terminal,
+    observedAt: { ...terminal.observedAt, confirmationDepth: 0 },
+  });
+  return JSON.stringify(facts(left)) === JSON.stringify(facts(right));
+};
+
+/** Independent second raw-L1 observation for terminal acceptance. */
+export const createFraudProofFamilyAuthenticatedL1TerminalVerifier = <
+  Category extends FraudProofCatalogueCategoryName,
+>(
+  l1: FraudProofFamilyL1ObservationPort<Category>,
+): FraudProofWorkflowTerminalVerifier => {
+  const verify = async (
+    {
+      identity,
+      candidate,
+      releaseFinality,
+    }: Parameters<FraudProofWorkflowTerminalVerifier["verify"]>[0],
+    inclusionOnly: boolean,
+  ): Promise<FraudProofWorkflowTerminal> => {
+    const minimumDepth = inclusionOnly
+      ? 1
+      : releaseFinality.policy.confirmationDepth;
+    if (
+      identity.category !== l1.category ||
+      identity.target.kind !== "state_queue_header"
+    ) {
+      throw new Error(
+        `${l1.category} terminal requires its exact state-queue header target`,
+      );
+    }
+    const observed = await l1.observe({
+      headerHash: identity.target.headerHash,
+    });
+    const terminal =
+      observed.stage.kind === "removed" ? observed.stage.terminal : undefined;
+    if (terminal === undefined) {
+      throw new Error(
+        `authenticated L1 still reports an unfinished ${l1.category} correction`,
+      );
+    }
+    if (
+      terminal.schemaVersion !== FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION ||
+      terminal.category !== l1.category ||
+      !sameTerminal(terminal, candidate)
+    ) {
+      throw new Error(
+        `${l1.category} terminal candidate differs from independent L1 observation`,
+      );
+    }
+    if (
+      terminal.observedAt.confirmationDepth < minimumDepth ||
+      candidate.observedAt.confirmationDepth < minimumDepth ||
+      terminal.observedAt.confirmationDepth <
+        candidate.observedAt.confirmationDepth
+    ) {
+      throw new Error(
+        `authenticated terminal depth is below the release threshold: required=${minimumDepth.toString()} actual=${terminal.observedAt.confirmationDepth.toString()} policy=${releaseFinality.policyDigest}`,
+      );
+    }
+    return candidate;
+  };
+  return {
+    verifierVersion: FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
+    verify: (input) => verify(input, false),
+    verifyIncluded: (input) => verify(input, true),
+  };
+};

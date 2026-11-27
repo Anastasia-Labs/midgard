@@ -1,0 +1,437 @@
+import { h28, h32 } from "@al-ft/midgard-test-support/hex";
+import { describe, expect, it } from "vitest";
+
+import {
+  deriveStateQueueAuthenticatedTransition,
+  deriveStateQueueCorrectionTransition,
+  type DeriveStateQueueCorrectionTransitionInput,
+  parseStateQueueAuthenticatedTransition,
+  parseStateQueueCorrectionTransition,
+  withStateQueueAuthenticatedTransitionFinalityDepth,
+  withStateQueueCorrectionTransitionFinalityDepth,
+} from "../src/index.js";
+import {
+  common,
+  fraudLock,
+  idleLockReference,
+  outRef,
+  rehash,
+  timeoutLock,
+  timeoutRedeemer,
+} from "./state-queue-correction-transition.fraud-lock.js";
+
+describe("state-queue correction transition V1", () => {
+  it("derives a finalized descendant-prune record from the exact mint arm and topology", () => {
+    const target = h28(0x11);
+    const removed = h28(0x22);
+    const input = {
+      ...common,
+      spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0)],
+      previousQueue: [
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
+        { headerHash: removed, outRef: outRef(0x22, 0) },
+        { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
+      ],
+      nextQueue: [
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0xcc, 1) },
+        { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
+      ],
+      redeemers: timeoutRedeemer({
+        RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
+          timed_out_header_hash: target,
+          removal_approach: {
+            PruneUnattestedBlockDescendant: {
+              predecessor_ref_input_index: 0n,
+              timed_out_node_input_outref: {
+                transactionId: h32(0x11),
+                outputIndex: 0n,
+              },
+              timed_out_node_output_index: 1n,
+            },
+          },
+        },
+      }),
+    } satisfies DeriveStateQueueCorrectionTransitionInput;
+    const transition = deriveStateQueueCorrectionTransition(input);
+    expect(transition).toMatchObject({
+      removalApproach: "PruneUnattestedBlockDescendant",
+      timedOutHeaderHash: target,
+      removedHeaderHashes: [removed],
+      consumedQueueOutRefs: [outRef(0x11, 0), outRef(0x22, 0)],
+      continuedQueueOutRefs: [
+        {
+          headerHash: target,
+          consumedOutRef: outRef(0x11, 0),
+          producedOutRef: outRef(0xcc, 1),
+        },
+      ],
+    });
+    expect(parseStateQueueCorrectionTransition(transition)).toEqual(transition);
+  });
+
+  it("derives terminal head removal and refuses fraud, merge, or mismatched topology", () => {
+    const target = h28(0x11);
+    const terminal = {
+      ...common,
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
+      previousQueue: [
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
+      ],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
+      redeemers: timeoutRedeemer({
+        RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
+          timed_out_header_hash: target,
+          removal_approach: {
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: {
+                transactionId: h32(0x00),
+                outputIndex: 0n,
+              },
+              predecessor_output_index: 0n,
+            },
+          },
+        },
+      }),
+    } satisfies DeriveStateQueueCorrectionTransitionInput;
+    expect(deriveStateQueueCorrectionTransition(terminal)).toMatchObject({
+      removalApproach: "RemoveLastUnattestedBlock",
+      removedHeaderHashes: [target],
+    });
+    expect(
+      deriveStateQueueCorrectionTransition({
+        ...terminal,
+        nextQueue: [
+          { headerHash: null, outRef: outRef(0xcc, 0) },
+          { headerHash: target, outRef: outRef(0xcc, 1) },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      deriveStateQueueCorrectionTransition({
+        ...terminal,
+        redeemers: timeoutRedeemer({
+          MergeToConfirmedStateV1: {
+            yield_to_ref_input_index: 0n,
+            header_node_key: target,
+            confirmed_state_input_outref: {
+              transactionId: h32(0x00),
+              outputIndex: 0n,
+            },
+            confirmed_state_output_index: 0n,
+            m_settlement_redeemer_index: null,
+            merged_block_withdrawals_root: h32(0x00),
+            merged_block_forced_transactions_root: h32(0x00),
+            merged_block_transactions_root: h32(0x00),
+            merged_block_deposits_root: h32(0x00),
+            merged_block_transition_trace_root: h32(0x00),
+            merged_block_event_to_step_root: h32(0x00),
+            merged_block_validation_traces_root: h32(0x00),
+            merged_block_withdrawal_count: 0n,
+            merged_block_forced_transaction_count: 0n,
+            merged_block_l2_transaction_count: 0n,
+            merged_block_deposit_count: 0n,
+            merged_block_total_event_count: 0n,
+            merged_block_transition_step_count: 0n,
+            merged_block_validation_trace_count: 0n,
+          },
+        }),
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects tampered or structurally extended durable records", () => {
+    const target = h28(0x11);
+    const transition = deriveStateQueueCorrectionTransition({
+      ...common,
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
+      previousQueue: [
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
+      ],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
+      redeemers: timeoutRedeemer({
+        RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
+          timed_out_header_hash: target,
+          removal_approach: {
+            RemoveLastUnattestedBlock: {
+              predecessor_input_outref: {
+                transactionId: h32(0x00),
+                outputIndex: 0n,
+              },
+              predecessor_output_index: 0n,
+            },
+          },
+        },
+      }),
+    });
+    expect(transition).not.toBeNull();
+    expect(
+      parseStateQueueCorrectionTransition({
+        ...transition!,
+        removedHeaderHashes: [h28(0x99)],
+      }),
+    ).toBeNull();
+    expect(
+      parseStateQueueCorrectionTransition({
+        ...transition!,
+        completedAuthority: true,
+      }),
+    ).toBeNull();
+    const advanced = withStateQueueCorrectionTransitionFinalityDepth(
+      transition,
+      "2161",
+    );
+    expect(advanced?.finalityDepth).toBe("2161");
+    expect(advanced?.transitionDigest).not.toBe(transition?.transitionDigest);
+    expect(
+      withStateQueueCorrectionTransitionFinalityDepth(advanced, "2160"),
+    ).toBeNull();
+    expect(
+      withStateQueueCorrectionTransitionFinalityDepth(
+        { ...advanced, authority: true },
+        "2162",
+      ),
+    ).toBeNull();
+  });
+
+  it("strictly parses shared removal provenance and rejects forged-but-rehashed semantics", () => {
+    const target = h28(0x11);
+    const redeemers = timeoutRedeemer({
+      RemoveUnattestedBlockAfterTimeout: {
+        yield_to_ref_input_index: 0n,
+        timed_out_header_hash: target,
+        removal_approach: {
+          RemoveLastUnattestedBlock: {
+            predecessor_input_outref: {
+              transactionId: h32(0x00),
+              outputIndex: 0n,
+            },
+            predecessor_output_index: 0n,
+          },
+        },
+      },
+    });
+    const observation = deriveStateQueueAuthenticatedTransition({
+      ...common,
+      ...timeoutLock(target, true),
+      transactionIndex: "2",
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0), outRef(0xff, 0)],
+      previousQueue: [
+        { headerHash: null, outRef: outRef(0x00, 0) },
+        { headerHash: target, outRef: outRef(0x11, 0) },
+      ],
+      nextQueue: [{ headerHash: null, outRef: outRef(0xcc, 0) }],
+      redeemers,
+    });
+    expect(parseStateQueueAuthenticatedTransition(observation)).toEqual(
+      observation,
+    );
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({ ...observation!, transitionKind: "fraud_removal" as const }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...observation!,
+          finalityDepth: "2161",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...observation!,
+          correctionLockWitness: {
+            ...observation!.correctionLockWitness,
+            targetHeaderHash: h28(0x99),
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...observation!,
+          correctionLockWitness: {
+            ...observation!.correctionLockWitness,
+            correctionIdentity: {
+              FraudProof: { fraud_proof_asset_name: `00000001${target}` },
+            },
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...observation!,
+          consumedQueueOutRefs: [
+            ...observation!.consumedQueueOutRefs,
+          ].reverse(),
+        }),
+      ),
+    ).toBeNull();
+    const advanced = withStateQueueAuthenticatedTransitionFinalityDepth(
+      observation,
+      "2161",
+    );
+    expect(advanced?.finalityDepth).toBe("2161");
+    expect(advanced?.correctionTransition?.finalityDepth).toBe("2161");
+    expect(parseStateQueueAuthenticatedTransition(advanced)).toEqual(advanced);
+    expect(
+      withStateQueueAuthenticatedTransitionFinalityDepth(advanced, "2160"),
+    ).toBeNull();
+
+    const descendant = h28(0x22);
+    const threeNodes = [
+      { headerHash: null, outRef: outRef(0x00, 0) },
+      { headerHash: target, outRef: outRef(0x11, 0) },
+      { headerHash: descendant, outRef: outRef(0x22, 0) },
+    ] as const;
+    const mergePrevious = [
+      ...threeNodes,
+      { headerHash: h28(0x33), outRef: outRef(0x33, 0) },
+    ] as const;
+    const mergeObservation = deriveStateQueueAuthenticatedTransition({
+      ...common,
+      ...idleLockReference,
+      transactionIndex: "3",
+      spentInputOutRefs: [outRef(0x00, 0), outRef(0x11, 0)],
+      previousQueue: mergePrevious,
+      nextQueue: [
+        { headerHash: null, outRef: outRef(0xcc, 0) },
+        mergePrevious[2],
+        mergePrevious[3],
+      ],
+      redeemers: timeoutRedeemer({
+        MergeToConfirmedStateV1: {
+          yield_to_ref_input_index: 0n,
+          header_node_key: target,
+          confirmed_state_input_outref: {
+            transactionId: h32(0x00),
+            outputIndex: 0n,
+          },
+          confirmed_state_output_index: 0n,
+          m_settlement_redeemer_index: null,
+          merged_block_withdrawals_root: h32(0x00),
+          merged_block_forced_transactions_root: h32(0x00),
+          merged_block_transactions_root: h32(0x00),
+          merged_block_deposits_root: h32(0x00),
+          merged_block_transition_trace_root: h32(0x00),
+          merged_block_event_to_step_root: h32(0x00),
+          merged_block_validation_traces_root: h32(0x00),
+          merged_block_withdrawal_count: 0n,
+          merged_block_forced_transaction_count: 0n,
+          merged_block_l2_transaction_count: 0n,
+          merged_block_deposit_count: 0n,
+          merged_block_total_event_count: 0n,
+          merged_block_transition_step_count: 0n,
+          merged_block_validation_trace_count: 0n,
+        },
+      }),
+    });
+    expect(mergeObservation?.transitionKind).toBe("merge");
+    expect(parseStateQueueAuthenticatedTransition(mergeObservation)).toEqual(
+      mergeObservation,
+    );
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...mergeObservation!,
+          correctionLockWitness: {
+            ...mergeObservation!.correctionLockWitness,
+            datum: {
+              Locked: {
+                target_header_hash: target,
+                correction_identity: "AttestationTimeout",
+              },
+            },
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...mergeObservation!,
+          nextQueue: [
+            mergeObservation!.nextQueue[0]!,
+            mergeObservation!.nextQueue[2]!,
+            mergeObservation!.nextQueue[1]!,
+          ],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...mergeObservation!,
+          previousQueue: [
+            { ...mergeObservation!.previousQueue[0]!, injected: true },
+            ...mergeObservation!.previousQueue.slice(1),
+          ],
+        }),
+      ),
+    ).toBeNull();
+
+    const fraudObservation = deriveStateQueueAuthenticatedTransition({
+      ...common,
+      ...fraudLock(descendant, true),
+      transactionIndex: "4",
+      spentInputOutRefs: [outRef(0x11, 0), outRef(0x22, 0), outRef(0xff, 0)],
+      previousQueue: threeNodes,
+      nextQueue: [
+        threeNodes[0],
+        { headerHash: target, outRef: outRef(0xcc, 0) },
+      ],
+      redeemers: timeoutRedeemer({
+        RemoveFraudulentBlockHeader: {
+          yield_to_ref_input_index: 0n,
+          fraudulent_operator: h28(0xff),
+          fraudulent_blocks_header_hash: descendant,
+          slashing_approach: {
+            OperatorAlreadySlashed: {
+              active_operators_element_ref_input_index: 0n,
+              retired_operators_element_ref_input_index: 1n,
+            },
+          },
+          fraud_proof_ref_input_index: 0n,
+          block_removal_approach: {
+            RemoveLastFraudulentBlock: {
+              anchor_element_input_outref: {
+                transactionId: h32(0x11),
+                outputIndex: 0n,
+              },
+              anchor_element_output_index: 0n,
+            },
+          },
+        },
+      }),
+    });
+    expect(fraudObservation?.transitionKind).toBe("fraud_removal");
+    expect(parseStateQueueAuthenticatedTransition(fraudObservation)).toEqual(
+      fraudObservation,
+    );
+    expect(
+      parseStateQueueAuthenticatedTransition(
+        rehash({
+          ...fraudObservation!,
+          correctionLockWitness: {
+            ...fraudObservation!.correctionLockWitness,
+            correctionIdentity: {
+              FraudProof: { fraud_proof_asset_name: `00000001${target}` },
+            },
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
+});

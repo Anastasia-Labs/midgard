@@ -1,0 +1,317 @@
+import pg from "pg";
+import { afterAll, describe, expect, it } from "vitest";
+
+import { openPostgresFactStore } from "../src/index.js";
+import { SIM_ORIGIN, simStoreOptions } from "../src/testing/index.js";
+import { FIXTURE_PROJECTION, SIM_K } from "./support/fork-sim.js";
+import { freezableProxy, testDatabases } from "./support/postgres.js";
+
+/**
+ * A store read given an abort signal ends at the abort though the server
+ * never answers it, and gives up its connection with it: on a pool of one
+ * connection, the next read gets a fresh one and answers. A read waiting
+ * for a free connection ends at its abort too, and a read given no signal
+ * ends at the store's read deadline, as does a read Postgres must take in
+ * a write transaction (a view check's `FOR SHARE`). The server's silence
+ * is a frozen TCP proxy in front of the test cluster. A write is never
+ * ended by that deadline, and neither is the start-up invariant scan, whose
+ * length grows with the store.
+ */
+const databases = testDatabases();
+
+afterAll(async () => {
+  await databases.dropAll();
+});
+
+/** `promise`'s outcome, or a failure naming `what` after `ms`. */
+const within = <T>(what: string, ms: number, promise: Promise<T>) =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${what} did not settle within ${String(ms)} ms`)),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
+const pause = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("store reads on Postgres: an aborted read ends", () => {
+  it("ends a read the server never answers at its abort, and frees its connection for the next read", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    // The writer creates the schema; the reader goes through the proxy on
+    // a pool of one connection.
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const reader = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: proxy.url, maxConnections: 1 },
+    });
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      expect(await reader.cursor()).toBeNull();
+      expect(proxy.accepted()).toBe(1);
+
+      // The reader's one connection now hears nothing from the server.
+      proxy.freeze();
+      const stuck = new AbortController();
+      let stuckSettled = false;
+      const stuckRead = reader.cursor({ signal: stuck.signal });
+      void stuckRead.then(
+        () => {
+          stuckSettled = true;
+        },
+        () => {
+          stuckSettled = true;
+        },
+      );
+      // A second read waits for the pool's one connection.
+      const waiting = new AbortController();
+      const waitingRead = reader.cursor({ signal: waiting.signal });
+      await pause(200);
+      expect(stuckSettled).toBe(false);
+
+      waiting.abort(new Error("the waiting read's deadline passed"));
+      await expect(
+        within("the read waiting for a connection", 5_000, waitingRead),
+      ).rejects.toThrow("the waiting read's deadline passed");
+
+      stuck.abort(new Error("the stuck read's deadline passed"));
+      await expect(
+        within("the read the server never answers", 5_000, stuckRead),
+      ).rejects.toThrow("the stuck read's deadline passed");
+
+      // The stuck connection went with its read: the next read opens a
+      // fresh one and answers.
+      expect(
+        await within("the read after the abort", 5_000, reader.cursor()),
+      ).toBeNull();
+      expect(proxy.accepted()).toBe(2);
+    } finally {
+      await within("closing the reader", 5_000, reader.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
+      await proxy.close();
+    }
+  });
+
+  it("ends a read given no signal at the store's read deadline, and frees its connection for the next read", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const reader = openPostgresFactStore({
+      ...storeOptions,
+      connection: {
+        connectionString: proxy.url,
+        maxConnections: 1,
+        readDeadlineMs: 500,
+      },
+    });
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      expect(await reader.cursor()).toBeNull();
+
+      proxy.freeze();
+      await expect(
+        within("the read the server never answers", 5_000, reader.cursor()),
+      ).rejects.toThrow("the read had no answer within 500 ms");
+      expect(
+        await within("the read after the deadline", 5_000, reader.cursor()),
+      ).toBeNull();
+      expect(proxy.accepted()).toBe(2);
+    } finally {
+      await within("closing the reader", 5_000, reader.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
+      await proxy.close();
+    }
+  });
+
+  it("ends a view check, a read taken in a write transaction, at the store's read deadline", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const reader = openPostgresFactStore({
+      ...storeOptions,
+      connection: {
+        connectionString: proxy.url,
+        maxConnections: 1,
+        readDeadlineMs: 500,
+      },
+    });
+    const view = { generation: 0, point: SIM_ORIGIN.point, height: 0 };
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      expect(await reader.viewValid(view)).toBe(false);
+
+      proxy.freeze();
+      await expect(
+        within(
+          "the view check the server never answers",
+          5_000,
+          reader.viewValid(view),
+        ),
+      ).rejects.toThrow("the read had no answer within 500 ms");
+      expect(
+        await within(
+          "the view check after the deadline",
+          5_000,
+          reader.viewValid(view),
+        ),
+      ).toBe(false);
+      expect(proxy.accepted()).toBe(2);
+    } finally {
+      await within("closing the reader", 5_000, reader.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
+      await proxy.close();
+    }
+  });
+
+  it("leaves a write on a connection the server never answers past the store's read deadline", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const store = openPostgresFactStore({
+      ...storeOptions,
+      connection: {
+        connectionString: proxy.url,
+        maxConnections: 1,
+        readDeadlineMs: 500,
+      },
+    });
+    let writeSettled = false;
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      await writer.transaction("write", (tx) =>
+        tx.exec("CREATE TABLE write_probe (n integer)"),
+      );
+      expect(await store.cursor()).toBeNull();
+
+      proxy.freeze();
+      const write = store.transaction("write", (tx) =>
+        tx.query("INSERT INTO write_probe (n) VALUES (1)"),
+      );
+      void write.then(
+        () => {
+          writeSettled = true;
+        },
+        () => {
+          writeSettled = true;
+        },
+      );
+      await pause(1_500);
+      expect(writeSettled).toBe(false);
+    } finally {
+      // Closing the proxy ends the write's connection, and the write with it.
+      await proxy.close();
+      await within("closing the store", 5_000, store.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
+    }
+  });
+
+  it("leaves a write that outlasts the read deadline to finish", async () => {
+    const database = await databases.create();
+    const store = openPostgresFactStore({
+      ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "postgres"),
+      connection: { connectionString: database.url, readDeadlineMs: 200 },
+    });
+    try {
+      expect(
+        await store.transaction("write", async (tx) => {
+          await tx.exec("SELECT pg_sleep(0.5)");
+          return "committed";
+        }),
+      ).toBe("committed");
+    } finally {
+      await store.close();
+    }
+  });
+});
+
+describe("the start-up invariant scan on Postgres", () => {
+  it("starts though the scan outlasts the store's read deadline, and an ordinary read still ends there", async () => {
+    const database = await databases.create();
+    const store = openPostgresFactStore({
+      ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "postgres"),
+      connection: { connectionString: database.url, readDeadlineMs: 300 },
+    });
+    // Another session's lock on the outputs table: every read of it waits
+    // until that session commits, as on a store too large to scan in time.
+    const locker = new pg.Client({ connectionString: database.url });
+    const lockOutputs = async () => {
+      await locker.query("BEGIN");
+      await locker.query("LOCK TABLE l1_outputs IN ACCESS EXCLUSIVE MODE");
+    };
+    try {
+      expect((await store.start()).kind).toBe("ready");
+      await locker.connect();
+
+      await lockOutputs();
+      const unlocked = pause(1_200).then(() => locker.query("COMMIT"));
+      expect(
+        (await within("the start behind the lock", 10_000, store.start())).kind,
+      ).toBe("ready");
+      await unlocked;
+
+      await lockOutputs();
+      await expect(
+        within(
+          "the read behind the lock",
+          5_000,
+          store.liveUtxos({ by: "outref", outRefs: [] }),
+        ),
+      ).rejects.toThrow("the read had no answer within 300 ms");
+      await locker.query("COMMIT");
+    } finally {
+      await locker.end().catch(() => undefined);
+      await store.close();
+    }
+  });
+});

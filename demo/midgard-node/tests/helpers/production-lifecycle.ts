@@ -1,0 +1,487 @@
+/**
+ * The node's production pieces over an actual deployment on the emulator:
+ * the follower host following the emulator (`emulator-l1-follower.ts`)
+ * and the production follower's composition (`followerTick`) with the
+ * follower-change driver over it (`makeEmulatorDriver`): its sink, its
+ * recompute with the node's startup preparation (`prepareNodeOnStartup`)
+ * and native MPF owner, the rebase the own-commit disposition makes due
+ * and the landed-block hook at each applied view, as the node's follower
+ * runs it (`foreignBlockInclusion`). Producers run at the driver's applied
+ * view (`runAtFollowerView`), as the node's fibers do.
+ *
+ * - `synchronize` runs the driver at the emulator's tip until it applies
+ *   there, then checks the validation cache against the durable ledger.
+ * - `applyLanded` takes in an own block whose commit is on L1, as the node
+ *   does: the landed-block processing and the rebase that applies it.
+ * - `command` runs a producer, then synchronizes.
+ * - `restartRuntime` stops every service of the running generation and
+ *   starts the next on the same database and emulator, as a node restart
+ *   does: a fresh driver's first view runs the recompute and the startup
+ *   preparation again. With `hubOraclePolicyId`, the next generation starts
+ *   under that deployment's hub-oracle policy id instead; with
+ *   `ledgerSnapshotPeers`, a generation started without a ledger asks
+ *   those peers for it.
+ *
+ * Each generation first runs the node's database initialization
+ * (`initializeNodeDatabase`), before it follows the chain or starts the
+ * driver, as `runNode` does. Its services journal their intents in the node
+ * database (`IntentJournalLive`), as `runNode`'s journal does; the commit
+ * worker journals in the same journal (`production.journal`), which keeps
+ * what it journals for the flow's replay.
+ *
+ * The deployment, the receipts of every transaction confirmed on it and the
+ * emulator come from `openPublishedLifecycle`.
+ */
+import { SqlClient } from "@effect/sql";
+import { Effect, Exit, ManagedRuntime, Ref, Scope } from "effect";
+import { expect, vi } from "vitest";
+
+import { initializeNodeDatabase } from "../../src/commands/listen-startup.initialize-database.js";
+import { prepareNodeOnStartup } from "../../src/commands/listen-startup.prepare-node.js";
+import {
+  MempoolLedgerDB,
+  PendingBlockFinalizationsDB,
+} from "../../src/database/index.js";
+import type { DriverHold } from "../../src/l1-events/driver.js";
+import {
+  type FollowerWritePermit,
+  readFollowerWriteGate,
+  runAtFollowerView,
+} from "../../src/services/follower-write-gate.js";
+import type { Globals } from "../../src/services/globals.globals.js";
+import { IntentJournal } from "../../src/services/intent-journal.js";
+import type { DriverRecompute } from "../../src/services/l1-follower.recompute.js";
+import type { LedgerSnapshotPeerSource } from "../../src/services/ledger-snapshot-start.js";
+import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
+import {
+  makeGlobalsService,
+  makeNodeConfigForFixture,
+  type ProductionHistoryFixtureRuntime,
+} from "../deposit-flow-emulator-shared.js";
+import { testDatabaseName } from "../test-env.js";
+import { resetApplicationTables } from "../utils.js";
+import { makeEmulatorDriver } from "./emulator-l1-follower.driver.js";
+import { followEmulatorChain } from "./emulator-l1-follower.js";
+import { openLandedBlocks } from "./emulator-landed-blocks.js";
+import type { emulatorState } from "./emulator-snapshot.js";
+import { bindNodeFollower } from "./follower-emulator.host.js";
+import { keepingJournaled } from "./intent-journal.js";
+import { nativeOwnerBinaryPath } from "./native-owner-binary.js";
+import { productionServices } from "./production-lifecycle.services.js";
+import { openPublishedLifecycle } from "./published-lifecycle.js";
+
+export type ProductionLifecycleOptions = {
+  readonly eventHistoryProtectionDurationMs?: bigint;
+  /** The deployment's automatic rollback horizon k, overridden in this
+   * fixture's in-memory identity only (the manifest pins 2160). */
+  readonly rollbackHorizon?: number;
+  /** Runs first in every startup preparation: observes the state a
+   * generation starts from. */
+  readonly beforePreparation?: (
+    generation: number,
+    globals: Globals,
+  ) => Effect.Effect<void, unknown, SqlClient.SqlClient>;
+};
+
+type CommitAttempt = Parameters<
+  NonNullable<ProductionHistoryFixtureRuntime["onCommitAttempt"]>
+>[0];
+
+const viewKey = (view: FollowerWritePermit["view"]) =>
+  `${view.generation}:${view.slot}:${view.hash}`;
+
+export const openProductionLifecycle = async (
+  options: ProductionLifecycleOptions = {},
+) => {
+  const recorded = await openPublishedLifecycle(
+    options.eventHistoryProtectionDurationMs,
+  );
+  const { fixture } = recorded;
+  // As the node's Lucid service does: its wallets are selected with
+  // `selectNodeWallet`, so under the follower they sign over their wallet
+  // views. The emulator's follower tracks no defense pocket, so the
+  // operator wallet is selected without one.
+  const selectOperator = Effect.sync(() =>
+    selectNodeWallet(fixture.operatorLucid, fixture.operatorAccount.seedPhrase),
+  );
+  const lucidService: typeof recorded.lucidService = {
+    ...recorded.lucidService,
+    switchToOperatorsMainWallet: selectOperator,
+    switchToOperatorsMergingWallet: selectOperator,
+    switchToReferenceScriptWallet: Effect.sync(() =>
+      selectNodeWallet(
+        fixture.referenceScriptsLucid,
+        fixture.referenceScriptsAccount.seedPhrase,
+      ),
+    ),
+  };
+  Effect.runSync(selectOperator);
+  Effect.runSync(lucidService.switchToReferenceScriptWallet);
+  const deployedIdentity = fixture.runtimeOverrides!.deploymentIdentity;
+  const identity =
+    options.rollbackHorizon === undefined ||
+    deployedIdentity.manifest === undefined
+      ? deployedIdentity
+      : {
+          ...deployedIdentity,
+          manifest: {
+            ...deployedIdentity.manifest,
+            l1Finality: {
+              ...deployedIdentity.manifest.l1Finality,
+              // The manifest type pins 2160; only this in-memory copy differs.
+              automaticRecoveryMaxDepth: options.rollbackHorizon as 2160,
+            },
+          },
+        };
+  const securityParameter =
+    identity.manifest?.l1Finality.automaticRecoveryMaxDepth ?? 2160;
+  // The node's follower over this deployment, with the deployment's k.
+  bindNodeFollower(fixture.emulator, {
+    contracts: fixture.contracts,
+    network: fixture.operatorLucid.config().network ?? "Custom",
+    securityParameter,
+  });
+  const nodeConfig = await makeNodeConfigForFixture(fixture);
+  const operatorAddress = await fixture.operatorLucid.wallet().address();
+  const stoppedGenerations: unknown[] = [];
+  const commitAttempts: CommitAttempt[] = [];
+  const appliedViews = new Set<string>();
+  /** The transaction observer follows the emulator until a rollback, which
+   * it cannot follow (its receipts are the chain before it). */
+  let observing = true;
+
+  const startRuntime = async (
+    globals: Globals,
+    generation: number,
+    hubOraclePolicyId?: string,
+    ledgerSnapshotPeers?: LedgerSnapshotPeerSource,
+  ) => {
+    const runtime = ManagedRuntime.make(
+      productionServices({
+        nodeConfig,
+        globals,
+        lucid: {
+          ...lucidService,
+          operatorMainAddress: operatorAddress,
+          operatorMergeAddress: operatorAddress,
+          referenceScriptsWalletAddress: await fixture.referenceScriptsLucid
+            .wallet()
+            .address(),
+        },
+        contracts: {
+          ...fixture.contracts,
+          consensusProfile: identity.consensusProfile,
+        },
+        identity:
+          hubOraclePolicyId === undefined
+            ? identity
+            : { ...identity, hubOraclePolicyId },
+        ledgerSnapshotPeers,
+      }),
+    );
+    if (generation === 0) {
+      // This worker's database shard: start from empty application tables.
+      expect(nodeConfig.POSTGRES_DB).toBe(testDatabaseName());
+      await runtime.runPromise(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{
+            name: string;
+          }>`SELECT current_database() AS name`;
+          expect(rows[0]?.name).toBe(testDatabaseName());
+          yield* resetApplicationTables;
+        }),
+      );
+    }
+    try {
+      await runtime.runPromise(initializeNodeDatabase);
+    } catch (error) {
+      await runtime.dispose();
+      throw error;
+    }
+    const scope = await runtime.runPromise(Scope.make());
+    // The follower follows the emulator while the generation runs: the
+    // landed queue and the node's fibers read its facts.
+    await runtime.runPromise(
+      followEmulatorChain(fixture.operatorLucid).pipe(
+        Effect.provideService(Scope.Scope, scope),
+      ),
+    );
+    const cache = await runtime.runPromise(MempoolLedgerCache);
+    // Kept for the flow's replay (`replayJournaledOnFollower`).
+    const journal = keepingJournaled(await runtime.runPromise(IntentJournal));
+    // The landed-block hook's rebase is the driver's recompute, made below.
+    const late: { recompute?: DriverRecompute } = {};
+    const landed = await openLandedBlocks({
+      contracts: fixture.contracts,
+      nodeConfig,
+      securityParameter,
+      run: (effect) => runtime.runPromise(effect),
+      rebase: (reason) =>
+        Effect.suspend(() =>
+          late.recompute === undefined
+            ? Effect.succeed(undefined)
+            : late.recompute.rebaseIfDue(reason),
+        ),
+      globals,
+    });
+    const before = options.beforePreparation;
+    const driver = await runtime.runPromise(
+      makeEmulatorDriver(fixture, {
+        startupPreparation:
+          before === undefined
+            ? prepareNodeOnStartup
+            : before(generation, globals).pipe(
+                Effect.zipRight(prepareNodeOnStartup),
+              ),
+        landed: landed.hook,
+      }),
+    );
+    late.recompute = driver.recompute;
+    let landedHold: DriverHold | undefined;
+    let dispositionHold: DriverHold | undefined;
+    let unappliedHolds: readonly DriverHold[] = [];
+    let stopped = false;
+    const requireRunning = () => {
+      if (stopped)
+        throw new Error("This production fixture runtime generation is closed");
+    };
+    const onCommitAttempt: NonNullable<
+      ProductionHistoryFixtureRuntime["onCommitAttempt"]
+    > = (receipt) => {
+      // A producer runs at a view this driver applied.
+      expect(appliedViews.has(viewKey(receipt.permit.view))).toBe(true);
+      commitAttempts.push(structuredClone(receipt));
+    };
+    const ledgerKeys = new Set<string>(); // every outref the ledger has held
+    const synchronize = async (): Promise<void> => {
+      requireRunning();
+      if (observing) await recorded.observer.flush();
+      if (
+        (observing && recorded.observer.pendingCount() !== 0) ||
+        Object.keys(fixture.emulator.mempool).length !== 0
+      )
+        throw new Error(
+          "Cannot synchronize the follower with pending emulator submissions",
+        );
+      vi.setSystemTime(fixture.emulator.now());
+      const run = await runtime.runPromise(driver.untilApplied);
+      landedHold = run.landedHold;
+      dispositionHold = run.dispositionHold;
+      unappliedHolds = run.unappliedHolds;
+      const gate = await runtime.runPromise(readFollowerWriteGate);
+      if (gate.applied !== undefined) appliedViews.add(viewKey(gate.applied));
+      await runtime.runPromise(
+        cache.withPhaseBLock(
+          Effect.gen(function* () {
+            const state = yield* cache.currentState;
+            const outref = (row: MempoolLedgerDB.Entry) =>
+              row[MempoolLedgerDB.Columns.OUTREF].toString("hex");
+            const rows = yield* MempoolLedgerDB.retrieveSpendable;
+            const durable = new Map(rows.map((row) => [outref(row), row]));
+            for (const row of yield* MempoolLedgerDB.retrieve)
+              ledgerKeys.add(outref(row));
+            const at = (read: (key: string) => Buffer | undefined) =>
+              [...ledgerKeys].map((key) => [key, read(key)?.toString("hex")]);
+            expect(at((key) => state.get(key))).toEqual(
+              at((key) => durable.get(key)?.[MempoolLedgerDB.Columns.OUTPUT]),
+            );
+          }),
+        ),
+      );
+    };
+    type Services = ManagedRuntime.ManagedRuntime.Context<typeof runtime>;
+    /** `effect` as a producer at the driver's applied view. */
+    const runWithoutSynchronizing = async <A, E>(
+      effect: Effect.Effect<A, E, Services | FollowerWritePermit>,
+    ) => {
+      requireRunning();
+      return runtime.runPromise(runAtFollowerView(effect));
+    };
+    const command = async <A, E>(
+      effect: Effect.Effect<A, E, Services | FollowerWritePermit>,
+    ) => {
+      const result = await runWithoutSynchronizing(effect);
+      await synchronize();
+      return result;
+    };
+    const nativeOwner = () =>
+      runtime.runPromise(Ref.get(globals.NATIVE_MPF_OWNER));
+    const evidence = async () => {
+      requireRunning();
+      return {
+        generation,
+        stoppedGenerations: [...stoppedGenerations],
+        scope:
+          "Actual accepted emulator transactions, one follower block per emulator block, applied by the node's Postgres follower store with its projections. Production driver sink, recompute, startup preparation, cache and Architecture G owner.",
+        publications: [...recorded.publications],
+        commitAttempts,
+        gate: await runtime.runPromise(readFollowerWriteGate),
+        binary: {
+          path: nativeOwnerBinaryPath,
+          sha256: nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256,
+        },
+        native: await (await nativeOwner())?.diagnostics(),
+      };
+    };
+    const stopRuntime = async () => {
+      if (stopped) return;
+      stopped = true;
+      try {
+        await (await nativeOwner())?.close();
+      } finally {
+        try {
+          await runtime.runPromise(Scope.close(scope, Exit.void));
+        } finally {
+          try {
+            await landed.close();
+          } finally {
+            await runtime.dispose();
+          }
+        }
+      }
+    };
+    const close = async () => {
+      if (stopped) return;
+      try {
+        await stopRuntime();
+      } finally {
+        recorded.observer.restore();
+      }
+    };
+    try {
+      await synchronize();
+    } catch (error) {
+      try {
+        await close();
+      } finally {
+        vi.useRealTimers();
+      }
+      throw error;
+    }
+    /** The landed-block hook at the driver's applied view. */
+    const processLanded = async () => {
+      const view = driver.applied();
+      if (view === null) throw new Error("The driver has no applied view");
+      return landed.hook({ kind: "unchanged", view });
+    };
+    /**
+     * Own block `headerHash`, its commit on L1, taken in as the node takes
+     * it: the synchronization's landed-block processing and the rebase that
+     * applies it; the hook, run again at the applied view, then holds
+     * nothing, and the block is applied.
+     */
+    const applyLanded = async (headerHash: string) => {
+      await synchronize();
+      expect(await processLanded()).toBeUndefined();
+      expect(
+        await runtime.runPromise(
+          PendingBlockFinalizationsDB.retrieveStatusByHeaderHash(
+            Buffer.from(headerHash, "hex"),
+          ),
+        ),
+      ).toBe(PendingBlockFinalizationsDB.OwnBlockStatus.Applied);
+    };
+    const handle = {
+      ...recorded,
+      lucidService,
+      globals,
+      production: {
+        cache,
+        nodeConfig,
+        journal,
+        synchronize,
+        onCommitAttempt,
+        applyLanded,
+      },
+      commitAttempts,
+      synchronize,
+      applyLanded,
+      /** The landed-block hook's hold at the last driver run. */
+      landedHold: () => landedHold,
+      /** The hold of the rebase the last run's own-commit disposition made
+       * due, if it did not finish. */
+      dispositionHold: () => dispositionHold,
+      /** The holds of the runs the last synchronization made before the
+       * one that applied. */
+      unappliedHolds: () => unappliedHolds,
+      /** One driver run at the emulator's tip, whatever it returns. */
+      driveOnce: () => runtime.runPromise(driver.runOnce),
+      /** The driver's recompute when the rebase is due, as after S6. */
+      rebaseIfDue: (reason: string) =>
+        runtime.runPromise(driver.recompute.rebaseIfDue(reason)),
+      processLanded,
+      command,
+      runWithoutSynchronizing,
+      evidence,
+      close,
+    };
+    return { handle, stopRuntime };
+  };
+
+  let current = await startRuntime(recorded.globals, 0);
+  let restarting = false;
+  return {
+    ...current.handle,
+    /**
+     * The chain rolls back to `state` (an `emulatorState` capture): the
+     * emulator is restored to it with its followed chain, and the next
+     * synchronization's follower rewinds onto it, so the driver's sink sees
+     * a rewind and runs its recompute. Synchronizes unless told
+     * not to.
+     */
+    rollBackTo: async (
+      state: ReturnType<typeof emulatorState>,
+      { synchronize = true }: { readonly synchronize?: boolean } = {},
+    ) => {
+      if (observing) {
+        recorded.observer.restore();
+        observing = false;
+      }
+      Object.assign(fixture.emulator, structuredClone(state));
+      fixture.operatorLucid.clearUTxOOverride();
+      lucidService.api.clearUTxOOverride();
+      vi.setSystemTime(fixture.emulator.now());
+      if (synchronize) await current.handle.synchronize();
+    },
+    restartRuntime: async ({
+      afterStop,
+      hubOraclePolicyId,
+      ledgerSnapshotPeers,
+    }: {
+      /** Observe retained storage only after every old service has closed. */
+      readonly afterStop?: () => Promise<void>;
+      /** The hub-oracle policy id the next generation starts under. */
+      readonly hubOraclePolicyId?: string;
+      /** The snapshot peers the next generation asks in place of the
+       * configured ones, if it starts without a ledger. */
+      readonly ledgerSnapshotPeers?: LedgerSnapshotPeerSource;
+    } = {}) => {
+      if (restarting)
+        throw new Error("Fixture runtime restart was already requested");
+      restarting = true;
+      const previous = structuredClone(await current.handle.evidence());
+      try {
+        await current.stopRuntime();
+        stoppedGenerations.push(previous);
+        await afterStop?.();
+        current = await startRuntime(
+          await makeGlobalsService(),
+          stoppedGenerations.length,
+          hubOraclePolicyId,
+          ledgerSnapshotPeers,
+        );
+        restarting = false;
+        return current.handle;
+      } catch (error) {
+        recorded.observer.restore();
+        throw error;
+      }
+    },
+  };
+};
+
+export type ProductionLifecycle = Awaited<
+  ReturnType<typeof openProductionLifecycle>
+>;

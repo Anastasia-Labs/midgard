@@ -1,0 +1,308 @@
+import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
+import type { CanonicalBlockClassification } from "./classification.js";
+import {
+  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
+  type FraudProofFamilyL1ObservationPort,
+} from "./family-l1-observation.js";
+import {
+  normalizeWorkflowJson,
+  workflowJsonDigest,
+  type WorkflowJsonObject,
+} from "./identity.js";
+import { missingSignatureObservation } from "./missing-signature-state.js";
+import {
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type {
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReferenceScript,
+} from "./orchestrator.js";
+import type { ProofMaterialsHolder } from "./proof-materials-view.js";
+import {
+  bindWorkflowPreflightTransaction,
+  LOCAL_UPLC_EVALUATOR,
+  type LocallyEvaluatedTransaction,
+  requireReferenceOnlyScriptWitnesses,
+  submitCapturedTransaction,
+  workflowTransactionReferenceInputOutRefs,
+} from "./transaction-boundary.js";
+
+export const MISSING_SIGNATURE_TRANSACTION_PORT =
+  "midgard-production-missing-signature-transaction-port-v1" as const;
+
+export type MissingSignatureCapturedAction = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
+  /** Present only when descendant removal acquired the shared queue fence. */
+  mutationLease?: StateQueueMutationLease;
+}>;
+
+export interface MissingSignatureTransactionPort {
+  readonly portVersion: typeof MISSING_SIGNATURE_TRANSACTION_PORT;
+  readonly category: "missingSignature";
+  /** Pure public-evidence preparation; no operator file/API input. */
+  prepare(input: {
+    readonly evidence: CanonicalBlockEvidence;
+    readonly classification: Extract<
+      CanonicalBlockClassification,
+      { readonly decision: "fault_detected" }
+    > & { readonly category: "missingSignature" };
+  }): Promise<WorkflowJsonObject>;
+  /**
+   * Builds exactly one authenticated cursor action and returns its signed,
+   * unsubmitted transaction. A step-04 scan batch and step-04 finalization use the same port;
+   * the current on-chain thread datum decides which transaction is valid.
+   */
+  capture(input: {
+    readonly action: FraudProofWorkflowAction;
+    readonly artifact: WorkflowJsonObject;
+    /** The workflow and objective that find proof materials for the step. */
+    readonly holder: ProofMaterialsHolder;
+  }): Promise<MissingSignatureCapturedAction>;
+}
+
+const CATEGORY = "missingSignature" as const;
+const TX_HASH = /^[0-9a-f]{64}$/u;
+const SCRIPT_HASH = /^[0-9a-f]{56}$/u;
+const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
+
+// The orchestrator hands back the journal-normalized (key-sorted) action, so
+// equality must be structural, not byte order.
+const sameJson = (left: unknown, right: unknown): boolean =>
+  workflowJsonDigest(normalizeWorkflowJson(left)) ===
+  workflowJsonDigest(normalizeWorkflowJson(right));
+
+const admitReferenceScripts = (
+  transaction: LocallyEvaluatedTransaction,
+): readonly FraudProofWorkflowReferenceScript[] => {
+  if (!TX_HASH.test(transaction.txHash)) {
+    throw new Error(
+      "missingSignature preflight returned a malformed body hash",
+    );
+  }
+  if (transaction.signed.toHash().toLowerCase() !== transaction.txHash) {
+    throw new Error(
+      "missingSignature preflight body hash changed after capture",
+    );
+  }
+  if (transaction.referenceScripts.length === 0) {
+    throw new Error(
+      "missingSignature production transaction did not use published reference scripts",
+    );
+  }
+  requireReferenceOnlyScriptWitnesses({
+    transaction,
+    label: "missingSignature production transaction",
+  });
+  const referenceInputs = new Set(
+    workflowTransactionReferenceInputOutRefs(transaction.signed),
+  );
+  const roles = new Set<string>();
+  const outRefs = new Set<string>();
+  for (const reference of transaction.referenceScripts) {
+    if (
+      reference.role.trim() !== reference.role ||
+      reference.role.length === 0 ||
+      !OUT_REF.test(reference.outRef) ||
+      !SCRIPT_HASH.test(reference.scriptHash)
+    ) {
+      throw new Error(
+        "missingSignature captured a malformed reference identity",
+      );
+    }
+    if (roles.has(reference.role) || outRefs.has(reference.outRef)) {
+      throw new Error(
+        "missingSignature captured duplicate reference-script role or outRef",
+      );
+    }
+    if (!referenceInputs.has(reference.outRef)) {
+      throw new Error(
+        "missingSignature claimed a reference script absent from the signed body",
+      );
+    }
+    roles.add(reference.role);
+    outRefs.add(reference.outRef);
+  }
+  return Object.freeze(
+    transaction.referenceScripts.map((reference) =>
+      Object.freeze({ ...reference }),
+    ),
+  );
+};
+
+const preflightOf = ({
+  action,
+  transaction,
+}: {
+  readonly action: FraudProofWorkflowAction;
+  readonly transaction: LocallyEvaluatedTransaction;
+}): FraudProofWorkflowPreflight =>
+  bindWorkflowPreflightTransaction(
+    {
+      actionId: action.actionId,
+      txHash: transaction.txHash,
+      scriptExecution: "reference_scripts",
+      localUplcEvaluation: {
+        status: "passed",
+        evaluator: LOCAL_UPLC_EVALUATOR,
+      },
+      referenceScripts: admitReferenceScripts(transaction),
+    },
+    transaction.signed,
+  );
+
+const cacheKey = (workflowId: string, actionId: string): string =>
+  `${workflowId}\u0000${actionId}`;
+
+const requiresMutationLease = (action: FraudProofWorkflowAction): boolean =>
+  action.input.stage === "remove" &&
+  action.input.requiresMutationLease === true;
+
+/**
+ * Workflow adapter for missing-signature's cursor-driven step 04. Chain state
+ * is authoritative on every action boundary.
+ */
+export const createMissingSignatureWorkflowAdapter = ({
+  l1,
+  transactions,
+}: {
+  readonly l1: FraudProofFamilyL1ObservationPort<"missingSignature">;
+  readonly transactions: MissingSignatureTransactionPort;
+}): FraudProofFamilyWorkflowAdapter => {
+  if (
+    l1.portVersion !== FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT ||
+    l1.category !== CATEGORY ||
+    transactions.portVersion !== MISSING_SIGNATURE_TRANSACTION_PORT ||
+    transactions.category !== CATEGORY
+  ) {
+    throw new Error("missingSignature workflow ports changed identity");
+  }
+  const prepared = new Map<string, MissingSignatureCapturedAction>();
+  const current = async (headerHash: string) => {
+    const observed = await l1.observe({ headerHash });
+    return {
+      observed,
+      workflow: missingSignatureObservation({
+        headerHash,
+        provenance: observed.provenance,
+        stage: observed.stage,
+      }),
+    };
+  };
+
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
+    category: CATEGORY,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
+    prepare: async ({ evidence, classification }) => {
+      if (classification.category !== CATEGORY) {
+        throw new Error(
+          "missingSignature transaction port received another classification",
+        );
+      }
+      return await transactions.prepare({
+        evidence,
+        classification: classification as Extract<
+          CanonicalBlockClassification,
+          { readonly decision: "fault_detected" }
+        > & { readonly category: "missingSignature" },
+      });
+    },
+    observe: async ({ identity }) => {
+      if (
+        identity.category !== CATEGORY ||
+        identity.target.kind !== "state_queue_header"
+      ) {
+        throw new Error(
+          "missingSignature adapter received another workflow identity",
+        );
+      }
+      return (await current(identity.target.headerHash)).workflow;
+    },
+    preflight: async ({ identity, workflowId, artifact, action }) => {
+      if (
+        identity.category !== CATEGORY ||
+        identity.target.kind !== "state_queue_header"
+      ) {
+        throw new Error("missingSignature preflight changed workflow identity");
+      }
+      const snapshot = await current(identity.target.headerHash);
+      if (
+        snapshot.workflow.kind !== "action_required" ||
+        !sameJson(snapshot.workflow.action, action)
+      ) {
+        throw new Error(
+          "missingSignature preflight action differs from authenticated current L1 state",
+        );
+      }
+      const key = cacheKey(workflowId, action.actionId);
+      if (prepared.has(key)) {
+        throw new Error(
+          "missingSignature preflight already has an outstanding captured body for this workflow action",
+        );
+      }
+      const captured = await transactions.capture({
+        action,
+        artifact,
+        holder: {
+          workflowId,
+          objective: {
+            category: CATEGORY,
+            headerHash: identity.target.headerHash,
+          },
+        },
+      });
+      if (
+        requiresMutationLease(action) !==
+        (captured.mutationLease !== undefined)
+      ) {
+        await captured.mutationLease?.fail(
+          "authenticated removal topology disagreed with mutation-lease acquisition",
+        );
+        throw new Error(
+          "missingSignature removal topology disagreed with its mutation lease",
+        );
+      }
+      try {
+        const preflight = preflightOf({
+          action,
+          transaction: captured.transaction,
+        });
+        prepared.set(key, captured);
+        return preflight;
+      } catch (cause) {
+        await captured.mutationLease?.fail(
+          `preflight admission failed before submission: ${String(cause)}`,
+        );
+        throw cause;
+      }
+    },
+    submit: async ({ workflowId, action, preflight }) => {
+      const key = cacheKey(workflowId, action.actionId);
+      const captured = prepared.get(key);
+      if (
+        captured === undefined ||
+        captured.transaction.txHash !== preflight.txHash
+      ) {
+        throw new Error(
+          "missingSignature submit has no exact locally evaluated captured body",
+        );
+      }
+      try {
+        return {
+          kind: "submitted",
+          txHash: await submitCapturedTransaction(captured.transaction),
+        };
+      } finally {
+        prepared.delete(key);
+        // The runner follows the submitted transaction on chain, so the
+        // lease ends with its submission.
+        await captured.mutationLease?.release();
+      }
+    },
+  };
+  return Object.freeze(adapter);
+};

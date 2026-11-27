@@ -1,0 +1,10 @@
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import "../src/workflow/family-application.assert-family-definition-roster.js";
+import "../src/workflow/family-application-registry.family-application-registry.js";
+import "../src/workflow/family-definition.family-definition.js";
+import "../src/workflow/linear-family-spec.js";
+import "./family-application-registry.bound-steps.js";
+import "./family-application-registry.family-application-rosters-name-deployed-contracts.js";

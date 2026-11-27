@@ -1,0 +1,48 @@
+# Automatic-TLS Caddy ingress for a public Midgard node.
+#
+# Required env:
+#   MIDGARD_PUBLIC_API_HOST   e.g. preprod.midgard.example
+# Optional env:
+#   MIDGARD_CADDY_UPSTREAM    unix//run/midgard/http.sock or 127.0.0.1:3000 (default)
+#   MIDGARD_CADDY_TLS_EMAIL   ACME contact email for Let's Encrypt
+{
+	email {$MIDGARD_CADDY_TLS_EMAIL}
+}
+
+{$MIDGARD_PUBLIC_API_HOST} {
+	log {
+		output stdout
+		format json
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	@submit path /submit /tx/evaluate
+	request_body @submit {
+		max_size 295048
+	}
+
+	@peer path /peer/txs /peer/inventory
+	request_body @peer {
+		max_size 1MB
+	}
+
+	@default not path /submit /tx/evaluate /peer/txs /peer/inventory
+	request_body @default {
+		max_size 64KB
+	}
+
+	reverse_proxy {$MIDGARD_CADDY_UPSTREAM:127.0.0.1:3000} {
+		header_up Host {$MIDGARD_PUBLIC_API_HOST}
+		header_up -X-Midgard-Client-IP
+		header_up X-Midgard-Client-IP {remote_host}
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 30s
+			keepalive 60s
+		}
+	}
+}

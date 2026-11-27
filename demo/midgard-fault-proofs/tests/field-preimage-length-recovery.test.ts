@@ -1,0 +1,421 @@
+import "node:fs/promises";
+import "node:os";
+import "node:path";
+import "@al-ft/midgard-core/codec";
+import "@al-ft/midgard-core/deployment-manifest-identity";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
+import "@lucid-evolution/lucid";
+import "vitest";
+import "../src/evidence/fraud-proof-evidence.js";
+import "../src/field-preimage-length-mismatch/authenticated-workflow.js";
+import "../src/field-preimage-length-mismatch/recovery.js";
+import "../src/field-preimage-length-mismatch/submit-lucid.js";
+import "../src/field-preimage-length-mismatch/workflow-spec.js";
+import "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import "../src/workflow/action-changed.js";
+import "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import "../src/workflow/complete-replay.replay-context-identity.js";
+import "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
+import "../src/workflow/cursor-family-state.js";
+import "../src/workflow/family-application.assert-family-definition-roster.js";
+import "../src/workflow/family-application.apply-family-application-record.js";
+import "../src/workflow/family-l1-observation.js";
+import "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
+import "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import "../src/workflow/header-classifier.classify-header.js";
+import "../src/workflow/header-classifier.create-header-classifier.js";
+import "../src/workflow/identity.js";
+import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
+import "../src/workflow/raw-l1-publication-observation.js";
+import "../src/workflow/release-finality-policy.js";
+import "../src/workflow/runtime.js";
+import "./helpers/canonical-block-evidence-fixture.js";
+import "./support/family-common-infrastructure.js";
+import "./field-preimage-length-recovery.bound.js";
+
+import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { afterEach, expect, it, vi } from "vitest";
+
+import {
+  executeManifestBoundFieldPreimageLengthWorkflow,
+  type ManifestBoundFieldPreimageLengthWorkflow,
+} from "../src/field-preimage-length-mismatch/authenticated-workflow.js";
+import * as submitters from "../src/field-preimage-length-mismatch/submit-lucid.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import { bindWorkflowActuationRecoveryIdentity } from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
+import {
+  computeFraudProofWorkflowId,
+  type FraudProofWorkflowTerminal,
+} from "../src/workflow/identity.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
+import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
+import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "../src/workflow/release-finality-policy.js";
+import {
+  createManifestBoundWorkflowRunner,
+  WORKFLOW_RUNTIME_CONFIG,
+} from "../src/workflow/runtime.js";
+import {
+  bound,
+  captured,
+  category,
+  context,
+  createFieldPreimageLengthRecoveryAdapter,
+  forbidden,
+  hash,
+  hubOraclePolicyId,
+  material,
+  outRef,
+  rawFixture,
+  releaseFinality,
+  required,
+} from "./field-preimage-length-recovery.bound.js";
+import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  emptyRosterReferenceScriptResolver,
+  familyCommonInfrastructureForTest,
+} from "./support/family-common-infrastructure.js";
+import { TEST_PROOF_MATERIALS_HOLDER } from "./support/proof-materials-holder.js";
+import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import {
+  createTestWorkflowProcess,
+  recordingRecord,
+} from "./support/workflow-process.js";
+
+afterEach(() => vi.restoreAllMocks());
+
+it("readmits exact raw proof material after durable JSON roundtrip and clears rejected material", async () => {
+  const routed = await material();
+  const headerHash = routed.evidence.prepared.headerHash;
+  const fixture = await bound(headerHash, {
+    value: { kind: "not_started", stateQueueBlockOutRef: outRef("66") },
+  });
+  const first = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
+  const artifact = await first.transactions.prepareRaw!(routed);
+  const restarted = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
+  await restarted.transactions.validatePreparedRawArtifact!({
+    routed,
+    artifact: JSON.parse(JSON.stringify(artifact)),
+  });
+  await expect(
+    restarted.adapter.observe(context(headerHash, artifact)),
+  ).resolves.toMatchObject({
+    kind: "action_required",
+    action: { input: { stage: "init" } },
+  });
+  await expect(
+    restarted.transactions.validatePreparedRawArtifact!({
+      routed,
+      artifact: { ...artifact, changed: true },
+    }),
+  ).rejects.toThrow("differs from freshly authenticated");
+  await expect(
+    restarted.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
+      action: required(headerHash, {
+        kind: "not_started",
+        stateQueueBlockOutRef: outRef("66"),
+      }),
+      artifact,
+    }),
+  ).rejects.toThrow("not freshly authenticated");
+});
+
+it.each(["init", "dispatch", "authenticate", "finalize"] as const)(
+  "captures the existing accepted %s builder from exact cursor state",
+  async (selected) => {
+    const routed = await material();
+    const headerHash = routed.evidence.prepared.headerHash;
+    const ordinal =
+      selected === "dispatch" ? 1 : selected === "authenticate" ? 2 : 4;
+    const stage: FraudProofRawL1FamilyStage =
+      selected === "init"
+        ? { kind: "not_started", stateQueueBlockOutRef: outRef("66") }
+        : {
+            kind: "step",
+            step: ordinal,
+            threadOutRef: outRef("55"),
+            stateQueueBlockOutRef: outRef("66"),
+          };
+    const fixture = await bound(headerHash, { value: stage });
+    const recovery = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
+    const artifact = await recovery.transactions.prepareRaw!(routed);
+    const transaction = captured();
+    const target =
+      selected === "init"
+        ? "buildFieldPreimageLengthInit"
+        : selected === "dispatch"
+          ? "buildFieldPreimageLengthAcceptedDispatch"
+          : selected === "authenticate"
+            ? "buildFieldPreimageLengthAcceptedAuthentication"
+            : "buildFieldPreimageLengthTerminal";
+    const submit = vi
+      .spyOn(submitters, target)
+      .mockImplementation(async () => ({ transaction }) as never);
+    const result = await recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
+      action: required(headerHash, stage),
+      artifact,
+    });
+    expect(result.transaction).toBe(transaction);
+    expect(submit).toHaveBeenCalledOnce();
+  },
+);
+
+it("rejects a mismatched physical branch and yields a changed selected header before any builder", async () => {
+  const routed = await material();
+  const headerHash = routed.evidence.prepared.headerHash;
+  const stage = {
+    value: {
+      kind: "step",
+      step: 3,
+      threadOutRef: outRef("55"),
+      stateQueueBlockOutRef: outRef("66"),
+    } as FraudProofRawL1FamilyStage,
+  };
+  const fixture = await bound(headerHash, stage);
+  const recovery = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
+  const artifact = await recovery.transactions.prepareRaw!(routed);
+  await expect(
+    recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
+      action: required(headerHash, stage.value),
+      artifact,
+    }),
+  ).rejects.toThrow("changed proof direction");
+  const action = required(headerHash, {
+    kind: "not_started",
+    stateQueueBlockOutRef: outRef("66"),
+  });
+  stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("88") };
+  const submit = vi.spyOn(submitters, "buildFieldPreimageLengthInit");
+  await expect(
+    recovery.transactions.capture({
+      holder: TEST_PROOF_MATERIALS_HOLDER,
+      action,
+      artifact,
+    }),
+  ).rejects.toBeInstanceOf(WorkflowActionChangedError);
+  expect(submit).not.toHaveBeenCalled();
+});
+
+it.each(["fresh authorizing decision", "wrong authorizing decision"] as const)(
+  "completes a removal the chain already holds, after a restart, through %s",
+  async (mode) => {
+    const nativeFixture = await rawFixture();
+    const routed = await material(nativeFixture);
+    const headerHash = routed.evidence.prepared.headerHash;
+    const proofHash = hash("22");
+    const removalHash = hash("33");
+    const terminal: FraudProofWorkflowTerminal = {
+      schemaVersion: "midgard-fraud-proof-workflow-terminal-v1",
+      category,
+      headerHash,
+      proofToken: {
+        unit: "11".repeat(28) + "22".repeat(28),
+        outRef: `${proofHash}#0`,
+        createdByTxHash: proofHash,
+        retainedAtFinalState: true,
+      },
+      correction: {
+        removalTxHash: removalHash,
+        removedStateQueueOutRef: outRef("66"),
+        fraudulentHeaderAbsent: true,
+        referencedProofTokenOutRef: `${proofHash}#0`,
+      },
+      economics: {
+        operatorCredential: "66".repeat(28),
+        proverCredential: "77".repeat(28),
+        operatorBondInputOutRef: outRef("88"),
+        operatorBondInputLovelace: "4000000",
+        slashedLovelace: "2000000",
+        proverRewardOutputOutRef: `${removalHash}#0`,
+        proverRewardLovelace: "2000000",
+        removalFeeLovelace: "2000000",
+        duplicateRewardAbsent: true,
+      },
+      observedAt: { slot: "1000", blockHash: hash("aa"), confirmationDepth: 1 },
+    };
+    const stage: { value: FraudProofRawL1FamilyStage } = {
+      value: { kind: "removed", terminal },
+    };
+    const fixture = await bound(headerHash, stage);
+    const first = createFieldPreimageLengthRecoveryAdapter(fixture.workflow);
+    const familyArtifact = await first.transactions.prepareRaw!(routed);
+    const publicSource = new DaLibp2pRetainedDaSource({
+      deploymentFingerprint: hubOraclePolicyId,
+      peers: [{ peerId: "12D3KooWfieldRecoveryTest" }],
+      transport: { request: async () => forbidden() },
+    });
+    vi.spyOn(publicSource, "fetchPayloadByHeaderHash").mockResolvedValue({
+      ok: true,
+      sourceId: "field-runtime-fixture",
+      sourcePeerId: "peer",
+      payloadEnvelopeCbor: nativeFixture.payloadEnvelopeCbor,
+      attempts: [],
+      provenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "field-runtime-fixture/peer",
+        grade: "security",
+      },
+    });
+    const classifier = await createHeaderClassifier({
+      hubOraclePolicyId,
+      replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+      releaseFinalityAuthority: {
+        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+        verifyForWorkflow: async () => releaseFinality,
+      },
+    });
+    const classify = async (confirmationDepth: number) => {
+      const observation = authenticatedHeaderObservation(nativeFixture, {
+        confirmationDepth,
+      });
+      const result = await classifyHeader({
+        classifier,
+        observation,
+        authenticatedObservationDigest:
+          await authenticatedStateQueueObservationDigest({
+            observation,
+            minimumConfirmationDepth:
+              DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
+          }),
+        sources: [publicSource],
+      });
+      if (result.decision !== "fault_detected")
+        throw new Error("expected classified length mismatch");
+      return result;
+    };
+    const decision = await classify(30);
+    const identity = {
+      ...context(headerHash, familyArtifact).identity,
+      decisionDigest: decision.decisionDigest,
+    };
+    const workflowId = computeFraudProofWorkflowId(identity);
+    const freshDecision = await classify(31);
+    const controller = createWorkflowActuationPermitController({
+      decision: freshDecision,
+      rollbackGeneration: "0",
+    });
+    expect(freshDecision.decisionDigest).not.toBe(decision.decisionDigest);
+    bindWorkflowActuationRecoveryIdentity({
+      permit: controller.permit,
+      category,
+      rollbackGeneration: "0",
+      originalDecision: decision,
+    });
+    // This checks shared recovery wiring with scripted L1 observations, not native receipt validation.
+    const restarted = createFieldPreimageLengthRecoveryAdapter(
+      fixture.workflow,
+    );
+    const workflow: ManifestBoundFieldPreimageLengthWorkflow = {
+      ...fixture.workflow,
+      ...restarted,
+      workflowVersion:
+        "midgard-field-preimage-length-mismatch-production-workflow-v1",
+      decisionDigest: decision.decisionDigest,
+      terminalVerifier: {
+        ...terminalVerifierOf(async ({ candidate }) => candidate),
+        verifyIncluded: async ({ candidate }) => candidate,
+      },
+      releaseFinalityAuthority: {
+        authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+        verifyForWorkflow: async () => releaseFinality,
+      },
+    };
+    // With nothing stored, every mode reads the header again to prepare from
+    // its evidence.
+    fixture.observeHeader.mockResolvedValue(
+      authenticatedHeaderObservation(nativeFixture, {
+        confirmationDepth: 31,
+      }),
+    );
+    const close = vi.fn(async () => undefined);
+    // A restarted process: it has sent nothing.
+    const process = createTestWorkflowProcess();
+    const runner = createManifestBoundWorkflowRunner({
+      record: recordingRecord(
+        defineFamilyApplication({
+          category,
+          roster: {},
+          requires: [],
+          // The record binds the authorizing decision out of the loaded
+          // infrastructure; the wrong-decision mode binds the stale one.
+          bindConfig: ({ infrastructure }) => ({
+            decisionDigest:
+              mode === "wrong authorizing decision"
+                ? decision.decisionDigest
+                : infrastructure.decisionDigest!,
+          }),
+          constructWorkflow: async (config) => ({
+            ...workflow,
+            decisionDigest: config.decisionDigest,
+          }),
+          execute: executeManifestBoundFieldPreimageLengthWorkflow,
+          bindsDecisionDigest: false,
+        }),
+        process.recording,
+      ),
+      loadRuntime: async ({ invocation }) => {
+        if (
+          !("decisionDigest" in invocation) ||
+          typeof invocation.decisionDigest !== "string"
+        )
+          throw new Error(
+            "expected execution invocation with its fresh decision",
+          );
+        return {
+          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+          infrastructure: familyCommonInfrastructureForTest({
+            headerHash: invocation.headerHash,
+            decisionDigest: invocation.decisionDigest,
+          }),
+          resolveReferenceScript: emptyRosterReferenceScriptResolver,
+          retainedDaSources: [publicSource],
+          close,
+        };
+      },
+    });
+    const resume = async () =>
+      (await runner.runOrResume({
+        category,
+        hubOraclePolicyId,
+        headerHash,
+        decisionDigest: freshDecision.decisionDigest,
+        actuationPermit: controller.permit,
+        objectiveWallet: process.objectiveWallet({ category, headerHash }),
+        runtimeConfigPath: "/fixture/field-runtime.json",
+      })) as FraudProofWorkflowRunResult;
+    const run = resume();
+    if (mode === "wrong authorizing decision") {
+      await expect(run).rejects.toThrow(
+        "run actuation permit changed decision digest",
+      );
+      expect(fixture.observeHeader).not.toHaveBeenCalled();
+    } else {
+      await expect(run).resolves.toMatchObject({
+        kind: "terminal_included",
+        workflowId,
+        identity,
+      });
+      expect(fixture.observeHeader).toHaveBeenCalledOnce();
+    }
+    expect(process.sent()).toEqual([]);
+    expect(close).toHaveBeenCalledOnce();
+  },
+);

@@ -1,16 +1,22 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, Option } from "effect";
 
-import { parseEventId } from "@/commands/command-utils.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Database, Lucid, MidgardContracts } from "@/services/index.js";
-import { outRefLabel } from "@/tx-context.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasProof, MpfError } from "@/workers/utils/mpf.js";
+import * as DepositsDB from "../database/deposits.js";
+import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
+import { DatabaseError } from "../database/utils/common.js";
+import * as WithdrawalsDB from "../database/withdrawals.js";
+// Through the mpf barrel on purpose: tests/settlement-worker-module-graph.test.ts
+// checks that the settlement worker's graph, on this path through
+// mpf/event-window.*, stays off the fault-proofs root barrel.
+import { keyValuePhasProof, MpfError } from "../mpf/index.js";
+import { Database } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { outRefLabel } from "../tx-context.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.validate-count-proof.js";
+import { parseEventId } from "./command-utils.js";
 
 export type EventKind = "deposit" | "withdrawal" | "tx-order";
 
@@ -25,7 +31,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -37,7 +43,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -50,7 +56,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -117,7 +123,7 @@ const requireProjectedHeaderHash = (
 const fetchSettlementRefInput = (
   headerHash: Buffer,
 ): Effect.Effect<
-  { readonly utxo: UTxO; readonly datum: SDK.SettlementDatum },
+  { readonly utxo: UTxO; readonly datum: SDKStateQueue.SettlementDatum },
   EventSettlementProofError | SDK.LucidError,
   Lucid | MidgardContracts
 > =>
@@ -162,7 +168,10 @@ const fetchSettlementRefInput = (
     }
     const datum = yield* Effect.try({
       try: () =>
-        LucidData.from(utxo.datum!, SDK.SettlementDatum) as SDK.SettlementDatum,
+        LucidData.from(
+          utxo.datum!,
+          SDKStateQueue.SettlementDatum,
+        ) as SDKStateQueue.SettlementDatum,
       catch: (cause) =>
         new EventSettlementProofError({
           message: "Failed to decode settlement datum",
@@ -357,7 +366,7 @@ export const resolveEventSettlementProofProgram = (
       yield* ForcedTransactionsDB.retrieveByProjectedHeaderHash(headerHash);
     const settlement = yield* fetchSettlementRefInput(headerHash);
     const proof = yield* buildSourceMembershipProof({
-      domain: SDK.ROOT_DOMAINS.forcedTransactions,
+      domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
       expectedRoot: settlement.datum.forced_transactions_root,
       entries: entries.map(ForcedTransactionsDB.toRootKeyValue),
       targetKey: lookup.eventId,
@@ -373,7 +382,7 @@ export const resolveEventSettlementProofProgram = (
       proof,
       proofCbor: LucidData.to(proof, SDK.RawRootMembershipProof),
       status: entry[ForcedTransactionsDB.Columns.STATUS],
-      validity: entry[ForcedTransactionsDB.Columns.OPERATOR_VALIDITY],
+      validity: ForcedTransactionsDB.operatorValidityOfEntry(entry),
       entry,
     };
   });

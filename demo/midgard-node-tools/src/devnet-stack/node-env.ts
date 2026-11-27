@@ -1,0 +1,229 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
+import { Cause, ConfigProvider, Effect, Exit } from "effect";
+import { NodeConfig } from "midgard-node/services/config";
+
+import {
+  assertNodeFollowerEnvironment,
+  L1OriginUndeterminedError,
+} from "../l1-origin.js";
+import type { DeployContext } from "./deploy.js";
+import { PREFLIGHT_L1_ORIGIN } from "./deployment-origin.js";
+import type { Identities } from "./identities.js";
+import {
+  furtherNodePorts,
+  type Layout,
+  type RunEnv,
+  servicePorts,
+} from "./layout.js";
+
+/**
+ * Explicit parameters of a fresh deployment that the node refuses to default.
+ * Event-history bounds and protection are the values the devnet journeys run
+ * with; availability-challenge values are the operator example's.
+ */
+export const DEPLOYMENT_PARAMETERS = {
+  MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES: "512",
+  MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES: "5000",
+  MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_NODES: "512",
+  MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS: "2000",
+  MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH: "14020",
+  MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH: "4194304",
+  MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT: "16",
+  MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE: "10000000000",
+  MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE: "500000",
+  MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE: "500000",
+  MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE: "500000",
+  MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE: "1000000",
+  MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE: "1200000",
+} as const;
+
+export const DA_THRESHOLD = 2;
+
+export type Artifacts = {
+  readonly nativeOwnerBinary: string;
+  readonly nativeOwnerSha256: string;
+  readonly transportBinary: string;
+};
+
+export type HubOracleOneShot = {
+  readonly txHash: string;
+  readonly outputIndex: number;
+};
+
+/**
+ * The node's complete environment. It is built from the run's own records
+ * only; nothing is inherited from the calling shell or a checkout `.env`.
+ * `listen` runs the node's L1 follower, so it refuses an environment without
+ * the hub-oracle one-shot and the run's recorded L1 origin.
+ */
+export const nodeEnvironment = (input: {
+  readonly layout: Layout;
+  readonly run: RunEnv;
+  readonly identities: Identities;
+  readonly artifacts: Artifacts;
+  readonly oneShot?: HubOracleOneShot;
+  /** The run's recorded L1 origin (deployment-origin.ts); `listen` needs it. */
+  readonly l1Origin?: L1Origin;
+  /** `listen` reads the producer DA manifest; commands read the contract one. */
+  readonly role: "command" | "listen";
+  /**
+   * A further operator's node (further-nodes.ts): it serves on its own ports
+   * and holds no DA committee key.
+   */
+  readonly furtherNode?: number;
+  /** `DeployContext.referenceScriptDeployAddress`. */
+  readonly referenceScriptDeployAddress?: string;
+  /** libp2p addresses of the nodes a node without a ledger asks for it. */
+  readonly snapshotPeers?: readonly string[];
+  /** Base URLs of the other operators' nodes, sent the transactions held here. */
+  readonly txPeers?: readonly string[];
+}): Record<string, string> => {
+  const { layout, run, identities, artifacts, oneShot, l1Origin, role } = input;
+  if (role === "listen" && (oneShot === undefined || l1Origin === undefined))
+    throw new L1OriginUndeterminedError(
+      "listen needs the run's hub-oracle nonce and its recorded L1 origin; run up first",
+    );
+  const ports =
+    input.furtherNode === undefined
+      ? servicePorts(run)
+      : {
+          nodeHttp: furtherNodePorts(run, input.furtherNode).http,
+          nodeMetrics: furtherNodePorts(run, input.furtherNode).metrics,
+        };
+  const contractManifest = existsSync(layout.contractManifest)
+    ? layout.contractManifest
+    : undefined;
+  const deploymentManifest =
+    role === "listen" ? layout.producerManifest : contractManifest;
+  const env: Record<string, string> = {
+    MIDGARD_DOTENV_MODE: "disabled",
+    NETWORK: "Custom",
+    MIDGARD_DEPLOYMENT_PROFILE: "local-devnet-testing",
+    MIDGARD_REAL_BLUEPRINT_PATH: layout.blueprint,
+    // Commands without a --run-state flag read it from here; the default is
+    // relative to the node checkout, not this run.
+    MIDGARD_RUN_STATE_PATH: layout.deploymentRunState,
+    // The node reads and submits through the cardano-node socket: `listen`
+    // through its follower, a command through the node's ledger.
+    // `da-bond` passes `--l1 kupmios` for the stack's Kupo and Ogmios.
+    ...(role === "command"
+      ? {
+          L1_ACCESS: "node",
+          L1_KUPO_URL: `http://127.0.0.1:${run.kupoPort}`,
+          L1_OGMIOS_URL: `http://127.0.0.1:${run.ogmiosPort}`,
+        }
+      : {}),
+    L1_NODE_SOCKET_PATH: layout.cardanoSocket,
+    L1_NODE_CONFIG_PATH: layout.hostCardanoConfig,
+    L1_NODE_TRANSPORT_BINARY_PATH: artifacts.transportBinary,
+    L1_OPERATOR_SEED_PHRASE: identities.seeds.operator,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: identities.seeds.merge,
+    L1_SETTLEMENT_SEED_PHRASE: identities.seeds.settlement,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: identities.seeds.referenceScript,
+    ...(input.referenceScriptDeployAddress === undefined
+      ? {}
+      : {
+          L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS:
+            input.referenceScriptDeployAddress,
+        }),
+    ...(input.furtherNode === undefined
+      ? { DA_COSIGNER_SEED_PHRASE: identities.seeds.daCosigner }
+      : {}),
+    DA_THRESHOLD: String(DA_THRESHOLD),
+    DA_LIBP2P_PRIVATE_KEY_SOURCE: `seed:${identities.libp2p.producer}`,
+    ...DEPLOYMENT_PARAMETERS,
+    POSTGRES_HOST: "127.0.0.1",
+    POSTGRES_PORT: String(run.postgresPort),
+    POSTGRES_USER: run.postgresUser,
+    POSTGRES_PASSWORD: run.postgresPassword,
+    POSTGRES_DB: run.postgresDatabase,
+    LEDGER_MPF_DB_PATH: join(layout.nodeData, "ledger-mpf-db"),
+    MPF_NATIVE_OWNER_BINARY_PATH: artifacts.nativeOwnerBinary,
+    MPF_NATIVE_OWNER_BINARY_SHA256: artifacts.nativeOwnerSha256,
+    PORT: String(ports.nodeHttp),
+    MIDGARD_NODE_URL: `http://127.0.0.1:${ports.nodeHttp}`,
+    PROM_METRICS_PORT: String(ports.nodeMetrics),
+    ADMIN_API_KEY: identities.adminApiKey,
+    // Small journeys never queue eight blocks; the default would park merges.
+    MIN_QUEUE_LENGTH_FOR_MERGING: "1",
+    // The controller, its drills and the CLIs are one loopback client. An
+    // armed acceptance drill reads /pipeline-status or /readyz up to 100
+    // times a second; the public budgets (10 and 5 a second for a client)
+    // would refuse those reads and, with them, the journey's own.
+    HTTP_RATE_LIMIT_READ: "1000,1000,1000,1000",
+    HTTP_RATE_LIMIT_HEALTH: "1000,1000",
+    ...(oneShot === undefined
+      ? {}
+      : {
+          HUB_ORACLE_ONE_SHOT_TX_HASH: oneShot.txHash,
+          HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: String(oneShot.outputIndex),
+        }),
+    ...(l1Origin === undefined ? {} : { L1_ORIGIN: formatL1Origin(l1Origin) }),
+    ...((input.snapshotPeers ?? []).length === 0
+      ? {}
+      : { LEDGER_SNAPSHOT_PEERS: input.snapshotPeers!.join(",") }),
+    ...((input.txPeers ?? []).length === 0
+      ? {}
+      : { L2_TX_PEERS: input.txPeers!.join(",") }),
+    ...(contractManifest === undefined
+      ? {}
+      : { MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: contractManifest }),
+    ...(deploymentManifest === undefined
+      ? {}
+      : { MIDGARD_DEPLOYMENT_MANIFEST_PATH: deploymentManifest }),
+  };
+  if (role === "listen") assertNodeFollowerEnvironment(env);
+  return env;
+};
+
+/**
+ * A shape-only stand-in for the run's hub-oracle nonce, so the preflight can
+ * run the node's parser before the deployment exists. Never written; the node
+ * reads the real nonce from the run's records when the supervisor starts it.
+ */
+export const PREFLIGHT_ONE_SHOT: HubOracleOneShot = {
+  txHash: "00".repeat(32),
+  outputIndex: 0,
+};
+
+/**
+ * Runs the node's own configuration parser (`NodeConfig.layer`) over this
+ * run's `listen` environment before L1 starts, so a configuration mistake
+ * fails in seconds rather than after funding and deploy. A command's
+ * environment adds `L1_ACCESS` and names the contract manifest, neither of
+ * which that parser reads. The hub-oracle nonce and the L1 origin are
+ * stand-ins; `listen` parses the real ones when it starts. Reads no file,
+ * chain or service.
+ */
+export const preflightNodeConfig = (context: DeployContext): Promise<void> =>
+  requireNodeAccepts(
+    nodeEnvironment({
+      ...context,
+      oneShot: PREFLIGHT_ONE_SHOT,
+      l1Origin: PREFLIGHT_L1_ORIGIN,
+      role: "listen",
+    }),
+  );
+
+/** Throws unless the node's configuration parser accepts `env`. */
+export const requireNodeAccepts = async (
+  env: Record<string, string>,
+): Promise<void> => {
+  const parsed = await Effect.runPromiseExit(
+    Effect.provide(NodeConfig, NodeConfig.layer).pipe(
+      Effect.withConfigProvider(
+        ConfigProvider.fromMap(new Map(Object.entries(env))),
+      ),
+    ),
+  );
+  if (Exit.isFailure(parsed)) {
+    const reason = Cause.squash(parsed.cause);
+    throw new Error(
+      `node refuses its configuration: ${reason instanceof Error ? reason.message : String(reason)}`,
+      { cause: reason },
+    );
+  }
+};

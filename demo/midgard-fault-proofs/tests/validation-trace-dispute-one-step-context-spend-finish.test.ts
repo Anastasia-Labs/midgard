@@ -1,0 +1,36 @@
+/** The validation-trace dispute runner at the CEK context step after state
+ * 99 of our trace, the spend stage's step that finishes it, driven through its
+ * resolution to the award
+ * (support/validation-trace-dispute-one-step-context-drive.ts). */
+import { beforeAll, describe, it } from "vitest";
+
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { contextStageDrive } from "./support/validation-trace-dispute-one-step-context-drive.js";
+
+const drive = contextStageDrive("spend", 99);
+
+describe("validation-trace dispute runner: driving a thread at the CEK context step after state 99, of the spend stage", () => {
+  beforeAll(drive.setUp, 1_800_000);
+
+  it("routes the step to the spend stage", drive.routes, 300_000);
+
+  it("refuses a successor other than the one the stage derives, at the stage", async () => {
+    const refused = await drive.unchangedSuccessor();
+    await expectOnchainRefusal(refused.build, {
+      refusedBy: "fraud_proofs/validation_trace/cek_context_spend",
+      check: /^Validator returned false$/u,
+    });
+    await refused.unmoved();
+  }, 600_000);
+
+  it(
+    "moves the thread through the context step's resolution to the award, and closes it",
+    drive.awards,
+    1_200_000,
+  );
+
+  it(
+    "pays each move from its thread when its fee fits under the cap, and from our wallet when it does not",
+    drive.pays,
+  );
+});

@@ -1,0 +1,341 @@
+/**
+ * `invalid-signature` evidence builder.
+ *
+ * It locates a committed transaction carrying an address witness whose Ed25519
+ * signature does not verify against that transaction's native id, and emits
+ * the two submit-step arguments the on-chain chain consumes: the witness list,
+ * the compact witness set and the inclusion argument. It constructs no datum
+ * or redeemer. `submit-invalid-signature-step-02` opens §2.5 field 7 through
+ * the §8.8 door and takes the compact witness set this module emits.
+ *
+ * The two openings the chain walks are, in order:
+ *
+ * 1. the witness-set compact, whose `blake2b_256` re-encoding must equal the
+ *    committed `witness_set_hash` (step 01). The check lives inside the §8.8
+ *    field-access door, where `authenticated_field_view`
+ *    (`onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`) refuses to read
+ *    any of fields 6–8 unless
+ *    `blake2b_256(encode_native_tx_witness_set_compact(witness_set))` equals the
+ *    `witness_set_hash` the compact transaction carries; and
+ * 2. the address-witness list, whose §5.1 preimage must hash to the
+ *    `addr_tx_wits_hash` step 01 forwarded (step 02).
+ *
+ * The `--midgard-node-url` and `--transactions` routes below are
+ * operator-diagnostic rehearsal routes: they read block material from the node's
+ * REST surface or an operator-private file and can never mint a security-grade
+ * claim. An evidence-gated entry point is not landed here yet; the two
+ * `submit-invalid-signature-step-0N` builders are, and each re-derives its
+ * commitments from the on-chain header and step datum rather than trusting
+ * these artifacts.
+ */
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  deriveMidgardNativeTxWitnessSetCompact,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
+import {
+  commitCountedRootProgram,
+  type MidgardAddressWitness,
+  type NativeTxCompact as NativeTxCompactData,
+  type NativeTxWitnessSetCompact,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
+import {
+  decodeAddressWitnessPreimage,
+  findInvalidAddressWitnessIndex,
+  invalidSignatureAddressWitnessesCommitment,
+  invalidSignatureWitnessSetCommitment,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { Effect } from "effect";
+
+import { parseHex, stringifyJson } from "./json-file.js";
+import type {
+  DecodedTransactionMaterial,
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import {
+  buildTrieView,
+  decodeTransactionMaterial,
+  requireProof,
+  transactionSourceTrieItem,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
+
+export type PreparedInvalidSignatureTx = {
+  readonly nodeTxId: string;
+  readonly nativeTx: NativeTxCompactData;
+  readonly nativeTxCompactCbor: string;
+  /** step-01 material: the bad tx and its membership proof. */
+  readonly txInclusion: PreparedTxInclusionJson;
+  /** Witness-set hash the block committed to, opened by step 01. */
+  readonly badTxWitnessSetHash: string;
+  /** step-01 material: the preimage of that witness-set hash. */
+  readonly badTxWitnessSetCompact: NativeTxWitnessSetCompact;
+  /** Canonical address-witness commitment step 01 forwards to step 02. */
+  readonly badAddrTxWitsHash: string;
+  /** step-02 material: the complete positional address-witness list. */
+  readonly addrTxWitsPreimage: readonly MidgardAddressWitness[];
+  readonly badAddrTxWitIndex: number;
+  readonly badAddrTxWitVerificationKey: string;
+};
+
+export type PreparedInvalidSignatureOutput = {
+  readonly headerHash: string;
+  readonly txCount: number;
+  /** Raw MPF root opened by the transaction membership proof. */
+  readonly transactionsPhasRoot: string;
+  /** Counted, domain-separated transactions root committed by the block header. */
+  readonly committedTransactionsRoot: string;
+  readonly expectedTransactionsRoot: {
+    readonly value: string;
+    readonly matches: boolean;
+  };
+  readonly tx: PreparedInvalidSignatureTx;
+  readonly files?: {
+    readonly txInclusionPath: string;
+    readonly witnessSetCompactPath: string;
+    readonly addrTxWitsPreimagePath: string;
+    readonly planPath: string;
+  };
+};
+
+type InvalidSignatureCandidate = {
+  readonly material: DecodedTransactionMaterial;
+  readonly witnessSetCompact: NativeTxWitnessSetCompact;
+  readonly addrTxWitsPreimage: readonly MidgardAddressWitness[];
+  readonly badAddrTxWitIndex: number;
+};
+
+/**
+ * Reduce one decoded transaction to an invalid-signature candidate, or
+ * `undefined` when every address witness verifies.
+ *
+ * The signed message is the native transaction id, which is the blake2b-256 of
+ * the compact body — the same value the step-01 validator carries forward.
+ */
+const toCandidate = (
+  material: DecodedTransactionMaterial,
+): InvalidSignatureCandidate | undefined => {
+  const compact = deriveMidgardNativeTxWitnessSetCompact(
+    material.nativeTx.witnessSet,
+  );
+  const witnessSetCompact: NativeTxWitnessSetCompact = {
+    addr_tx_wits_hash: compact.addrTxWitsHash.toString("hex"),
+    script_tx_wits_hash: compact.scriptTxWitsHash.toString("hex"),
+    redeemer_tx_wits_hash: compact.redeemerTxWitsHash.toString("hex"),
+  };
+  const addrTxWitsPreimage = decodeAddressWitnessPreimage(
+    material.nativeTx.witnessSet.addrTxWitsPreimageCbor,
+  );
+  const badAddrTxWitIndex = findInvalidAddressWitnessIndex({
+    txId: material.nodeTxId,
+    addrTxWits: addrTxWitsPreimage,
+  });
+  if (badAddrTxWitIndex === null) {
+    return undefined;
+  }
+  return {
+    material,
+    witnessSetCompact,
+    addrTxWitsPreimage,
+    badAddrTxWitIndex,
+  };
+};
+
+const writePreparedFiles = async ({
+  output,
+  outputDir,
+}: {
+  readonly output: PreparedInvalidSignatureOutput;
+  readonly outputDir: string;
+}): Promise<PreparedInvalidSignatureOutput["files"]> => {
+  await mkdir(outputDir, { recursive: true });
+  const paths = {
+    txInclusionPath: join(outputDir, "invalid-signature-tx-inclusion.json"),
+    witnessSetCompactPath: join(
+      outputDir,
+      "invalid-signature-witness-set-compact.json",
+    ),
+    addrTxWitsPreimagePath: join(
+      outputDir,
+      "invalid-signature-addr-tx-wits-preimage.json",
+    ),
+    planPath: join(outputDir, "invalid-signature-plan.json"),
+  };
+  await Promise.all([
+    writeFile(paths.txInclusionPath, stringifyJson(output.tx.txInclusion)),
+    writeFile(
+      paths.witnessSetCompactPath,
+      stringifyJson({
+        addrTxWitsHash: output.tx.badTxWitnessSetCompact.addr_tx_wits_hash,
+        scriptTxWitsHash: output.tx.badTxWitnessSetCompact.script_tx_wits_hash,
+        redeemerTxWitsHash:
+          output.tx.badTxWitnessSetCompact.redeemer_tx_wits_hash,
+      }),
+    ),
+    writeFile(
+      paths.addrTxWitsPreimagePath,
+      stringifyJson(
+        output.tx.addrTxWitsPreimage.map((witness) => ({
+          verificationKey: witness.verification_key,
+          signature: witness.signature,
+        })),
+      ),
+    ),
+    writeFile(
+      paths.planPath,
+      stringifyJson({
+        headerHash: output.headerHash,
+        txNodeTxId: output.tx.nodeTxId,
+        badTxWitnessSetHash: output.tx.badTxWitnessSetHash,
+        badAddrTxWitsHash: output.tx.badAddrTxWitsHash,
+        badAddrTxWitIndex: output.tx.badAddrTxWitIndex,
+        badAddrTxWitVerificationKey: output.tx.badAddrTxWitVerificationKey,
+        addrTxWitsCount: output.tx.addrTxWitsPreimage.length,
+        transactionsPhasRoot: output.transactionsPhasRoot,
+        committedTransactionsRoot: output.committedTransactionsRoot,
+        expectedTransactionsRoot: output.expectedTransactionsRoot,
+      }),
+    ),
+  ]);
+  return paths;
+};
+
+export const prepareInvalidSignatureFromTransactions = async ({
+  headerHash,
+  transactions,
+  expectedTransactionsRoot,
+  txId,
+  outputDir,
+}: {
+  readonly headerHash: string;
+  readonly transactions: readonly NodeTransactionPayload[];
+  readonly expectedTransactionsRoot: string;
+  readonly txId?: string;
+  readonly outputDir?: string;
+}): Promise<PreparedInvalidSignatureOutput> => {
+  await ledgerEd25519SignatureReady();
+  const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
+  const normalizedExpectedRoot = parseHex(
+    expectedTransactionsRoot,
+    "--expected-transactions-root",
+    32,
+  );
+  const normalizedTxId =
+    txId === undefined ? undefined : parseHex(txId, "--tx-id", 32);
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
+
+  const selected =
+    normalizedTxId === undefined
+      ? decoded.reduce<InvalidSignatureCandidate | undefined>(
+          (found, material) => found ?? toCandidate(material),
+          undefined,
+        )
+      : (() => {
+          const material = decoded.find((tx) => tx.nodeTxId === normalizedTxId);
+          if (material === undefined) {
+            throw new Error(
+              `Requested --tx-id ${normalizedTxId} was not found in the block.`,
+            );
+          }
+          const candidate = toCandidate(material);
+          if (candidate === undefined) {
+            throw new Error(
+              `Requested --tx-id ${normalizedTxId} has a valid signature for every address witness, so it does not violate the signature ledger rule.`,
+            );
+          }
+          return candidate;
+        })();
+  if (selected === undefined) {
+    throw new Error(
+      "No transaction with an invalid address-witness signature found in the selected block.",
+    );
+  }
+
+  const badWitness = selected.addrTxWitsPreimage[selected.badAddrTxWitIndex]!;
+  const badTxWitnessSetHash =
+    selected.material.nativeTxCompact.witness_set_hash;
+  // The preimages a prover supplies must reproduce exactly what the block
+  // committed to, otherwise neither step could conclude on-chain.
+  const recomputedWitnessSetHash = invalidSignatureWitnessSetCommitment(
+    selected.witnessSetCompact,
+  );
+  if (recomputedWitnessSetHash !== badTxWitnessSetHash) {
+    throw new Error(
+      `Derived witness set compact hashes to ${recomputedWitnessSetHash}, which does not match the witness set hash ${badTxWitnessSetHash} committed by transaction ${selected.material.nodeTxId}.`,
+    );
+  }
+  const recomputedAddrTxWitsHash = invalidSignatureAddressWitnessesCommitment(
+    selected.addrTxWitsPreimage,
+  );
+  if (
+    recomputedAddrTxWitsHash !== selected.witnessSetCompact.addr_tx_wits_hash
+  ) {
+    throw new Error(
+      `Decoded address witnesses commit to ${recomputedAddrTxWitsHash}, which does not match the committed addr_tx_wits_hash ${selected.witnessSetCompact.addr_tx_wits_hash}.`,
+    );
+  }
+
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItem),
+  );
+  const proofCbor = requireProof(
+    nativeTrie,
+    transactionSourceTrieItem(selected.material).key,
+    "invalid-signature tx",
+  );
+  const committedTransactionsRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactionsV1,
+      phasRoot: nativeTrie.root,
+      count: BigInt(decoded.length),
+    }),
+  );
+  const expectedCheck = {
+    value: normalizedExpectedRoot,
+    matches: normalizedExpectedRoot === committedTransactionsRoot,
+  };
+  if (!expectedCheck.matches) {
+    throw new Error(
+      `Reconstructed raw transactions root ${nativeTrie.root} commits to counted root ${committedTransactionsRoot}, which does not match --expected-transactions-root ${expectedCheck.value}. The prepared proof would not verify against this block.`,
+    );
+  }
+  const baseOutput: PreparedInvalidSignatureOutput = {
+    headerHash: normalizedHeaderHash,
+    txCount: decoded.length,
+    transactionsPhasRoot: nativeTrie.root,
+    committedTransactionsRoot,
+    expectedTransactionsRoot: expectedCheck,
+    tx: {
+      nodeTxId: selected.material.nodeTxId,
+      nativeTx: selected.material.nativeTxCompact,
+      nativeTxCompactCbor: selected.material.nativeCompactCbor,
+      txInclusion: {
+        nativeTxId: selected.material.nodeTxId,
+        nativeTx: selected.material.nativeTxCompact,
+        nativeTxCompactCbor: selected.material.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.material.l2TransactionSourceCbor,
+        transactionsPhasRoot: nativeTrie.root,
+        txMembershipProofCbor: proofCbor,
+      },
+      badTxWitnessSetHash,
+      badTxWitnessSetCompact: selected.witnessSetCompact,
+      badAddrTxWitsHash: selected.witnessSetCompact.addr_tx_wits_hash,
+      addrTxWitsPreimage: selected.addrTxWitsPreimage,
+      badAddrTxWitIndex: selected.badAddrTxWitIndex,
+      badAddrTxWitVerificationKey: badWitness.verification_key,
+    },
+  };
+  if (outputDir === undefined) {
+    return baseOutput;
+  }
+  const files = await writePreparedFiles({
+    output: baseOutput,
+    outputDir,
+  });
+  return { ...baseOutput, files };
+};

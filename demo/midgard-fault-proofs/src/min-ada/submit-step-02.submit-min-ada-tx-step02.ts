@@ -1,0 +1,395 @@
+import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+  scriptRewardAddress,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  outputMeetsMinAda,
+} from "@al-ft/midgard-validation/value-accounting";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import { claimedItem } from "../evidence/claimed-coordinate.js";
+import {
+  type ContinuationTurn,
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../field-opening.publish-fault-proof-field-carriage.js";
+import {
+  linearFaultStepLabel,
+  requireLinearFaultReferenceScript,
+} from "../linear-fault-family.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import {
+  MIN_ADA_CATEGORY_LABEL as FAMILY,
+  type MinAdaContracts,
+} from "./contracts.js";
+import {
+  advanceMinAdaGrammarCheckpoint,
+  advanceMinAdaSemanticCheckpoint,
+  encodeMinAdaGrammarCheckpoint,
+  encodeMinAdaSemanticCheckpoint,
+  hashMinAdaGrammarCheckpoint,
+  hashMinAdaSemanticCheckpoint,
+  initialMinAdaGrammarCheckpoint,
+  initialMinAdaSemanticCheckpoint,
+  minAdaGrammarCheckpointIsComplete,
+  resolveMinAdaGrammarCheckpoint,
+  resolveMinAdaSemanticCheckpoint,
+} from "./field-walk.js";
+import type { detectMinAdaForcedReplay } from "./forced.js";
+import type { PreparedMinAdaTx } from "./prepare.js";
+import {
+  minAdaInitialScanState,
+  minAdaOutputFacts,
+  minAdaOutputScanEvidence,
+} from "./scan.js";
+import {
+  Redeemer,
+  requireStep02,
+  type State,
+  Step02Datum,
+  Step03Datum,
+} from "./submit-step-02.require-step02.js";
+
+/** What the next scan checkpoint of step 02 is built from. */
+type MinAdaStep02ScanContinuation = {
+  readonly threadOutRef: string;
+  readonly publishedCarriageUtxos: readonly UTxO[];
+};
+
+export const buildMinAdaTxStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  prepared,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  referenceScriptUtxo,
+  yieldReferenceScriptUtxo,
+  unsafeSkipLocalViolationCheckForTest = false,
+  materials,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: MinAdaContracts;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly prepared:
+    | PreparedMinAdaTx
+    | ReturnType<typeof detectMinAdaForcedReplay>[number]["evidence"];
+  readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly yieldReferenceScriptUtxo: UTxO;
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
+}): Promise<
+  FaultProofTurn<
+    | ContinuationTurn<MinAdaStep02ScanContinuation>
+    | {
+        transaction: LocallyEvaluatedTransaction;
+        nextThreadOutRef: string;
+        carriageTier: string;
+        nextStepIndex: number;
+      }
+  >
+> => {
+  const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
+    lucid,
+    contracts,
+    categoryId,
+    signer,
+    threadOutRef,
+  });
+  const label = `${linearFaultStepLabel(FAMILY, stepIndex)} transaction`;
+  if (
+    state.bad_tx_id !== prepared.badTxId ||
+    state.fault.output_index !== prepared.badOutputIndex
+  ) {
+    throw new Error(
+      `${label}: prepared transaction does not match thread state`,
+    );
+  }
+  // A rejection naming no output of field 2 has no output to scan: a
+  // negative index closes at once, and one past the field's last item is
+  // closed by the certified walk's count.
+  const negative = prepared.badOutputIndex < 0n;
+  const item = claimedItem(prepared.outputItemCbors, prepared.badOutputIndex);
+  const absent =
+    item === undefined &&
+    state.direction === PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;
+  if (item === undefined && !absent) {
+    throw new Error(`${label}: bad output index is outside field 2`);
+  }
+  const anchorSourceKind = state.source_kind;
+  if (anchorSourceKind !== 0n && anchorSourceKind !== 1n)
+    throw new Error(`${label}: unknown transaction source kind`);
+  if (item !== undefined) {
+    const facts = minAdaOutputFacts(Buffer.from(item, "hex"));
+    if (
+      facts === null ||
+      (!unsafeSkipLocalViolationCheckForTest &&
+        outputMeetsMinAda(
+          MIDGARD_COINS_PER_UTXO_BYTE,
+          BigInt(facts.totalLength),
+          facts.lovelace,
+        ) !==
+          (state.direction === 1n))
+    ) {
+      throw new Error(`${label}: selected output does not violate min-Ada`);
+    }
+  }
+  const planned = planFaultProofFieldOpening({
+    anchorSourceKind,
+    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
+    anchorTxId: state.bad_tx_id,
+    nativeTxCompactCbor: prepared.nativeTxCompactCbor,
+    itemCbors: prepared.outputItemCbors.map((cbor) => Buffer.from(cbor, "hex")),
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: `${label} field 2`,
+  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      materials,
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.proofMaterialsAddress,
+      label: `${label} field 2`,
+    }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
+  const stepReference = requireLinearFaultReferenceScript({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+    family: FAMILY,
+    stepIndex,
+  });
+  const yieldReference = requireLinearFaultReferenceScript({
+    utxo: yieldReferenceScriptUtxo,
+    expectedScriptHash: contracts.yields.tx.withdrawalScriptHash,
+    family: FAMILY,
+    stepIndex,
+  });
+  const items = prepared.outputItemCbors.map((item) =>
+    Buffer.from(item, "hex"),
+  );
+  let grammarBytes = "";
+  let walkBytes = "";
+  let nextStepIndex = 2;
+  let continuationState: State | undefined;
+  if (negative) {
+    // The validator closes a negative index without reading the opening.
+  } else if (!state.grammar_complete) {
+    const prior =
+      state.grammar_checkpoint_hash === ""
+        ? initialMinAdaGrammarCheckpoint({ txId: state.bad_tx_id, items })
+        : resolveMinAdaGrammarCheckpoint({
+            txId: state.bad_tx_id,
+            items,
+            committedHash: state.grammar_checkpoint_hash,
+          });
+    grammarBytes =
+      state.grammar_checkpoint_hash === ""
+        ? ""
+        : encodeMinAdaGrammarCheckpoint(prior).toString("hex");
+    const next = advanceMinAdaGrammarCheckpoint({
+      checkpoint: prior,
+      items,
+      budget: 32,
+    });
+    continuationState = {
+      ...state,
+      grammar_checkpoint_hash: hashMinAdaGrammarCheckpoint(next),
+      grammar_complete: minAdaGrammarCheckpointIsComplete(next),
+    };
+    nextStepIndex = 1;
+  } else {
+    const grammar = resolveMinAdaGrammarCheckpoint({
+      txId: state.bad_tx_id,
+      items,
+      committedHash: state.grammar_checkpoint_hash,
+    });
+    grammarBytes = encodeMinAdaGrammarCheckpoint(grammar).toString("hex");
+    const prior =
+      state.walk_checkpoint_hash === ""
+        ? initialMinAdaSemanticCheckpoint({ grammar, items })
+        : resolveMinAdaSemanticCheckpoint({
+            txId: state.bad_tx_id,
+            items,
+            committedHash: state.walk_checkpoint_hash,
+          });
+    walkBytes =
+      state.walk_checkpoint_hash === ""
+        ? ""
+        : encodeMinAdaSemanticCheckpoint(prior).toString("hex");
+    if (
+      !absent &&
+      Number(prepared.badOutputIndex) - prior.nextItemIndex >= 32
+    ) {
+      const next = advanceMinAdaSemanticCheckpoint({
+        checkpoint: prior,
+        txId: state.bad_tx_id,
+        items,
+        budget: 32,
+      });
+      continuationState = {
+        ...state,
+        walk_checkpoint_hash: hashMinAdaSemanticCheckpoint(next),
+      };
+      nextStepIndex = 1;
+    }
+  }
+  const nextDatum = continuationState
+    ? Data.to(
+        { fraud_prover: signer.paymentKeyHash, data: continuationState },
+        Step02Datum,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: absent
+            ? { MinAdaTxAbsent: { direction: state.direction } }
+            : {
+                MinAdaTxScan: {
+                  direction: state.direction,
+                  scan: minAdaInitialScanState(
+                    minAdaOutputScanEvidence(
+                      state.bad_tx_id,
+                      prepared.badOutputIndex,
+                      prepared.outputItemCbors,
+                    ),
+                  ),
+                },
+              },
+        },
+        Step03Datum,
+      );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    const opening: FieldOpening = faultProofFieldOpening({
+      planned,
+      referenceInputs: ctx.referenceInputs,
+      certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      label: `${label} field 2`,
+    });
+    requireOwnSpendPurpose(ctx, threadUtxo, label);
+    const inputIndex = requireInputIndex(ctx, threadUtxo, label);
+    outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);
+    return Data.to(
+      {
+        Continue: [
+          {
+            grammar_checkpoint_bytes: grammarBytes,
+            walk_checkpoint_bytes: walkBytes,
+            input_index: inputIndex,
+            output_index: outputIndex,
+            yield_to_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              yieldReference,
+              label,
+            ),
+            outputs_opening: opening,
+          },
+        ],
+      },
+      Redeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const network = lucid.config().network;
+  if (network === undefined) throw new Error(`${label}: Lucid network missing`);
+  const transactionReferences = [
+    stepReference,
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    yieldReference,
+  ];
+  const funding = await fundStep(lucid, {
+    signer,
+    excluding: transactionReferences,
+  });
+  const tx = funding.tx
+    .collectFrom([threadUtxo], redeemer)
+    .readFrom(transactionReferences)
+    .withdraw(
+      scriptRewardAddress(network, contracts.yields.tx.withdrawalScript),
+      0n,
+      Data.void(),
+    )
+    .pay.ToContract(
+      contracts.steps[nextStepIndex].spendingScriptAddress,
+      { kind: "inline", value: nextDatum },
+      {
+        lovelace: threadUtxo.assets.lovelace ?? 0n,
+        [threadToken.unit]: 1n,
+      },
+    );
+  const signed = await completeStep(tx, funding);
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: label,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      },
+      {
+        role: `${label}-yield`,
+        utxo: yieldReference,
+        expectedScript: contracts.yields.tx.withdrawalScript,
+      },
+    ],
+  });
+  if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
+  const nextThreadOutRef = `${transaction.txHash}#${outputIndex.toString()}`;
+  // The next checkpoint spends this transaction's thread output, so it is
+  // built only once this one is confirmed.
+  if (nextStepIndex === 1)
+    return {
+      kind: "continuation",
+      transaction,
+      label: `${label} scan`,
+      next: {
+        threadOutRef: nextThreadOutRef,
+        publishedCarriageUtxos: carriageUtxos,
+      },
+    };
+  return {
+    transaction,
+    nextThreadOutRef,
+    carriageTier: planned.plan.tier,
+    nextStepIndex,
+  };
+};

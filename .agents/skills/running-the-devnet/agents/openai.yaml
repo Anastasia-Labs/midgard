@@ -1,0 +1,4 @@
+interface:
+  display_name: "Running the Devnet"
+  short_description: "Launch, relaunch or redeploy the local Midgard devnet, decide staleness, and wait on readiness"
+  default_prompt: "Use the Midgard running-the-devnet workflow."

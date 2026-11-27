@@ -1,0 +1,286 @@
+import {
+  decodeMidgardFieldPreimage,
+  decodeMidgardNativeTxWitnessSetCompact,
+} from "@al-ft/midgard-core";
+import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk/fraud-proof";
+
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
+import type { ProofMaterialsAccess } from "../workflow/proof-materials-view.js";
+import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
+import { buildWitnessScriptDecodingCancel } from "./submit-cancel.js";
+import { buildWitnessScriptDecodingInit } from "./submit-init.js";
+import {
+  buildWitnessScriptDecodingStep01Accepted,
+  buildWitnessScriptDecodingStep01Forced,
+} from "./submit-step-01.js";
+import { buildWitnessScriptDecodingStep02 } from "./submit-step-02.js";
+import { buildWitnessScriptDecodingStep03 } from "./submit-step-03.js";
+import { buildWitnessScriptDecodingStep04 } from "./submit-step-04.js";
+import {
+  type WitnessScriptDecodingAction,
+  type WitnessScriptDecodingEvidence,
+  type WitnessScriptDecodingObservation,
+} from "./witness-script-decoding.js";
+import {
+  required,
+  type WitnessScriptDecodingRuntimeLoader,
+} from "./workflow.detect-witness-script-decoding-complete-replay.js";
+import { type ManifestBoundWitnessScriptDecodingConfig } from "./workflow.witness-script-decoding-config-from-binding.js";
+
+export const createManifestBoundWitnessScriptDecodingSubmission = ({
+  config,
+  observe,
+  resolveStage,
+  stateQueueMutationLeaseCoordinator,
+  materials,
+}: {
+  readonly config: ManifestBoundWitnessScriptDecodingConfig;
+  readonly observe: (
+    identity: string,
+  ) => Promise<WitnessScriptDecodingObservation>;
+  readonly resolveStage: WitnessScriptDecodingRuntimeLoader["resolveStage"];
+  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+  /** The workflow's view of its proof-materials address, on a workflow. */
+  readonly materials?: ProofMaterialsAccess;
+}) => ({
+  observe,
+  submit: async (
+    action: Exclude<WitnessScriptDecodingAction, "done">,
+    evidence: WitnessScriptDecodingEvidence,
+  ) => {
+    const stage = await resolveStage({ action, evidence });
+    if (action === "submitInit") {
+      const result = await buildWitnessScriptDecodingInit({
+        lucid: config.lucid,
+        blueprint: config.binding.blueprint,
+        network: config.binding.network,
+        contracts: config.contracts,
+        category: config.binding.resolvedContracts.category,
+        catalogue: config.binding.catalogue,
+        signer: config.signer,
+        fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
+        fraudulentHeaderHash: config.binding.definition.headerHash,
+        witnessReferenceScripts: config.referenceScripts.witnesses,
+      });
+      return {
+        transaction: result.transaction,
+        stage: "step01" as const,
+        transactionId: result.transaction.txHash,
+        outputReference: result.nextThreadOutRef,
+        checkpointHash: null,
+      };
+    }
+    if (action === "submitStep01") {
+      const subject = evidence.finding.subject;
+      if (subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
+        const result = await buildWitnessScriptDecodingStep01Accepted({
+          lucid: config.lucid,
+          blueprint: config.binding.blueprint,
+          network: config.binding.network,
+          contracts: config.contracts,
+          categoryId: config.binding.resolvedContracts.category.categoryId,
+          signer: config.signer,
+          threadOutRef: required(stage.threadOutRef, "step01 thread out-ref"),
+          stateQueueBlockOutRef: required(
+            stage.stateQueueBlockOutRef,
+            "state-queue block out-ref",
+          ),
+          txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
+          scriptIndex: evidence.finding.scriptIndex,
+          referenceScriptUtxo: config.referenceScripts.step01,
+          witnessReferenceScripts: config.referenceScripts.witnesses,
+        });
+        return {
+          transaction: result.transaction,
+          stage: "step02" as const,
+          transactionId: result.transaction.txHash,
+          outputReference: result.nextThreadOutRef,
+          checkpointHash: null,
+        };
+      }
+      const result = await buildWitnessScriptDecodingStep01Forced({
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId: config.binding.resolvedContracts.category.categoryId,
+        signer: config.signer,
+        threadOutRef: required(stage.threadOutRef, "step01 thread out-ref"),
+        header: required(stage.forcedHeader, "forced header"),
+        membership: required(stage.forcedMembership, "forced membership"),
+        witnessSetHash: evidence.finding.witnessSetHash,
+        scriptIndex: evidence.finding.scriptIndex,
+        referenceScriptUtxo: config.referenceScripts.step01,
+      });
+      return {
+        transaction: result.transaction,
+        stage: "step02" as const,
+        transactionId: result.transaction.txHash,
+        outputReference: result.nextThreadOutRef,
+        checkpointHash: null,
+      };
+    }
+    if (action === "submitStep02") {
+      const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
+        Buffer.from(
+          required(stage.witnessSetCompactCbor, "witness-set compact CBOR"),
+          "hex",
+        ),
+      );
+      const scriptDecodeRecordUtxo = await requireScriptDecodeRecordForItem({
+        lucid: config.lucid,
+        deployment: config.scriptDecode,
+        item: Buffer.from(evidence.itemHex, "hex"),
+        label: WITNESS_SCRIPT_DECODING_CATEGORY_LABEL,
+      });
+      const result = await buildWitnessScriptDecodingStep02({
+        materials,
+        lucid: config.lucid,
+        network: config.binding.network,
+        contracts: config.contracts,
+        categoryId: config.binding.resolvedContracts.category.categoryId,
+        signer: config.signer,
+        threadOutRef: required(stage.threadOutRef, "step02 thread out-ref"),
+        evidence,
+        ...(scriptDecodeRecordUtxo === undefined
+          ? {}
+          : { scriptDecodeRecordUtxo }),
+        nativeTxCompactCbor: required(
+          stage.nativeTxCompactCbor,
+          "native transaction compact CBOR",
+        ),
+        witnessSetCompactCbor: required(
+          stage.witnessSetCompactCbor,
+          "witness-set compact CBOR",
+        ),
+        witnessSet: {
+          addr_tx_wits_hash: witnessSet.addrTxWitsHash.toString("hex"),
+          script_tx_wits_hash: witnessSet.scriptTxWitsHash.toString("hex"),
+          redeemer_tx_wits_hash: witnessSet.redeemerTxWitsHash.toString("hex"),
+        },
+        scriptWitnessItems: decodeMidgardFieldPreimage(
+          Buffer.from(evidence.fieldPreimageHex, "hex"),
+        ),
+        publishCarriage: evidence.carriage !== "Inline",
+        publishedCarriageUtxos: stage.publishedCarriageUtxos,
+        certificateUtxo: stage.certificateUtxo,
+        certificateReferenceScriptUtxo:
+          config.referenceScripts.fieldPreimageCertificateMint,
+        fieldGrammar: config.fieldGrammar,
+        referenceScriptUtxo: config.referenceScripts.step02,
+      });
+      if (isPrerequisiteTurn(result)) return result;
+      return {
+        transaction: result.transaction,
+        stage: "scan" as const,
+        transactionId: result.transaction.txHash,
+        outputReference: result.nextThreadOutRef,
+        checkpointHash: result.scanState.checkpoint_hash,
+      };
+    }
+    if (action === "submitScanOrResume") {
+      const result = await buildWitnessScriptDecodingStep03({
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId: config.binding.resolvedContracts.category.categoryId,
+        signer: config.signer,
+        threadOutRef: required(stage.threadOutRef, "scan thread out-ref"),
+        evidence,
+        referenceScriptUtxo: config.referenceScripts.step03,
+      });
+      return {
+        transaction: result.transaction,
+        stage: result.closed ? ("step04" as const) : ("scan" as const),
+        transactionId: result.transaction.txHash,
+        outputReference: result.nextThreadOutRef,
+        checkpointHash: result.scanState.checkpoint_hash,
+      };
+    }
+    if (action === "submitStep04") {
+      const result = await buildWitnessScriptDecodingStep04({
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId: config.binding.resolvedContracts.category.categoryId,
+        signer: config.signer,
+        threadOutRef: required(stage.threadOutRef, "step04 thread out-ref"),
+        evidence,
+        referenceScriptUtxo: config.referenceScripts.step04,
+        witnessReferenceScripts: config.referenceScripts.witnesses,
+      });
+      return {
+        transaction: result.transaction,
+        stage: "proven" as const,
+        transactionId: result.transaction.txHash,
+        outputReference: null,
+        checkpointHash: null,
+      };
+    }
+    const result = await buildRemoveFraudulentBlock({
+      lucid: config.lucid,
+      blueprint: config.binding.blueprint,
+      deploymentInfo: config.binding.deploymentInfo,
+      network: config.binding.network,
+      signer: config.signer,
+      fraudCategory: "witnessScriptDecoding",
+      fraudulentHeaderHash: config.binding.definition.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        stateQueueMutationLeaseCoordinator ??
+        (() => {
+          throw new Error(
+            "witnessScriptDecoding production removal requires a state-queue mutation lease coordinator",
+          );
+        })(),
+      validFrom: stage.validFrom,
+      validTo: stage.validTo,
+    });
+    return {
+      transaction: result.transaction,
+      stateQueueMutationLease: result.stateQueueMutationLease,
+      // A removal of a successor leaves the fraud proof in place.
+      stage:
+        result.kind === "remove-target"
+          ? ("removed" as const)
+          : ("proven" as const),
+      transactionId: result.transaction.txHash,
+      outputReference: null,
+      checkpointHash: null,
+    };
+  },
+  cancel: async (
+    current: "step01" | "step02" | "scan" | "step04",
+    evidence: WitnessScriptDecodingEvidence,
+  ) => {
+    const stage = await resolveStage({ action: "cancel", evidence });
+    const index =
+      current === "step01"
+        ? 0
+        : current === "step02"
+          ? 1
+          : current === "scan"
+            ? 2
+            : 3;
+    const result = await buildWitnessScriptDecodingCancel({
+      lucid: config.lucid,
+      contracts: config.contracts,
+      categoryId: config.binding.resolvedContracts.category.categoryId,
+      signer: config.signer,
+      threadOutRef: required(stage.threadOutRef, "cancel thread out-ref"),
+      referenceScriptUtxo: [
+        config.referenceScripts.step01,
+        config.referenceScripts.step02,
+        config.referenceScripts.step03,
+        config.referenceScripts.step04,
+      ][index]!,
+      witnessReferenceScripts: config.referenceScripts.witnesses,
+    });
+    return {
+      transaction: result.transaction,
+      stage: "cancelled" as const,
+      transactionId: result.transaction.txHash,
+      outputReference: null,
+      checkpointHash: null,
+    };
+  },
+});

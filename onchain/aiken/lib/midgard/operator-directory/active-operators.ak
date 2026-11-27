@@ -55,6 +55,15 @@ pub type SpendRedeemer {
     scheduler_redeemer_index: Int,
     hub_oracle_ref_input_index: Int,
   }
+  /// The operator raises its own bond hold for a validation-case defense. The
+  /// case validator, in the same transaction, checks the new hold; this arm
+  /// checks the operator's signature, that the node keeps its lovelace and
+  /// strikes, and that the hold never shortens.
+  UpdateBondHoldNewDefense {
+    active_operator: VerificationKeyHash,
+    active_node_input_index: Int,
+    active_node_output_index: Int,
+  }
 }
 
 pub type OperatorRemovalSchedulerSync {

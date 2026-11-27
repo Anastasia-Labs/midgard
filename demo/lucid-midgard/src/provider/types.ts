@@ -2,6 +2,7 @@ import type {
   ScriptLanguageName,
   ScriptLanguageTag,
 } from "@al-ft/midgard-core/codec";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 
 import type {
   Address,
@@ -18,12 +19,12 @@ export type ProtocolScriptLanguage = {
   readonly tag: ScriptLanguageTag;
 };
 
-export type MidgardProtocolInfo = {
-  readonly apiVersion: number;
+type MidgardProtocolInfoCommon = {
   readonly network: string;
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
+  readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
     readonly minFeeA: bigint;
     readonly minFeeB: bigint;
@@ -37,15 +38,36 @@ export type MidgardProtocolInfo = {
   };
 };
 
-export type ProviderDiagnostics = {
-  readonly endpoint: string;
-  readonly protocolInfoSource: "node" | "fallback" | "unknown";
-  readonly protocolInfoFallbackReason?: string;
+export type MidgardProtocolInfo = MidgardProtocolInfoCommon & {
+  readonly apiVersion: 1;
+  readonly consensusProfile: MidgardConsensusProfile;
+  /** The deployment's hub-oracle policy id, 56 lowercase hex characters. */
+  readonly hubOraclePolicyId?: string;
 };
 
-export type ProtocolInfoFallback = {
-  readonly protocolInfo: MidgardProtocolInfo;
-  readonly reason: string;
+export type ProviderDiagnostics = {
+  readonly endpoint: string;
+  readonly protocolInfoSource: "node" | "offline" | "unknown";
+};
+
+/** The ex-units one redeemer's script spends, by redeemer pointer. */
+export type MidgardRedeemerBudget = {
+  readonly tag: number;
+  readonly index: bigint;
+  readonly memory: bigint;
+  readonly steps: bigint;
+};
+
+export type MidgardBlocksQueryOptions = {
+  readonly limit?: number;
+  readonly cursor?: string;
+};
+
+export type MidgardBlockSummary = Readonly<Record<string, unknown>>;
+
+export type MidgardBlocksPage = {
+  readonly blocks: readonly MidgardBlockSummary[];
+  readonly nextCursor: string | null;
 };
 
 export type MidgardProvider = {
@@ -58,7 +80,15 @@ export type MidgardProvider = {
   getProtocolInfo(): Promise<MidgardProtocolInfo>;
   getProtocolParameters(): Promise<MidgardProtocolParameters>;
   getCurrentSlot(): Promise<bigint>;
+  blocks?(options?: MidgardBlocksQueryOptions): Promise<MidgardBlocksPage>;
   submitTx(txCanonicalCborHex: string): Promise<SubmitTxResult>;
+  /**
+   * The ex-units each Plutus redeemer of a draft transaction spends, as the
+   * node's Phase B charges them. The draft's declared ex-units are ignored.
+   */
+  evaluateTx?(
+    txCanonicalCborHex: string,
+  ): Promise<readonly MidgardRedeemerBudget[]>;
   getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;
 };
@@ -71,5 +101,4 @@ export type MidgardFetch = (
 export type MidgardNodeProviderOptions = {
   readonly endpoint: string;
   readonly fetch?: MidgardFetch;
-  readonly protocolInfoFallback?: ProtocolInfoFallback;
 };

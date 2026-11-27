@@ -5,8 +5,8 @@ import {
   NATIVE_MPF_RPC_DIGEST_DOMAIN,
   NATIVE_MPF_RPC_MAGIC,
   NATIVE_MPF_RPC_SCHEMA,
-  NativeMpfRpcKind,
   type NativeMpfRpcFrame,
+  NativeMpfRpcKind,
 } from "./protocol.js";
 
 const LENGTH_BYTES = 4;
@@ -24,14 +24,18 @@ const assertDigest = (value: Uint8Array): Buffer => {
   return digest;
 };
 
+// Kinds 4 and 5 were schema 1's load messages and are not reused.
+const isKnownKind = (value: number): boolean =>
+  Number.isSafeInteger(value) &&
+  ((value >= Number(NativeMpfRpcKind.Hello) &&
+    value <= Number(NativeMpfRpcKind.SetRoot)) ||
+    (value >= Number(NativeMpfRpcKind.Ready) &&
+      value <= Number(NativeMpfRpcKind.NodesProvided)));
+
 const assertKind: (value: number) => asserts value is NativeMpfRpcKind = (
   value,
 ) => {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < NativeMpfRpcKind.Hello ||
-    value > NativeMpfRpcKind.Error
-  ) {
+  if (!isKnownKind(value)) {
     throw new Error(`Unknown native MPF RPC message kind ${value.toString()}`);
   }
 };

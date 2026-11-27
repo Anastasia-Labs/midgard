@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "package": "@aiken-lang/merkle-patricia-forestry",
+  "version": "1.3.1-midgard.1",
+  "tarballSha256": "dfb0cba54a26e14b4ec134eb8f1b8cfd331663568f574d8ce93821b03e855ff8",
+  "tarballIntegrity": "sha512-obIY6aAb6iSKMHJBVTu2p7GpUoXxw3aBWr5loBN22MX7NsJOqFWcGmfdJgNDCCdStK60sgD8iYzRsDrNKWREEQ==",
+  "members": {
+    "package/LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+    "package/dist/index.cjs": "207feef2d3840c1dce89be96b3a5b1277d72b3c9ca1bf2072bc5d6c8bdec7cbd",
+    "package/dist/index.js": "9f3fe861cab20aeccc65e96bb21ba4300ab134c88e144b3c5236cc434a7a99ab",
+    "package/package.json": "23325d3fac9c21051014362df9a4098c658bcef6e4c4be9158f32ec4fa91bca6",
+    "package/README.md": "d30ef3fec6599bc2dfbed70a9354a61e76802df7f75195eeb58c07e233626b13",
+    "package/dist/cbor.d.ts": "513dd9358cb94199db198c24e8fa978e126e79bbdebed6248b9ef8abf8ac3222",
+    "package/dist/crypto.d.ts": "3eb724b5873792ab94644f66df983e45c25ca1e2060aa0beb593b0cf50c86de3",
+    "package/dist/helpers.d.ts": "748b8d5368b0cbadb4225a13bd02ee8aa31f9bd8911a094d63753bc8c00fb61c",
+    "package/dist/index.d.ts": "3d3ec106e63d2abfa7b34f2c20a5794946f5eaa6a6b4b42375ea46f5419d732c",
+    "package/dist/store.d.ts": "70b09fad78e53836e0d2ba3a1ae19742a2c534a7e87e22de7d8c34a48fb87e7e",
+    "package/dist/trie.d.ts": "a4de597514648e8644e63bd2a4bd25b66c204c441e133e33210ca75426b61417"
+  }
+}

@@ -1,0 +1,105 @@
+/** The non-existent-input route with every step built under the watcher's
+ * restricted prover wallet. That wallet offers coin selection and collateral
+ * only the plain coins no other action of the process holds, so every step
+ * must spend and post as collateral those coins alone. */
+import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { describe, expect, it } from "vitest";
+
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { prepareInputExistence } from "../src/input-existence/prepare.js";
+import { buildInputExistenceStep } from "../src/input-existence/submit.js";
+import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { runInputExistenceRoute } from "./support/emulator/input-existence-route.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { memoryLedger } from "./support/fixture-ledger.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { restrictedProverWallet } from "./support/restricted-prover-wallet.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
+import { buildAndSubmit } from "./support/submit-steps.js";
+
+describe("non-existent-input steps under the watcher's restricted wallet", () => {
+  it("funds every step and posts its collateral from the coins the restricted wallet offers and convicts", async () => {
+    const h = await makeFaultProofEmulatorHarness({
+      contractOptions: {
+        realNonExistentInput: true,
+        alwaysFraudProofCatalogue: true,
+      },
+      registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
+    });
+    const nativeTx = makeNativeTx({
+      spendInputCbors: [
+        encodeMidgardSpendInputItem({
+          txId: Buffer.alloc(32, 0x66),
+          outputIndex: 0,
+        }),
+      ],
+      fee: 0n,
+    });
+    const block = await buildDecodingBlockFixture({
+      operatorVkey: await funderPaymentKeyHash(h.funderLucid),
+      startTime: BigInt(
+        alignUnixTimeToEmulatorSlotBoundary(
+          h.funderLucid,
+          h.emulator.now() + 120_000,
+        ) - 1,
+      ),
+      priorLedgerRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      subject: { kind: "normal", nativeTx },
+    });
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(block),
+      payloadEnvelopeCbor: block.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "emulator/input-existence",
+        grade: "security",
+      },
+    });
+    const setup = await submitSetupTx({
+      lucid: h.funderLucid,
+      contracts: h.contracts,
+      nonceUtxo: h.nonceUtxo,
+      catalogue: h.catalogue,
+      header: evidence.header,
+    });
+    const prepared = await prepareInputExistence({
+      block: evidence,
+      eventKey: { L2TransactionEventKey: { tx_id: block.nativeTxId } },
+      field: 0,
+      inputIndex: 0n,
+      predecessor: await memoryLedger([], SDK.EMPTY_MERKLE_TREE_ROOT),
+      owner: h.proverSigner.paymentKeyHash,
+    });
+    let checked = 0;
+    await runInputExistenceRoute({
+      h,
+      field: 0,
+      prepared,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      // A fresh restricted wallet per step, as the watcher builds each
+      // action.
+      submitStep: async (args) => {
+        const funding = restrictedProverWallet({
+          emulator: h.emulator,
+          signer: args.signer,
+        });
+        const result = await buildAndSubmit(buildInputExistenceStep, {
+          ...args,
+          signer: funding.signer,
+          beforeSubmit: funding.beforeSubmit,
+        });
+        checked += funding.checked();
+        return result;
+      },
+      outcome: { kind: "conviction" },
+    });
+    expect(checked).toBe(4);
+  }, 600_000);
+});

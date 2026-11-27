@@ -1,0 +1,44 @@
+# Validation trace dispute workflow
+
+`validationTraceDispute` is the interactive fault-proof family. Its on-chain
+validators are deployed and this release installs its off-chain workflow: the
+[family application record](../../demo/midgard-fault-proofs/src/workflow/family-application-registry.validation-trace-dispute-family-application-record.ts)
+binds the
+[manifest-bound runner](../../demo/midgard-fault-proofs/src/validation-trace-dispute/workflow.ts)
+to the deployment the host loaded, and the classifier's
+[catalogue replay](../../demo/midgard-fault-proofs/src/workflow/catalogue-replay.ts)
+re-executes each committed block's scripts on its admitted predecessor. A
+script re-execution that throws (rather than deciding) holds only its event;
+the block's objective names `validation_trace_replay_held`, or
+`validation_trace_replay_stuck` once the same failure repeats, and retries
+after a backoff. Neither is a verdict. The other families' findings still
+decide the block when one of them is strictly earlier than every held event;
+otherwise the header's classification waits under the same reason. A claim
+whose build ends without a result is held as
+`validation-trace-claim-build-held` and rebuilt on the next observation.
+
+The DA payload carries no per-transaction validation trace states: its
+`validation_trace_witnesses` section is always empty, and each validation trace
+descriptor is a placeholder that binds the event key, the transaction
+commitment and the verdict.
+
+## Deployed chain
+
+The deployed interactive chain is `VALIDATION_TRACE_DISPUTE_STEP_COUNT` steps
+long. The SDK family builder composes the `steps` array (control validators,
+proof item, semantic resolvers, the shared ScriptSources item chain, the CEK
+context and item stages, the canonical decode item stages and the prepare
+resolvers) and fails the build if its length differs from that constant.
+
+Every step is a
+[core deployment member](../../demo/midgard-core/src/deployment-manifest-identity/members.data.ts)
+whose `steps` family path is its index in that array, so the members' step
+names list the whole chain in order. Each is published as a reference script
+and carried in the deployment manifest. Deployment resolution compares every
+recorded step, not only the first, with the compiled step at its index.
+
+## Verification
+
+[Resolver publication](../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts)
+publishes every applied semantic resolver under the real L1 limit and asserts
+the 512-byte publication reserve. It establishes publication only.

@@ -12,7 +12,7 @@ Meanwhile, offchain queries can access any part of the list via beacon NFTs that
 We describe two types of linked lists:
 
 \begin{itemize}
-    \item The \textbf{key-unordered} linked list is a cheaper/simpler variant that only allows nodes to be appended at the end of the list and does not enforce the order of keys in the list.
+    \item The \textbf{key-unordered} linked list is a cheaper/simpler variant that allows nodes to be appended at the end or prepended at the head and does not enforce the order of keys in the list.
       It can be used to implement queues and other sequential data structures.
       However, appending to a list is a sequential operation, which is unsuitable for applications that need multiple independent actors to grow the list simultaneously.
     \item The \textbf{key-ordered} linked list allows nodes to be inserted anywhere in the list, but it applies additional rules to maintain the key-ascending (or descending) order of nodes.
@@ -78,7 +78,7 @@ The nodes represent the actual keys and data of interest within a non-empty list
 
 The \code{link} field is a link to the next key that a forward traversal through the list must visit after visiting the current node.
 Alternatively, the \code{link} field can be interpreted as the previous key that a backward traversal through the list has visited before the current node.
-The last node is the only node with a \code{link} field value of \code{None} because forward traversal through the list must end after this node (backward traversal must start at this node).
+In a non-empty list, the last node is the only node with a \code{link} field value of \code{None} because forward traversal through the list must end after this node (backward traversal must start at this node).
 
 \subsection{Linked list library structure}
 \label{h:list-library-structure}
@@ -108,11 +108,11 @@ The required conditions for each element are:
 \begin{itemize}
     \item The element utxos must hold some ADA, and NFTs of the list's minting policy with correct asset names with no other tokens.
     \item The element utxos must have inline datums that parse as \code{Element}.
-    \item No reference script must be attached to the utxo.\footnote{This is an opinionated design decision that is not strictly necessary for the linked list itself.
-      See \cref{h:list-opinionated-design-decisions}.}
+    \item Reference-script restrictions are application obligations. The authentication helper returns the optional reference script; authentication alone does not reject one. Use the advanced API when transitions must inspect or preserve reference scripts.
 \end{itemize}
 
 Throughout this document we refer to the above conditions with the keyword \textbf{Authentic} for short.
+The caller must select every supplied output from the actual transaction outputs, enforce the application datum and destination, and dedicate the list payment credential to list elements. Root and node asset-name namespaces must be fixed and disjoint at deployment. The helper does not independently establish these application preconditions.
 
 \textbf{Proper continuation.} Another common requirement for all state transition operations is validating the proper reproduction of anchor elements.
 This requirment also involves another element that is either being added to the list or removed from it.
@@ -122,7 +122,7 @@ Conditions:
   \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
   \item Let \code{node} be the element that is being added or removed from the list.
   \item \code{input\_anchor}, \code{output\_anchor}, and \code{node} must all be Authentic.
-  \item \code{input\_anchor} and \code{output\_anchor} must match on address, asset names of their NFTs, and datum.
+  \item \code{input\_anchor} and \code{output\_anchor} must match on address, asset names of their NFTs, and the underlying \code{data} field. The \code{link} changes as required by the operation; fold operations may also update the underlying data.
   \item Address of \code{node} must have the same payment credential as \code{input\_anchor} and \code{output\_anchor}.\footnote{Note here that \code{node} is not being enforced to share the same staking part as its anchor.
     This is another design decision to balance flexibility and user-friendliness of the API.}
 \end{itemize}
@@ -222,12 +222,12 @@ The provided functions are as follows:
           \end{itemize}
       \end{enumerate}
     \item[Append unordered.] Add a node to the end of the list.
-      Conditions are identical to the Insert operation, with only one different stipulation:
+      Conditions follow Insert without its key-order comparisons; the application must ensure key uniqueness. Additionally:
       \begin{enumerate}
         \item \code{input\_anchor} must have no \code{link} (i.e., it must be the last element of the list).
       \end{enumerate}
     \item[Prepend unordered.] Add a node in the list as the new head.
-      Conditions are identical to the Insert operation, with only one extra stipulation:
+      Conditions follow Insert without its key-order comparisons; the application must ensure key uniqueness. Additionally:
       \begin{enumerate}
         \item \code{data} of \code{input\_anchor} must parse as \code{Root}.
       \end{enumerate}
@@ -378,8 +378,7 @@ A few implicit behaviors have been implemented by the library in order to keep t
     On the other hand, anchor elements are validated to be reproduced at the same addresses (meaning neither their payment parts nor staking parts can change).
   \item \textbf{Tokens of utxos.} All linked list utxos are validated to carry some ADA (which its quantity is exposed), plus the list NFT and no other tokens.
     Exposing the rest of the assets would not only overwhelm the API, but it would also add extra overhead.
-  \item \textbf{Reference scripts.} List utxos are required to have no scripts attached to them.
-    This prevents users from bloating utxos and therefore increasing the min required ADA for them, without returning more values for users to handle.
+  \item \textbf{Reference scripts.} The default structural API does not expose reference scripts to its callbacks. Applications requiring their preservation or inspection must use the advanced API and enforce the intended rule. Authentication by itself does not prove absence of a reference script.
 \end{itemize}
 
 \subsection{Instantiate a linked list in an application}

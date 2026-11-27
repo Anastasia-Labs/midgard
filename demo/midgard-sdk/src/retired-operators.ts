@@ -1,20 +1,15 @@
-import {
-  Data,
-  fromText,
-  LucidEvolution,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
+import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { Data, fromText, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { SlashingArgumentsSchema } from "./active-operators.js";
 import {
-  AuthenticatedValidator,
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+} from "./common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
+import { LinkedListDatum, linkedListDatumToNodeView } from "./linked-list.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_RETIRED_OPERATORS",
@@ -26,8 +21,9 @@ export const RetiredOperatorDatumSchema = Data.Object({
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
 >;
-export const RetiredOperatorDatum =
-  RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
+export const RetiredOperatorDatum = asDataType<RetiredOperatorDatum>(
+  RetiredOperatorDatumSchema,
+);
 export const castRetiredOperatorDatumToData = (
   datum: RetiredOperatorDatum,
 ): unknown => Data.castTo(datum, RetiredOperatorDatum);
@@ -58,7 +54,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
     }),
   }),
 ]);
@@ -66,12 +62,7 @@ export type RetiredOperatorMintRedeemer = Data.Static<
   typeof RetiredOperatorMintRedeemerSchema
 >;
 export const RetiredOperatorMintRedeemer =
-  RetiredOperatorMintRedeemerSchema as unknown as RetiredOperatorMintRedeemer;
-
-export type RetiredOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  lovelace?: bigint;
-};
+  asDataType<RetiredOperatorMintRedeemer>(RetiredOperatorMintRedeemerSchema);
 
 export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
 
@@ -100,32 +91,21 @@ export const fetchRetiredOperatorUTxOs = (
         cause: "No UTxOs found in Retired Operators Contract address",
       });
     }
-    return yield* authenticateUTxOs<RetiredOperatorDatum>(
+    const linkedListUTxOs = yield* authenticateUTxOs<LinkedListDatum>(
       allUtxos,
       params.retiredOperatorPolicyId,
-      RetiredOperatorDatum,
+      LinkedListDatum,
     );
-  });
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorInitTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorInitParams,
-): Effect.Effect<TxBuilder> =>
-  incompleteInitLinkedListTxProgram(lucid, {
-    validator: params.validator,
-    rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
-    data: "",
-    redeemer: (outputIndex) =>
-      Data.to(
-        { Init: { output_index: outputIndex } },
-        RetiredOperatorMintRedeemer,
+    return yield* Effect.allSuccesses(
+      linkedListUTxOs.map(({ assetName, utxo, datum }) =>
+        Effect.try(() => ({
+          assetName,
+          utxo,
+          datum: Data.castFrom(
+            linkedListDatumToNodeView(datum, assetName).data as never,
+            RetiredOperatorDatum as never,
+          ) as RetiredOperatorDatum,
+        })),
       ),
-    lovelace: params.lovelace,
+    );
   });

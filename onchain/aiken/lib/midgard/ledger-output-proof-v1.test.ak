@@ -1,0 +1,844 @@
+use aiken/builtin
+use aiken/crypto
+use aiken/fuzz
+use aiken/primitive/bytearray
+use midgard/bounded_item_v1
+use midgard/cek_data_frame_v1
+use midgard/cek_data_traverse_v1
+use midgard/cek_data_v1
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_datum as narrow_datum
+use midgard/ledger_output_proof_raw as raw
+use midgard/ledger_output_proof_span as output_span
+use midgard/ledger_output_proof_stages as narrow
+use midgard/ledger_output_proof_v1
+use midgard/script_context_v1
+use midgard/validation_merkle_v1
+
+const no_reference_output =
+  #"a200581d7811111111111111111111111111111111111111111111111111111111018200a0"
+
+const small_reference_output =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0038203436b6b6b"
+
+const small_datum_output =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00243d87980"
+
+const malformed_nonminimal_output =
+  #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0"
+
+const cross_language_long_terminal_control =
+  #"91010600192bf15820df9ca61ac2b387114175c5666592059ef0258587263fc76c7be14b469c8d347b970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820de4ab123673d8a9958247e2b709508944a6f64a4db4c7208d0a871d3358804c01854191427000319147c191481191770d8799f8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f835820233bd2aae8185621523dffd5a39f13af90fb3f627b68ace872480fb8855463a818301837ffffd8799f890107185419142719142740d87a80d87a80d8799f8358207606c843941807d21c529dd66924503dd31b7349ffae8b133f300fdeb5cc6eef191427190275ffff02818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80d87a80d87a80d87a80d87a80d87a80"
+
+fn one_chunk_material(
+  output_index: Int,
+  output: ByteArray,
+) -> Pair<ByteArray, bounded_item_v1.ChunkProofV1> {
+  let frontier = validation_merkle_v1.append_leaf(
+    0,
+    validation_merkle_v1.empty_frontier(),
+    bounded_item_v1.hash_chunk(2, output_index, 0, output),
+  )
+  let commitment = bounded_item_v1.commitment(
+    2,
+    output_index,
+    bytearray.length(output),
+    frontier,
+  )
+  Pair(
+    commitment,
+    bounded_item_v1.ChunkProofV1 {
+      version: 1,
+      field_index: 2,
+      item_index: output_index,
+      total_length: bytearray.length(output),
+      chunk_index: 0,
+      chunk: output,
+      frontier,
+      siblings: [],
+    },
+  )
+}
+
+fn chunks(
+  proof: bounded_item_v1.ChunkProofV1,
+) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
+  ledger_output_proof_v1.LedgerOutputProofChunks {
+    chunk_proof: proof,
+    next_chunk_proof: None,
+  }
+}
+
+fn datum(
+  action: cek_data_traverse_v1.DataTraverseActionV1,
+  window: Option<ByteArray>,
+) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
+  ledger_output_proof_v1.LedgerOutputProofDatum { action, window }
+}
+
+/// A span-attach witness over a one-chunk output. The window itself is
+/// derived from the pre-control's demanded span.
+fn span_attach(
+  proof: bounded_item_v1.ChunkProofV1,
+) -> ledger_output_proof_v1.LedgerOutputProofWitnessV1 {
+  ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+    chunk_proof: proof,
+    next_chunk_proof: None,
+  }
+}
+
+/// The bytes of the window `control` records, sliced out of `output`.
+fn recorded_window(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ByteArray {
+  expect Some(window) = control.span_window
+  builtin.slice_bytearray(window.start, window.length, output)
+}
+
+fn advanced(
+  result: Option<ledger_output_proof_v1.LedgerOutputProofStepResultV1>,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) = result
+  control
+}
+
+fn finish_empty_value(
+  scan_terminal: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  let value_ready = advanced(
+    ledger_output_proof_v1.step_v1(
+      scan_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let value_finalize = advanced(
+    ledger_output_proof_v1.step_v1(
+      value_ready,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let value_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      value_finalize,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  advanced(
+    ledger_output_proof_v1.step_v1(
+      value_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+}
+
+test authenticates_a_complete_output_without_a_reference_script() {
+  let Pair(commitment, proof) = one_chunk_material(0, no_reference_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(no_reference_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_field,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let terminal = finish_empty_value(scan_terminal)
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_data_v1(
+    no_reference_output,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_data_v1(
+    no_reference_output,
+    True,
+  )
+  expect Some(cardano_tx_out_summary) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(midgard_tx_out_summary) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(cardano_spend_datum_summary) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
+    terminal,
+  )
+  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    version: ledger_output_commitment_v1.version,
+    output_index: terminal.output_index,
+    total_length: terminal.total_length,
+    item_commitment: terminal.item_commitment,
+    address: terminal.output_scan.address,
+    lovelace: terminal.output_scan.lovelace,
+    asset_count: terminal.output_scan.asset_count,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      terminal.output_scan.asset_count,
+      terminal.output_scan.asset_peaks,
+    ),
+    cardano_value_size: terminal.output_scan.cardano_value_size,
+    reference_script_language: -1,
+    reference_script_hash: #"",
+    reference_script_total_length: 0,
+    reference_script_item_commitment: #"",
+    cardano_tx_out: cardano_tx_out_summary,
+    midgard_tx_out: midgard_tx_out_summary,
+    cardano_spend_datum: cardano_spend_datum_summary,
+  }
+  and {
+    ledger_output_proof_v1.terminal_is_exact_v1(terminal),
+    terminal.output_scan.address == #"7811111111111111111111111111111111111111111111111111111111",
+    terminal.output_scan.lovelace == 0,
+    terminal.script_hash == None,
+    ledger_output_proof_v1.value_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(builtin.map_data([])),
+    ),
+    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(cardano_tx_out),
+    ),
+    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(midgard_tx_out),
+    ),
+    cardano_tx_out != midgard_tx_out,
+    ledger_output_proof_v1.terminal_descriptor_v1(terminal) == Some(descriptor),
+    // The three attachment groups record the facts of the derived
+    // descriptor; the thin terminal gate accepts exactly its bytes.
+    {
+      expect Some(leaves) = ledger_output_proof_v1.fact_attach_v1(terminal)
+      expect Some(reference) = ledger_output_proof_v1.fact_attach_v1(leaves)
+      expect Some(facts) = ledger_output_proof_v1.fact_attach_v1(reference)
+      and {
+        ledger_output_proof_v1.fact_attach_v1(facts) == None,
+        ledger_output_proof_v1.facts_are_exact_v1(
+          facts,
+          ledger_output_commitment_v1.encode(descriptor),
+        ),
+        !ledger_output_proof_v1.facts_are_exact_v1(
+          facts,
+          ledger_output_commitment_v1.encode(
+            ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+              ..descriptor,
+              lovelace: descriptor.lovelace + 1,
+            },
+          ),
+        ),
+        !ledger_output_proof_v1.facts_are_exact_v1(
+          reference,
+          ledger_output_commitment_v1.encode(descriptor),
+        ),
+      }
+    },
+  }
+}
+
+test derives_the_first_script_hash_block_from_the_output_chunk() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_reference_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_reference_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let script_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(script_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let reference_ready = finish_empty_value(scan_terminal)
+  let span_attached = advanced(
+    ledger_output_proof_v1.step_v1(reference_ready, span_attach(proof)),
+  )
+  let reference_committed = advanced(
+    ledger_output_proof_v1.step_v1(
+      span_attached,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: recorded_window(span_attached, small_reference_output),
+      },
+    ),
+  )
+  let hash_ready = advanced(
+    ledger_output_proof_v1.step_v1(
+      reference_committed,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let hash_round = advanced(
+    ledger_output_proof_v1.step_v1(
+      hash_ready,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: recorded_window(hash_ready, small_reference_output),
+      },
+    ),
+  )
+  expect Some(hash_control) = hash_round.script_hash
+  and {
+    reference_committed.reference_script_count == 1,
+    ledger_output_proof_v1.reference_script_item_commitment_v1(
+      reference_committed,
+    ) == None,
+    hash_round.stage == ledger_output_proof_v1.stage_script_hash,
+    hash_control.stage == 1,
+    hash_control.active_block_length == 4,
+    builtin.slice_bytearray(0, 4, hash_control.active_block) == #"036b6b6b",
+  }
+}
+
+test authenticates_the_inline_datum_semantics_from_output_chunks() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_datum_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let datum_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(datum_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let datum_ready = finish_empty_value(scan_terminal)
+  let datum_windowed = advanced(
+    ledger_output_proof_v1.step_v1(datum_ready, span_attach(proof)),
+  )
+  let datum_opened = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_windowed,
+      datum(
+        cek_data_traverse_v1.HeadSequence,
+        Some(recorded_window(datum_windowed, small_datum_output)),
+      ),
+    ),
+  )
+  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"")
+  let datum_authenticated = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_opened,
+      datum(cek_data_traverse_v1.FinalizeFrame { frame, parent: None }, None),
+    ),
+  )
+  let raw_witness: Data = datum(
+    cek_data_traverse_v1.FinalizeFrame { frame, parent: None },
+    None,
+  )
+  expect Some(narrow.Advanced { control: raw_datum_authenticated }) = narrow_datum.finalize_frame(
+    raw.open(ledger_output_proof_v1.encode_control_v1(datum_opened)),
+    raw_witness,
+  )
+  expect
+    raw.encode(raw_datum_authenticated) == ledger_output_proof_v1.encode_control_v1(
+      datum_authenticated,
+    )
+  let terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_authenticated,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let expected_spend_datum = builtin.constr_data(
+    0,
+    [builtin.constr_data(0, [])],
+  )
+    |> cek_data_v1.semantic_data_summary_v1
+  and {
+    datum_ready.stage == ledger_output_proof_v1.stage_datum_traversal,
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal) == Some(
+      expected_spend_datum,
+    ),
+    ledger_output_proof_v1.terminal_is_exact_v1(terminal),
+  }
+}
+
+test reports_authenticated_invalid_output_bytes() {
+  let Pair(commitment, proof) = one_chunk_material(
+    0,
+    malformed_nonminimal_output,
+  )
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(malformed_nonminimal_output),
+    commitment,
+  )
+  ledger_output_proof_v1.step_v1(initial, chunks(proof)) == Some(
+    ledger_output_proof_v1.LedgerOutputProofInvalidOutput,
+  )
+}
+
+test fails_closed_for_a_substituted_chunk() {
+  let Pair(commitment, proof) = one_chunk_material(0, no_reference_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(no_reference_output),
+    commitment,
+  )
+  let substituted = bounded_item_v1.ChunkProofV1 {
+    ..proof,
+    chunk: malformed_nonminimal_output,
+  }
+  ledger_output_proof_v1.step_v1(initial, chunks(substituted)) == None
+}
+
+test fails_closed_for_a_substituted_reference_script_item_chunk() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_reference_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_reference_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let script_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(script_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let reference_ready = finish_empty_value(scan_terminal)
+  let substituted = bounded_item_v1.ChunkProofV1 {
+    ..proof,
+    chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
+  }
+  let span_attached = advanced(
+    ledger_output_proof_v1.step_v1(reference_ready, span_attach(proof)),
+  )
+  and {
+    // A substituted chunk fails the span-attach merkle check.
+    ledger_output_proof_v1.step_v1(
+      reference_ready,
+      ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+        chunk_proof: substituted,
+        next_chunk_proof: None,
+      },
+    ) == None,
+    // Window bytes that do not hash to the recorded digest are refused at the
+    // consuming step.
+    ledger_output_proof_v1.step_v1(
+      span_attached,
+      ledger_output_proof_v1.LedgerOutputProofWindow {
+        bytes: builtin.replicate_byte(
+          bytearray.length(
+            recorded_window(span_attached, small_reference_output),
+          ),
+          0,
+        ),
+      },
+    ) == None,
+  }
+}
+
+test fails_closed_for_a_substituted_inline_datum_item_chunk() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_datum_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let datum_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(datum_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let datum_ready = finish_empty_value(scan_terminal)
+  let substituted = bounded_item_v1.ChunkProofV1 {
+    ..proof,
+    chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
+  }
+  let datum_windowed = advanced(
+    ledger_output_proof_v1.step_v1(datum_ready, span_attach(proof)),
+  )
+  and {
+    // A substituted chunk fails the span-attach merkle check.
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      ledger_output_proof_v1.LedgerOutputProofSpanAttach {
+        chunk_proof: substituted,
+        next_chunk_proof: None,
+      },
+    ) == None,
+    // Tampered window bytes are refused by the datum head's window binding.
+    ledger_output_proof_v1.step_v1(
+      datum_windowed,
+      datum(
+        cek_data_traverse_v1.HeadSequence,
+        Some(
+          builtin.replicate_byte(
+            bytearray.length(
+              recorded_window(datum_windowed, small_datum_output),
+            ),
+            0,
+          ),
+        ),
+      ),
+    ) == None,
+    // A datum step without the span-attach step has no window to bind to.
+    ledger_output_proof_v1.step_v1(
+      datum_ready,
+      datum(cek_data_traverse_v1.HeadSequence, Some(small_datum_output)),
+    ) == None,
+  }
+}
+
+test decodes_the_long_typescript_terminal_control_canonically() {
+  let control = ledger_output_proof_v1.decode_control_v1(
+    cross_language_long_terminal_control,
+  )
+  expect Some(spend_datum_summary) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
+    control,
+  )
+  expect Some(reference_item_commitment) = ledger_output_proof_v1.reference_script_item_commitment_v1(
+    control,
+  )
+  expect Some(cardano_tx_out) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+    control,
+  )
+  expect Some(midgard_tx_out) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
+    control,
+  )
+  and {
+    ledger_output_proof_v1.terminal_is_exact_v1(control),
+    control.reference_script_count == 2,
+    bytearray.length(spend_datum_summary.root) == 32,
+    bytearray.length(reference_item_commitment) == 32,
+    bytearray.length(cardano_tx_out.root) == 32,
+    bytearray.length(midgard_tx_out.root) == 32,
+    cardano_tx_out.root != midgard_tx_out.root,
+    ledger_output_proof_v1.reference_script_digest_v1(control) == Some(
+      #"634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098",
+    ),
+    ledger_output_proof_v1.encode_control_v1(control) == cross_language_long_terminal_control,
+  }
+}
+
+test initial_control_specialized_encoder_matches_generic(
+  args via fuzz.tuple3(
+    fuzz.int_at_least(0),
+    fuzz.int_at_least(1),
+    fuzz.bytearray_fixed(32),
+  ),
+) {
+  let (index, length, commitment) = args
+  ledger_output_proof_v1.encode_initial_control_v1(index, length, commitment) == ledger_output_proof_v1.encode_control_v1(
+    ledger_output_proof_v1.initial_control_v1(index, length, commitment),
+  )
+}
+
+/// The window binding returns exactly the authenticated span over the honest
+/// window bytes, for every demanded span the window covers; out-of-window
+/// spans, oversized or truncated bytes, and tampered bytes are refused.
+test bound_window_bytes_binds_the_recorded_digest(
+  args via fuzz.tuple(fuzz.int_between(-3, 60), fuzz.int_between(-1, 60)),
+) {
+  let (start, length) = args
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let total = bytearray.length(small_datum_output)
+  let window = Some(
+    ledger_output_proof_v1.LedgerOutputSpanWindowV1 {
+      start: 0,
+      length: total,
+      digest: crypto.blake2b_256(small_datum_output),
+    },
+  )
+  let bound = ledger_output_proof_v1.bound_window_bytes_v1(
+    window,
+    start,
+    length,
+    small_datum_output,
+  )
+  let authenticated = ledger_output_proof_v1.authenticated_output_span_for_output(
+    0,
+    total,
+    commitment,
+    start,
+    length,
+    chunks(proof),
+  )
+  and {
+    bound == authenticated,
+    ledger_output_proof_v1.bound_window_bytes_v1(
+      window,
+      start,
+      length,
+      builtin.replicate_byte(total, 0),
+    ) == None,
+    ledger_output_proof_v1.bound_window_bytes_v1(
+      None,
+      start,
+      length,
+      small_datum_output,
+    ) == None,
+  }
+}
+
+// Empty spans. An inline datum `B""` reads an empty span: no output bytes, so
+// the step takes no window and demands none. The first output ends with the
+// datum (its empty span starts at the output length); in the second a
+// reference script follows it.
+
+const empty_bytes_datum_output =
+  #"a300581d781111111111111111111111111111111111111111111111111111111101821a001e8480a0024140"
+
+const empty_bytes_datum_before_a_script_output =
+  #"a400581d781111111111111111111111111111111111111111111111111111111101821a001e8480a00241400382034100"
+
+/// The first datum-traversal step of a one-chunk proof, after its span
+/// attach: through the structure stage a chunk step while the scan takes one
+/// and a no-witness step otherwise, then no-witness steps through the value
+/// fold.
+fn datum_traversal_start(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  if control.stage == ledger_output_proof_v1.stage_datum_traversal {
+    advanced(ledger_output_proof_v1.step_v1(control, span_attach(proof)))
+  } else {
+    let no_witness = fn() {
+      advanced(
+        ledger_output_proof_v1.step_v1(
+          control,
+          ledger_output_proof_v1.LedgerOutputProofNoWitness,
+        ),
+      )
+    }
+    let next = if control.stage == ledger_output_proof_v1.stage_structure {
+      when ledger_output_proof_v1.step_v1(control, chunks(proof)) is {
+        Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control: next }) ->
+          next
+        _ -> no_witness()
+      }
+    } else {
+      expect control.stage == ledger_output_proof_v1.stage_value_fold
+      no_witness()
+    }
+    datum_traversal_start(next, proof)
+  }
+}
+
+fn active_datum(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> cek_data_traverse_v1.DataTraverseControlV1 {
+  expect Some(datum_control) = control.datum
+  datum_control
+}
+
+/// The window a datum step takes: the recorded window when the step demands
+/// a span, none otherwise.
+fn demanded_window(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> Option<ByteArray> {
+  when ledger_output_proof_v1.demanded_span_v1(control) is {
+    None -> None
+    Some(_) -> Some(recorded_window(control, output))
+  }
+}
+
+/// One step of a byte-string datum: the head, then the bytes scalar until it
+/// attaches, then the hand-off out of the traversal.
+fn byte_string_datum_step(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  let datum_control = active_datum(control)
+  let window = demanded_window(control, output)
+  if datum_control.stage == cek_data_traverse_v1.stage_head {
+    advanced(
+      ledger_output_proof_v1.step_v1(
+        control,
+        datum(cek_data_traverse_v1.HeadScalar, window),
+      ),
+    )
+  } else if datum_control.stage == cek_data_traverse_v1.stage_terminal {
+    advanced(
+      ledger_output_proof_v1.step_v1(
+        control,
+        ledger_output_proof_v1.LedgerOutputProofNoWitness,
+      ),
+    )
+  } else {
+    expect datum_control.stage == cek_data_traverse_v1.stage_bytes
+    when
+      ledger_output_proof_v1.step_v1(
+        control,
+        datum(cek_data_traverse_v1.NoAction, window),
+      )
+    is {
+      Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control: next }) ->
+        next
+      _ ->
+        advanced(
+          ledger_output_proof_v1.step_v1(
+            control,
+            datum(cek_data_traverse_v1.AttachScalar { parent: None }, window),
+          ),
+        )
+    }
+  }
+}
+
+/// Whether the datum step at `control` reads an empty span.
+fn reads_empty_span(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> Bool {
+  when cek_data_traverse_v1.next_source_span_v1(active_datum(control)) is {
+    None -> False
+    Some(source_span) -> source_span.length == 0
+  }
+}
+
+/// At a datum step over an empty span starting at `start`: the typed and
+/// split span selections demand no window, the typed step advances without
+/// one and refuses every window and a span attach, and the split span is the
+/// empty span at `start`.
+fn empty_span_takes_no_window(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
+  start: Int,
+) -> Bool {
+  let control_frame = raw.open(
+    ledger_output_proof_v1.encode_control_v1(control),
+  )
+  let step = fn(window) {
+    ledger_output_proof_v1.step_v1(
+      control,
+      datum(cek_data_traverse_v1.NoAction, window),
+    )
+  }
+  and {
+    ledger_output_proof_v1.demanded_span_v1(control) == None,
+    output_span.demanded_span(control_frame) == None,
+    narrow_datum.next_source_span(control_frame) == Some((start, 0)),
+    step(None) != None,
+    step(Some(#"")) == None,
+    step(Some(output)) == None,
+    step(Some(recorded_window(control, output))) == None,
+    ledger_output_proof_v1.step_v1(control, span_attach(proof)) == None,
+  }
+}
+
+/// Drive a byte-string datum's traversal to its hand-off, checking every
+/// step that reads an empty span with `empty_span_takes_no_window` at
+/// `start`. Returns the control after the hand-off and the number of such
+/// steps.
+fn through_byte_string_datum(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
+  start: Int,
+  empty_steps: Int,
+) -> (ledger_output_proof_v1.LedgerOutputProofControlV1, Int) {
+  if control.stage != ledger_output_proof_v1.stage_datum_traversal {
+    (control, empty_steps)
+  } else {
+    let empty = if reads_empty_span(control) {
+      expect empty_span_takes_no_window(control, proof, output, start)
+      1
+    } else {
+      0
+    }
+    through_byte_string_datum(
+      byte_string_datum_step(control, output),
+      proof,
+      output,
+      start,
+      empty_steps + empty,
+    )
+  }
+}
+
+/// Drive `output`'s byte-string datum from its initial control.
+fn byte_string_datum_read(
+  output: ByteArray,
+  start: Int,
+) -> (ledger_output_proof_v1.LedgerOutputProofControlV1, Int) {
+  let Pair(commitment, proof) = one_chunk_material(0, output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(output),
+    commitment,
+  )
+  through_byte_string_datum(
+    datum_traversal_start(initial, proof),
+    proof,
+    output,
+    start,
+    0,
+  )
+}
+
+test empty_byte_string_datum_ending_the_output_is_read_without_a_window() {
+  let output = empty_bytes_datum_output
+  let (terminal, empty_steps) = byte_string_datum_read(
+    output,
+    bytearray.length(output),
+  )
+  and {
+    empty_steps == 1,
+    ledger_output_proof_v1.terminal_is_exact_v1(terminal),
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(
+        builtin.constr_data(0, [builtin.b_data(#"")]),
+      ),
+    ),
+  }
+}
+
+test empty_byte_string_datum_before_a_reference_script_is_read_without_a_window() {
+  let output = empty_bytes_datum_before_a_script_output
+  let (after_datum, empty_steps) = byte_string_datum_read(output, 44)
+  and {
+    empty_steps == 1,
+    after_datum.stage == ledger_output_proof_v1.stage_reference_script_commitment,
+  }
+}
