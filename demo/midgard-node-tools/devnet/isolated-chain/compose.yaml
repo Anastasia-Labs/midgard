@@ -118,6 +118,9 @@ services:
       POSTGRES_PASSWORD: ${MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD:?MIDGARD_ISOLATED_CHAIN_POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE:?MIDGARD_ISOLATED_CHAIN_POSTGRES_DATABASE is required}
       PGDATA: /var/lib/postgresql/data/pgdata
+    # A run's nodes and DA committee share this server. The default 100
+    # connections hold one node; each further node holds about 30 more.
+    command: ["postgres", "-c", "max_connections=400"]
     volumes:
       - ${MIDGARD_ISOLATED_CHAIN_RUN_DIR}/postgres:/var/lib/postgresql/data
     ports:
