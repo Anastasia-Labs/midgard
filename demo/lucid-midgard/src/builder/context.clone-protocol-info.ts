@@ -100,6 +100,7 @@ const knownNetworkId = (network: string | undefined): number | undefined => {
       return 1;
     case "Preprod":
     case "Preview":
+    case "Custom":
       return 0;
     case undefined:
     default:

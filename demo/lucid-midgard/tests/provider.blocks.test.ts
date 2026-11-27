@@ -1,11 +1,25 @@
 import { describe, expect, it } from "vitest";
 
+import { resolveNetworkId } from "../src/builder/context.clone-protocol-info.js";
 import {
   ProviderCapabilityError,
   ProviderHttpError,
   ProviderPayloadError,
 } from "../src/index.js";
+import { knownNetworkId } from "../src/provider/convenience.js";
 import { jsonResponse, makeProvider } from "./provider.protocol-info.js";
+
+describe("Custom devnet network id resolution", () => {
+  it("maps Custom, Preprod, and Preview to testnet network id 0 and Mainnet to 1", () => {
+    expect(knownNetworkId("Mainnet")).toBe(1n);
+    expect(knownNetworkId("Preprod")).toBe(0n);
+    expect(knownNetworkId("Preview")).toBe(0n);
+    expect(knownNetworkId("Custom")).toBe(0n);
+    expect(() => knownNetworkId("Unknown")).toThrow(ProviderPayloadError);
+    expect(resolveNetworkId(undefined, "Custom")).toBe(0);
+    expect(resolveNetworkId(undefined, "Mainnet")).toBe(1);
+  });
+});
 
 describe("MidgardNodeProvider.blocks", () => {
   it("queries GET /blocks without options and returns blocks + nextCursor", async () => {

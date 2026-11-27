@@ -15,6 +15,7 @@ export const knownNetworkId = (network: string): bigint => {
       return 1n;
     case "Preprod":
     case "Preview":
+    case "Custom":
       return 0n;
     default:
       throw new ProviderPayloadError(
