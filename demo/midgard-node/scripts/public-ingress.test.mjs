@@ -447,27 +447,6 @@ describe("public ingress served by nginx", { skip }, () => {
     assert.deepEqual(seen.requests, []);
   });
 
-  test("refuses a concurrent request past the client cap from one address, and floods of health checks, in the node's JSON shape", async () => {
-    const fresh = new Agent({ keepAlive: false });
-    const slow = await Promise.all(
-      Array.from({ length: CLIENT_ACTIVE + 2 }, () =>
-        send("/slow", { via: fresh }),
-      ),
-    );
-    assert.deepEqual(count(slow), { 200: CLIENT_ACTIVE, 503: 2 });
-    const busy = slow.find(({ status }) => status === 503);
-    assert.equal(busy.retryAfter, "5");
-    assert.equal(JSON.parse(busy.body).errorCode, "E_HTTP_INGRESS_CAPACITY");
-    const health = await Promise.all(
-      Array.from({ length: 60 }, () => send("/healthz")),
-    );
-    const limited = health.find(({ status }) => status === 429);
-    assert.ok(limited, JSON.stringify(count(health)));
-    assert.equal(limited.retryAfter, "1");
-    assert.equal(limited.headers["access-control-allow-origin"], "*");
-    assert.equal(JSON.parse(limited.body).errorCode, "E_HTTP_RATE_LIMITED");
-  });
-
   test("answers 503 with Retry-After while the node's socket is gone, and serves again once it is back", async () => {
     const pub = await send("/blocks");
     assert.equal(headerCount(pub, "access-control-allow-origin"), 1);
@@ -495,5 +474,27 @@ describe("public ingress served by nginx", { skip }, () => {
     }
     await startNode();
     assert.equal((await send("/utxos")).status, 200);
+  });
+
+  // Last: the flood drains this address's rate on health and admin routes.
+  test("refuses a concurrent request past the client cap from one address, and floods of health checks, in the node's JSON shape", async () => {
+    const fresh = new Agent({ keepAlive: false });
+    const slow = await Promise.all(
+      Array.from({ length: CLIENT_ACTIVE + 2 }, () =>
+        send("/slow", { via: fresh }),
+      ),
+    );
+    assert.deepEqual(count(slow), { 200: CLIENT_ACTIVE, 503: 2 });
+    const busy = slow.find(({ status }) => status === 503);
+    assert.equal(busy.retryAfter, "5");
+    assert.equal(JSON.parse(busy.body).errorCode, "E_HTTP_INGRESS_CAPACITY");
+    const health = await Promise.all(
+      Array.from({ length: 60 }, () => send("/healthz")),
+    );
+    const limited = health.find(({ status }) => status === 429);
+    assert.ok(limited, JSON.stringify(count(health)));
+    assert.equal(limited.retryAfter, "1");
+    assert.equal(limited.headers["access-control-allow-origin"], "*");
+    assert.equal(JSON.parse(limited.body).errorCode, "E_HTTP_RATE_LIMITED");
   });
 });
